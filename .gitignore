@@ -1,0 +1,93 @@
+# ---------------------------------------------------------------------------
+# Skrivnosti — člen IV ustave. Ta blok je prvi namenoma: nobena od teh datotek
+# ne sme nikoli priti v git, tudi ne prek `git add -A`.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# Ključi in certifikati
+*.pem
+*.key
+*.p12
+*.pfx
+*-key.json
+*-credentials.json
+serviceAccount*.json
+secrets/
+/run/secrets/
+
+# Android podpisovanje (Capacitor build)
+*.jks
+*.keystore
+keystore.properties
+
+# ---------------------------------------------------------------------------
+# Odvisnosti in build
+# ---------------------------------------------------------------------------
+node_modules/
+dist/
+build/
+out/
+tmp/
+.angular/
+*.tsbuildinfo
+
+# Angular / Ionic
+www/
+.ionic/
+.sourcemaps/
+
+# Capacitor — generirani nativni projekti
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+ios/App/build/
+ios/App/Pods/
+ios/App/public/
+.capacitor/
+
+# ---------------------------------------------------------------------------
+# Testi, pokritost, logi
+# ---------------------------------------------------------------------------
+coverage/
+.nyc_output/
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+
+# Artefakti verifikacije klikov (člen VI) — posnetki zaslona ob napaki nastanejo
+# ob izvajanju in sodijo v volume, ne v repozitorij.
+screenshots/
+artifacts/
+
+# ---------------------------------------------------------------------------
+# Docker / lokalni podatki
+# ---------------------------------------------------------------------------
+docker-compose.override.yml
+data/
+mongo-data/
+
+# ---------------------------------------------------------------------------
+# Urejevalniki in OS
+# ---------------------------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------------------
+# Agentsko orodje
+# ---------------------------------------------------------------------------
+# `.claude/skills/speckit-*` je commitan namenoma (del scaffolda). Lokalna
+# nastavitev in dovoljenja pa so per-stroj in lahko vsebujeta poti ali žetone.
+.claude/settings.local.json
+.claude/.credentials.json
