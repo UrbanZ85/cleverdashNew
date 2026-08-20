@@ -1,0 +1,30 @@
+{
+  "name": "cleverdash",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CleverDash — osebni dashboard z zavihki (monorepo)",
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "test": "npm run test --workspaces --if-present",
+    "dev:api": "npm run dev --workspace apps/api",
+    "dev:web": "npm run dev --workspace apps/web",
+    "build:web": "npm run build --workspace apps/web",
+    "generate:contracts": "node packages/contracts/scripts/generate.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@typescript-eslint/eslint-plugin": "^8.5.0",
+    "@typescript-eslint/parser": "^8.5.0",
+    "eslint": "^9.9.0",
+    "globals": "^17.11.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.4"
+  }
+}

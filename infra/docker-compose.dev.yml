@@ -1,0 +1,17 @@
+# Samo Mongo za lokalen razvoj — API in web tečeta zunaj Dockerja (npm run dev:api / dev:web).
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      TZ: Europe/Ljubljana
+      MONGO_INITDB_ROOT_USERNAME: cleverdash
+      MONGO_INITDB_ROOT_PASSWORD: dev-only-password
+    volumes:
+      - mongo-dev-data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  mongo-dev-data:

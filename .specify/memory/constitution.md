@@ -1,7 +1,42 @@
 <!--
 Sync Impact Report
 ==================
-Version change: (uninitialized template) → 1.0.0
+Version change: 1.0.0 → 1.1.0
+Date: 2026-08-19
+
+Bump rationale: MINOR. Both changes add stated guidance rather than remove or
+incompatibly redefine a principle. The Idempotency-Key change is a *relaxation*:
+nothing that complied with 1.0.0 stops complying under 1.1.0, which is what
+separates MINOR from MAJOR under this document's own versioning policy. The gate 2
+rewording alone would have been PATCH; it is absorbed into this MINOR bump.
+
+Trigger: /speckit-analyze on feature 001 flagged two places where a plan tried to
+resolve tension with the constitution inside the plan itself (findings D1, D2).
+Governance says the constitution is amended in the constitution, not in a plan.
+
+Modified sections:
+- Principle III (API-first) — added a narrow, explicitly bounded exception to the
+  Idempotency-Key requirement for endpoints that issue or rotate tokens, with the
+  rationale and two anti-loophole conditions. Principle name unchanged.
+- Quality gate 2 — scoped the four named test cases to features where those cases
+  have a subject, and required that an absent case be stated explicitly in the plan
+  together with the cases replacing it. Silence does not count as satisfied.
+
+Added sections: none.
+Removed sections: none.
+
+Downstream effect (NOT changed by this command — constitution scope only):
+- specs/001-app-shell-dashboard/plan.md, Complexity Tracking row 1 now describes a
+  deviation that is no longer a deviation. It should be rewritten as an applied
+  exception, or removed.
+- specs/001-app-shell-dashboard/plan.md gate 2 row already states the absent cases
+  and their replacements, so it satisfies the amended gate as written.
+
+Follow-up TODOs: none. No placeholder tokens remain.
+
+---
+
+Prior report — version (uninitialized template) → 1.0.0
 Bump rationale: MAJOR — initial ratification of the project constitution; all
 principles newly defined from nacrt/constitution.md.
 
@@ -84,7 +119,19 @@ Zato velja:
 - Pogodba JE OpenAPI 3.1 in se vzdržuje skupaj s kodo v istem PR-ju.
 - Avtentikacija za avtomatizacijo JE API ključ z omejenim obsegom (`X-API-Key`); uporabnikovo
   geslo ali dolgoživ JWT za ta namen NISTA dovoljena.
-- Mutacijski endpointi MORAJO sprejemati `Idempotency-Key`.
+- Mutacijski endpointi MORAJO sprejemati `Idempotency-Key`, z eno izjemo (spodaj).
+
+**Izjema od `Idempotency-Key`:** endpointi, ki **izdajajo ali zavrtijo žeton** (prijava,
+obnova žetona), te glave NE sprejmejo. Shranjen odgovor bi ob ponovitvi vrnil žeton, ki je
+bil medtem zavrten, in bi zaznavo ponovne uporabe žetona iz varovalke spremenil v napako —
+kar je v neposrednem nasprotju s členom o rotaciji sej.
+
+Izjema je ozka in se ne razteza:
+
+- velja izključno za izdajo in rotacijo žetonov; vsaka druga mutacija, tudi če je videti
+  podobno, glavo sprejme in obljubo izpolni;
+- MORA biti izrecno zapisana v OpenAPI pogodbi pri tistih poteh. Tiho nesprejemanje glave je
+  kršitev tega člena, ne uveljavitev izjeme.
 
 ### IV. Nobene skrivnosti v kodi ali gitu
 
@@ -199,9 +246,12 @@ Nobena naloga ni končana, dokler ni izpolnjeno vse spodaj. Vrata so binarna: de
 
 1. `npm run typecheck` in `npm run lint` sta čista; TypeScript `strict: true`, brez `any` v
    domenski plasti.
-2. Domenska logika ima enotske teste, vključno z: prehodom na poletni/zimski čas, praznikom,
-   ki pade na delovni dan, dopustom preko meje meseca, in neuspelim klikom, ki se uspešno
-   ponovi.
+2. Domenska logika ima enotske teste. Kjer funkcionalnost te primere vsebuje, so obvezni:
+   prehod na poletni/zimski čas, praznik, ki pade na delovni dan, dopust preko meje meseca,
+   in neuspel klik, ki se uspešno ponovi. Kadar primer v funkcionalnosti nima predmeta, MORA
+   biti to izrecno zapisano v načrtu, skupaj s primeri, ki ga v tej funkcionalnosti
+   nadomeščajo. Molk ne šteje kot izpolnjeno, in nobena funkcionalnost ne prestane teh vrat
+   brez enotskih testov domenske logike.
 3. OpenAPI pogodba je posodobljena in validna.
 4. `docker compose up` iz čiste checkout kopije pripelje do delujočega sistema samo z
    izpolnjenim `.env`.
@@ -234,4 +284,4 @@ vrata preverijo pred zaključkom vsake naloge.
 **Vodilo med razvojem:** `nacrt/` (specifikacije, načrti, pogodbe) in `docs/legacy-engine.md`
 (napake, ki jih ne ponovimo) sta referenca; ustava je odločilna, kadar si nasprotujeta.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-19
+**Version**: 1.1.0 | **Ratified**: 2026-08-19 | **Last Amended**: 2026-08-19

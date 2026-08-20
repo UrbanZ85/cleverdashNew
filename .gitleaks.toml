@@ -1,0 +1,17 @@
+# Vrata 5 ustave: noben niz, ki je videti kot skrivnost, ni v gitu.
+# Zaganja se v CI (.github/workflows/ci.yml) in ob poljubnem trenutku lokalno:
+#   gitleaks detect --config .gitleaks.toml --source . --no-git -v
+#   gitleaks detect --config .gitleaks.toml --source . -v   (nad celotno zgodovino)
+
+title = "cleverdash gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Namerno prazne vrednosti in dokumentacijski primeri"
+paths = [
+  '''\.env\.example$''',
+  '''docs/env-reference\.md$''',
+  '''docs/SECURITY-FIRST\.md$''',
+]

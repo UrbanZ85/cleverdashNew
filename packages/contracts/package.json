@@ -1,0 +1,15 @@
+{
+  "name": "@cleverdash/contracts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/generated/api.d.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "generate": "tsx scripts/generate.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.4.1",
+    "tsx": "^4.19.0"
+  }
+}

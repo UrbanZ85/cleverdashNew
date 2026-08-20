@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/build
+**/www
+**/.angular
+**/coverage
+**/*.log
+.git
+.env
+.env.*
+!.env.example
+android
+ios
+specs
+nacrt
+docs
+.github

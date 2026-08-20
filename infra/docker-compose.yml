@@ -1,0 +1,79 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Ljubljana
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-cleverdash}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD manjka}
+    volumes:
+      - mongo-data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      TZ: Europe/Ljubljana
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ${FCM_KEY_FILE}:/run/secrets/fcm_key:ro
+      - screenshots:/app/data/screenshots
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Ni dolgo živečega "web" strežnika: Caddy sam streže statični build (glej Caddyfile,
+  # `root * /srv/www`). Ta storitev samo zgradi Angular SPA in kopira izhod v deljen
+  # volumen, nato se izteče — `restart: "no"` je namerno.
+  web:
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+    restart: "no"
+    environment:
+      TZ: Europe/Ljubljana
+    volumes:
+      - web-dist:/out
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: ../.env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - web-dist:/srv/www:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_started
+      web:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mongo-data:
+  screenshots:
+  web-dist:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,1004 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash API — 001 Ogrodje in dashboard
+  version: 1.0.0
+  description: |
+    Pogodba funkcionalnosti 001. Vsaka zmožnost je najprej endpoint, šele nato zaslon
+    (člen III ustave). Poti so angleške, kebab-case in verzionirane; domenska besedila
+    (naslovi zavihkov, sporočila) so slovenska (člen X).
+
+    Enotni izvor: API je na isti domeni kot aplikacija, pod `/api/v1`. CORS ni
+    konfiguriran in ni potreben (člen II).
+
+    Glava `Idempotency-Key` je sprejeta na vseh mutacijah razen `POST /auth/login` in
+    `POST /auth/refresh` — utemeljitev je v plan.md, razdelek Complexity Tracking.
+
+servers:
+  - url: https://app.si/api/v1
+    description: Produkcija
+  - url: http://localhost:3000/api/v1
+    description: Razvoj (dev-server proxy pošlje /api sem)
+
+tags:
+  - name: auth
+    description: Prijava, žetoni, geslo
+  - name: tabs
+    description: Razrešen register zavihkov
+  - name: dashboard
+    description: Vreme, napoved, radar
+  - name: settings
+    description: Lokacija, tema, razporeditev ploščic, stikala zavihkov
+  - name: devices
+    description: Naprave za potisna obvestila
+  - name: api-keys
+    description: Ključi za avtomatizacijo
+  - name: health
+    description: Stanje sistema
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Prijava z e-pošto in geslom
+      description: |
+        Vrne kratkoživ dostopni žeton in vzpostavi družino sej za to napravo.
+        Obnovitveni žeton se v brskalniku vrne kot `httpOnly` piškotek, omejen na pot
+        obnovitve; na Androidu je v telesu odgovora, ker aplikacija nima piškotkov.
+
+        Glave `Idempotency-Key` ta pot ne sprejema (FR-011, FR-012).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Prijava uspela
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          description: Preveč neuspelih poskusov (FR-015)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Obnovi dostopni žeton
+      description: |
+        Zavrti obnovitveni žeton: prejšnji preide v stanje `used`, izda se nov v isti
+        družini. Predložen že porabljen žeton prekliče **celotno družino** (FR-012).
+
+        Glave `Idempotency-Key` ta pot ne sprejema — shranjen odgovor bi vrnil žeton, ki
+        je bil medtem zavrten.
+      security: []
+      requestBody:
+        required: false
+        description: Na Androidu; v brskalniku žeton pride kot piškotek
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Žeton obnovljen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Žeton neveljaven, iztečen ali preklican; ob zaznani ponovni uporabi je preklicana celotna družina
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Odjava te naprave
+      description: Prekliče družino sej te naprave. Druge naprave ostanejo prijavljene (FR-017).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Odjavljen
+
+  /auth/password:
+    post:
+      tags: [auth]
+      summary: Zamenjaj geslo
+      description: |
+        Edini endpoint poleg odjave, ki je dosegljiv, dokler je `mustChangePassword`
+        resničen (FR-014).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+      responses:
+        '204':
+          description: Geslo zamenjano; vse druge družine sej so preklicane
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Podatki o prijavljenem računu
+      responses:
+        '200':
+          description: Račun
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/sessions:
+    get:
+      tags: [auth]
+      summary: Seznam aktivnih naprav
+      description: Ena vrstica na družino sej. Omogoča preklic posamezne naprave.
+      responses:
+        '200':
+          description: Aktivne seje
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionFamily'
+
+  /auth/sessions/{familyId}:
+    delete:
+      tags: [auth]
+      summary: Prekliči sejo izbrane naprave
+      parameters:
+        - name: familyId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Preklicano
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tabs:
+    get:
+      tags: [tabs]
+      summary: Razrešen register zavihkov
+      description: |
+        Definicije so v kodi, `enabled` in `order` se prekrijeta iz nastavitev (FR-002,
+        FR-003). Vrne samo zavihke, ki so vklopljeni in za katere ima klicatelj obsege.
+        Odjemalec iz tega sestavi meni in usmerjanje.
+      responses:
+        '200':
+          description: Zavihki, urejeni po `order`
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TabDefinition'
+
+  /dashboard/weather:
+    get:
+      tags: [dashboard]
+      summary: Trenutno vreme za nastavljeno lokacijo
+      description: |
+        Podatek pride iz strežniškega predpomnilnika (TTL 600 s). Odjemalec zunanjega vira
+        ne kliče nikoli (člen VIII). Ob nedosegljivosti vira vrne `200` z zadnjim znanim
+        podatkom in `stale: true` — ne napake (FR-026).
+      parameters:
+        - name: location
+          in: query
+          required: false
+          description: Ime lokacije; privzeto iz nastavitev
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Vremenski odčitek, svež ali zadnji znani
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherReading'
+        '503':
+          description: Podatka še ni bilo nikoli in vir ni dosegljiv
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /dashboard/forecast:
+    get:
+      tags: [dashboard]
+      summary: Kratka napoved za naslednjih nekaj ur
+      description: |
+        Iz istega odgovora vira in istega predpomnilnika kot trenutno vreme, zato ne dodaja
+        zunanje odvisnosti (FR-024). Podrobna napoved po dnevih ni v obsegu.
+      parameters:
+        - name: location
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Napoved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastResponse'
+        '503':
+          description: Podatka še ni bilo nikoli in vir ni dosegljiv
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /dashboard/radar:
+    get:
+      tags: [dashboard]
+      summary: Animirana radarska slika padavin
+      description: |
+        Strežnik streže sliko iz predpomnilnika (TTL 300 s, usklajeno z `max-age=300`
+        izvora). Proxy je obvezen: neposredna nešifrirana povezava bi bila na šifrirani
+        strani zavrnjena, poleg tega brez proxyja ni zadnje znane slike (FR-025, FR-026).
+
+        Starost slike je v glavah `X-Source-Fetched-At` in `X-Source-Stale`, da jo
+        odjemalec prikaže brez dodatne zahteve.
+      responses:
+        '200':
+          description: Slika, sveža ali zadnja znana
+          headers:
+            X-Source-Fetched-At:
+              description: Čas uspešne pridobitve iz izvora (ISO 8601)
+              schema:
+                type: string
+                format: date-time
+            X-Source-Stale:
+              description: '`true`, kadar je slika starejša od TTL in osvežitev ni uspela'
+              schema:
+                type: boolean
+            X-Source-Attribution:
+              description: Navedba vira (FR-027)
+              schema:
+                type: string
+            X-Source-Next-Poll-Seconds:
+              description: Priporočen razmik do naslednje osvežitve — glej SourceMeta.nextPollSeconds
+              schema:
+                type: integer
+          content:
+            image/gif:
+              schema:
+                type: string
+                format: binary
+        '503':
+          description: Slike še ni bilo nikoli in vir ni dosegljiv
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /settings:
+    get:
+      tags: [settings]
+      summary: Preberi nastavitve
+      responses:
+        '200':
+          description: Nastavitve
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+    put:
+      tags: [settings]
+      summary: Posodobi nastavitve
+      description: |
+        Vključuje lokacijo za vreme, temo, razporeditev in vidnost ploščic (FR-028) ter
+        stikala zavihkov (FR-003). Delna posodobitev: navedejo se samo polja, ki se
+        spremenijo.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsUpdate'
+      responses:
+        '200':
+          description: Posodobljene nastavitve
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /devices:
+    get:
+      tags: [devices]
+      summary: Seznam registriranih naprav
+      responses:
+        '200':
+          description: Naprave
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+    post:
+      tags: [devices]
+      summary: Registriraj napravo za potisna obvestila
+      description: Ponovna registracija istega žetona posodobi obstoječi zapis (FR-030).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRegistration'
+      responses:
+        '201':
+          description: Registrirana
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /devices/{deviceId}:
+    delete:
+      tags: [devices]
+      summary: Odjavi napravo od obvestil
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Odjavljena
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications/test:
+    post:
+      tags: [devices]
+      summary: Pošlji testno obvestilo
+      description: |
+        Dokaže pot od strežnika do naprave in pravilno odpiranje zaslona ob tapkanju
+        (FR-033, SC-006). Obstaja zato, da je P7 samostojno testabilna, ne da bi bilo treba
+        čakati na 002.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deviceId:
+                  type: string
+                  description: Če ni podan, gre na vse registrirane naprave
+                deepLink:
+                  type: string
+                  description: Pot v aplikaciji, ki naj se odpre ob tapkanju
+      responses:
+        '202':
+          description: Sprejeto za dostavo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+                  removedTokens:
+                    type: integer
+                    description: Žetoni, ki jih je ponudnik zavrnil in so bili odstranjeni (FR-034)
+
+  /api-keys:
+    get:
+      tags: [api-keys]
+      summary: Seznam ključev za avtomatizacijo
+      description: Čistopis ključa se ne vrne nikoli; v seznamu je samo predpona.
+      responses:
+        '200':
+          description: Ključi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApiKey'
+    post:
+      tags: [api-keys]
+      summary: Ustvari ključ z omejenim obsegom
+      description: |
+        Čistopis se pokaže **samo v tem odgovoru** in ni obnovljiv. Ključ brez obsegov ni
+        dovoljen (člen III).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label, scopes]
+              properties:
+                label:
+                  type: string
+                scopes:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                expiresAt:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: Ustvarjen
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiKey'
+                  - type: object
+                    properties:
+                      secret:
+                        type: string
+                        description: Čistopis ključa, prikazan samo enkrat
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api-keys/{keyId}:
+    delete:
+      tags: [api-keys]
+      summary: Prekliči ključ
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Preklican
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /health:
+    get:
+      tags: [health]
+      summary: Stanje sistema
+      description: |
+        Notranje stanje. Po členu VII **ne zadošča** kot alarm — mrtev proces tega ne
+        pokliče. Zunanji dead man's switch je odhodni srčni utrip na `HEALTHCHECK_PING_URL`.
+      security: []
+      responses:
+        '200':
+          description: Sistem deluje
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Sistem ne deluje pravilno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Kratkoživ dostopni žeton (15 min) za web in Android
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Avtentikacija za avtomatizacijo (n8n). Ključ ima omejen obseg; veljaven ključ sam
+        po sebi ne pomeni administratorskih pravic (FR-013, člen III).
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Ponovljen klic z isto vrednostjo vrne prvotni rezultat. Ista vrednost z drugačnim
+        telesom zahteve vrne `422`.
+      schema:
+        type: string
+        maxLength: 200
+
+  responses:
+    BadRequest:
+      description: Neveljavna zahteva
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Ni avtenticiran
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Avtenticiran, a brez zahtevanega obsega
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Ni najdeno
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457. Sporočilo je v slovenščini in brez tehničnih podrobnosti (FR-026).
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+          description: ID korelacije iz dnevnika, da je prijavljeno napako mogoče najti
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        deviceLabel:
+          type: string
+          description: Človeku berljiva oznaka naprave za seznam sej
+        platform:
+          type: string
+          enum: [web, android]
+
+    RefreshRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          description: Samo za Android; v brskalniku pride kot piškotek
+
+    TokenResponse:
+      type: object
+      required: [accessToken, expiresIn, mustChangePassword]
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Veljavnost dostopnega žetona v sekundah
+        refreshToken:
+          type: string
+          description: Samo za Android; v brskalniku je vrnjen kot httpOnly piškotek
+        mustChangePassword:
+          type: boolean
+          description: Dokler je resničen, so drugi endpointi zavrnjeni s 403 (FR-014)
+
+    PasswordChangeRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 12
+
+    Account:
+      type: object
+      required: [id, email, scopes, mustChangePassword]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        scopes:
+          type: array
+          items:
+            type: string
+        mustChangePassword:
+          type: boolean
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SessionFamily:
+      type: object
+      required: [id, platform, createdAt, lastUsedAt, current]
+      properties:
+        id:
+          type: string
+        deviceLabel:
+          type: string
+        platform:
+          type: string
+          enum: [web, android]
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+          description: Ali je to seja, iz katere je prišla ta zahteva
+
+    TabDefinition:
+      type: object
+      description: Vnos registra zavihkov. `title` je slovenski, `id` in `route` sta angleška (člen X).
+      required: [id, title, icon, route, order]
+      properties:
+        id:
+          type: string
+          example: dashboard
+        title:
+          type: string
+          example: Nadzorna plošča
+        icon:
+          type: string
+        route:
+          type: string
+          example: /dashboard
+        order:
+          type: integer
+        requiredScopes:
+          type: array
+          items:
+            type: string
+
+    SourceMeta:
+      type: object
+      description: Skupna ovojnica za vse podatke zunanjega izvora.
+      required: [fetchedAt, stale, attribution]
+      properties:
+        fetchedAt:
+          type: string
+          format: date-time
+          description: Čas uspešne pridobitve iz izvora
+        ageSeconds:
+          type: integer
+          description: Starost podatka v sekundah ob tem odgovoru
+        stale:
+          type: boolean
+          description: Podatek je starejši od TTL in osvežitev ni uspela (FR-026)
+        nextPollSeconds:
+          type: integer
+          description: |
+            Priporočen razmik do naslednje osvežitve (TTL predpomnilnika na strežniku).
+            Odjemalec ta interval prevzame od strežnika namesto lastne konstante — TTL se
+            lahko spremeni brez novega builda (FR-022, research.md §8).
+        attribution:
+          type: object
+          description: Navedba vira; funkcionalna zahteva FR-027, ne oblikovna podrobnost
+          required: [text, url]
+          properties:
+            text:
+              type: string
+              example: 'Vir: ARSO'
+            url:
+              type: string
+              example: https://meteo.arso.gov.si
+
+    WeatherReading:
+      type: object
+      required: [location, observation, source]
+      properties:
+        location:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+            latitude:
+              type: number
+              nullable: true
+            longitude:
+              type: number
+              nullable: true
+        observation:
+          type: object
+          description: Polja, ki jih zahteva FR-023. Neuporabljena polja izvora se ne prenašajo.
+          properties:
+            temperatureC:
+              type: number
+              nullable: true
+            humidityPercent:
+              type: number
+              nullable: true
+            windSpeed:
+              type: string
+              nullable: true
+            windDirection:
+              type: string
+              nullable: true
+            skyCondition:
+              type: string
+              nullable: true
+              description: Slovensko besedilo izvora, npr. "jasno"
+            icon:
+              type: string
+              nullable: true
+            measuredAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: Čas meritve, prikazan v Europe/Ljubljana
+        source:
+          $ref: '#/components/schemas/SourceMeta'
+
+    ForecastResponse:
+      type: object
+      required: [location, entries, source]
+      properties:
+        location:
+          type: object
+          properties:
+            name:
+              type: string
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              validAt:
+                type: string
+                format: date-time
+              temperatureC:
+                type: number
+                nullable: true
+              skyCondition:
+                type: string
+                nullable: true
+              icon:
+                type: string
+                nullable: true
+        source:
+          $ref: '#/components/schemas/SourceMeta'
+
+    TileLayoutEntry:
+      type: object
+      required: [type, position, visible]
+      properties:
+        type:
+          type: string
+          example: weather
+        position:
+          type: integer
+        visible:
+          type: boolean
+        config:
+          type: object
+          additionalProperties: true
+
+    Settings:
+      type: object
+      required: [weather, theme, tiles, tabs]
+      properties:
+        weather:
+          type: object
+          properties:
+            locationName:
+              type: string
+            latitude:
+              type: number
+              nullable: true
+            longitude:
+              type: number
+              nullable: true
+        theme:
+          type: string
+          enum: [system, light, dark]
+        tiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/TileLayoutEntry'
+        tabs:
+          type: object
+          description: Prekritja registra po id zavihka
+          additionalProperties:
+            type: object
+            properties:
+              enabled:
+                type: boolean
+              order:
+                type: integer
+        updatedAt:
+          type: string
+          format: date-time
+
+    SettingsUpdate:
+      type: object
+      description: Delna posodobitev; navedejo se samo polja, ki se spremenijo.
+      properties:
+        weather:
+          type: object
+          properties:
+            locationName:
+              type: string
+            latitude:
+              type: number
+            longitude:
+              type: number
+        theme:
+          type: string
+          enum: [system, light, dark]
+        tiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/TileLayoutEntry'
+        tabs:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              enabled:
+                type: boolean
+              order:
+                type: integer
+
+    DeviceRegistration:
+      type: object
+      required: [pushToken, platform]
+      properties:
+        pushToken:
+          type: string
+        platform:
+          type: string
+          enum: [web, android]
+        channels:
+          type: array
+          items:
+            type: string
+          default: [system]
+
+    Device:
+      type: object
+      required: [id, platform, channels, lastSeenAt]
+      properties:
+        id:
+          type: string
+        platform:
+          type: string
+          enum: [web, android]
+        channels:
+          type: array
+          items:
+            type: string
+        lastSeenAt:
+          type: string
+          format: date-time
+        lastDeliveryAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ApiKey:
+      type: object
+      required: [id, label, keyPrefix, scopes]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        keyPrefix:
+          type: string
+          description: Prvih 8 znakov, da je ključ prepoznaven brez razkritja
+        scopes:
+          type: array
+          items:
+            type: string
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Health:
+      type: object
+      required: [status, timeZone, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, failing]
+        timeZone:
+          type: string
+          example: Europe/Ljubljana
+        version:
+          type: string
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [ok, failing]
+            configuration:
+              type: string
+              enum: [ok, failing]
+            externalSources:
+              type: array
+              items:
+                type: object
+                properties:
+                  key:
+                    type: string
+                  ageSeconds:
+                    type: integer
+                  stale:
+                    type: boolean
+            heartbeat:
+              type: object
+              description: Odhodni signal zunanjemu dead man's switchu (člen VII)
+              properties:
+                configured:
+                  type: boolean
+                lastSentAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                lastResult:
+                  type: string
+                  enum: [ok, failed, skipped]

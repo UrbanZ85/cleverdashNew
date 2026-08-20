@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "useDefineForClassFields": false,
+    "lib": ["ES2022", "DOM"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "experimentalDecorators": true,
+    "types": ["vitest/globals"]
+  },
+  "angularCompilerOptions": {
+    "strictTemplates": true
+  },
+  "include": ["src", "tests"]
+}
