@@ -37,7 +37,11 @@ tags:
     description: Stanje sistema
 
 security:
+  # Vsak vnos je samostojna alternativa (ALI) — dostopni JWT za web/Android ALI X-API-Key
+  # za avtomatizacijo (n8n), člen III ustave. Usklajeno z izvedbo: apps/api/src/main.ts
+  # namesti oba vratarja (accessTokenGuard, apiKeyGuard) vzporedno pred requireScopes().
   - bearerAuth: []
+  - apiKeyAuth: []
 
 paths:
   /auth/login:
@@ -432,7 +436,10 @@ paths:
     get:
       tags: [api-keys]
       summary: Seznam ključev za avtomatizacijo
-      description: Čistopis ključa se ne vrne nikoli; v seznamu je samo predpona.
+      description: |
+        Čistopis ključa se ne vrne nikoli; v seznamu je samo predpona. Zahteva obseg
+        `admin` — sistem je enouporabniški (FR-016), zato je to edini smiselni obseg za
+        upravljanje ključev.
       responses:
         '200':
           description: Ključi
@@ -442,6 +449,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ApiKey'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [api-keys]
       summary: Ustvari ključ z omejenim obsegom
@@ -483,6 +492,8 @@ paths:
                         description: Čistopis ključa, prikazan samo enkrat
         '400':
           $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api-keys/{keyId}:
     delete:
@@ -498,6 +509,8 @@ paths:
       responses:
         '204':
           description: Preklican
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -659,9 +672,8 @@ components:
         mustChangePassword:
           type: boolean
         lastLoginAt:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
 
     SessionFamily:
       type: object
@@ -751,38 +763,29 @@ components:
             name:
               type: string
             latitude:
-              type: number
-              nullable: true
+              type: [number, "null"]
             longitude:
-              type: number
-              nullable: true
+              type: [number, "null"]
         observation:
           type: object
           description: Polja, ki jih zahteva FR-023. Neuporabljena polja izvora se ne prenašajo.
           properties:
             temperatureC:
-              type: number
-              nullable: true
+              type: [number, "null"]
             humidityPercent:
-              type: number
-              nullable: true
+              type: [number, "null"]
             windSpeed:
-              type: string
-              nullable: true
+              type: [string, "null"]
             windDirection:
-              type: string
-              nullable: true
+              type: [string, "null"]
             skyCondition:
-              type: string
-              nullable: true
+              type: [string, "null"]
               description: Slovensko besedilo izvora, npr. "jasno"
             icon:
-              type: string
-              nullable: true
+              type: [string, "null"]
             measuredAt:
-              type: string
+              type: [string, "null"]
               format: date-time
-              nullable: true
               description: Čas meritve, prikazan v Europe/Ljubljana
         source:
           $ref: '#/components/schemas/SourceMeta'
@@ -805,14 +808,11 @@ components:
                 type: string
                 format: date-time
               temperatureC:
-                type: number
-                nullable: true
+                type: [number, "null"]
               skyCondition:
-                type: string
-                nullable: true
+                type: [string, "null"]
               icon:
-                type: string
-                nullable: true
+                type: [string, "null"]
         source:
           $ref: '#/components/schemas/SourceMeta'
 
@@ -841,11 +841,9 @@ components:
             locationName:
               type: string
             latitude:
-              type: number
-              nullable: true
+              type: [number, "null"]
             longitude:
-              type: number
-              nullable: true
+              type: [number, "null"]
         theme:
           type: string
           enum: [system, light, dark]
@@ -929,9 +927,8 @@ components:
           type: string
           format: date-time
         lastDeliveryAt:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
 
     ApiKey:
       type: object
@@ -949,13 +946,11 @@ components:
           items:
             type: string
         lastUsedAt:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         expiresAt:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
 
     Health:
       type: object
@@ -996,9 +991,8 @@ components:
                 configured:
                   type: boolean
                 lastSentAt:
-                  type: string
+                  type: [string, "null"]
                   format: date-time
-                  nullable: true
                 lastResult:
                   type: string
                   enum: [ok, failed, skipped]

@@ -270,17 +270,17 @@ Prerazporedi ploščice, odjavi se in znova prijavi; razporeditev je ostala.
 
 ### Tests for User Story 6 ⚠️
 
-- [ ] T106 [P] [US6] Pogodbeni test `GET /settings` in `PUT /settings` v `apps/api/tests/contract/settings.spec.ts`
-- [ ] T107 [P] [US6] Test, da se **neznana vrsta ploščice** preskoči in zabeleži, dashboard pa deluje, v `apps/api/tests/unit/tile-layout.spec.ts` — data-model.md
+- [X] T106 [P] [US6] Pogodbeni test `GET /settings` in `PUT /settings` v `apps/api/tests/contract/settings.spec.ts`
+- [X] T107 [P] [US6] Test, da se **neznana vrsta ploščice** preskoči in zabeleži, dashboard pa deluje, v `apps/api/tests/unit/tile-layout.spec.ts` — data-model.md
 
 ### Implementation for User Story 6
 
-- [ ] T108 [US6] Implementiraj `GET /settings` in `PUT /settings` z delno posodobitvijo v `apps/api/src/modules/settings/router.ts` (odvisno od T081)
-- [ ] T109 [US6] Implementiraj validacijo razporeditve (unikaten `position`, preskok neznanih vrst) v `apps/api/src/modules/settings/services/tile-layout.service.ts` — FR-028
-- [ ] T110 [P] [US6] Implementiraj registar vrst ploščic kot vtičnikov v `apps/web/src/app/features/dashboard/tile-registry.ts`; dodajanje vrste ne spremeni obstoječih — FR-020
-- [ ] T111 [P] [US6] Implementiraj prerazporejanje in skrivanje ploščic v `apps/web/src/app/features/settings/tile-arrangement.component.ts` — FR-028
-- [ ] T112 [P] [US6] Implementiraj izbiro teme (sistem, svetla, temna) v `apps/web/src/app/core/theme/theme.service.ts` — FR-006
-- [ ] T113 [P] [US6] Implementiraj izbiro lokacije za vreme (privzeto Ljubljana) v `apps/web/src/app/features/settings/location.component.ts` — Assumptions v spec.md
+- [X] T108 [US6] Implementiraj `GET /settings` in `PUT /settings` z delno posodobitvijo v `apps/api/src/modules/settings/router.ts` (odvisno od T081)
+- [X] T109 [US6] Implementiraj validacijo razporeditve (unikaten `position`, preskok neznanih vrst) v `apps/api/src/modules/settings/services/tile-layout.service.ts` — FR-028
+- [X] T110 [P] [US6] Implementiraj registar vrst ploščic kot vtičnikov v `apps/web/src/app/features/dashboard/tile-registry.ts`; dodajanje vrste ne spremeni obstoječih — FR-020
+- [X] T111 [P] [US6] Implementiraj prerazporejanje in skrivanje ploščic v `apps/web/src/app/features/settings/tile-arrangement.component.ts` — FR-028
+- [X] T112 [P] [US6] Implementiraj izbiro teme (sistem, svetla, temna) v `apps/web/src/app/core/theme/theme.service.ts` — FR-006
+- [X] T113 [P] [US6] Implementiraj izbiro lokacije za vreme (privzeto Ljubljana) v `apps/web/src/app/features/settings/location.component.ts` — Assumptions v spec.md
 
 **Checkpoint**: Dashboard je razširljiv in nastavljiv; razporeditev preživi sejo.
 
@@ -297,22 +297,22 @@ preveri, da se zapis odstrani.
 
 ### Tests for User Story 7 ⚠️
 
-- [ ] T114 [P] [US7] Pogodbeni testi `/devices` in `/notifications/test` v `apps/api/tests/contract/devices.spec.ts`
-- [ ] T115 [P] [US7] Enotski test: zavrnitev `UNREGISTERED`/`INVALID_ARGUMENT` **izbriše** zapis naprave, prehodna napaka pa poveča `failureCount`, v `apps/api/tests/unit/device-cleanup.spec.ts` — FR-034
-- [ ] T116 [P] [US7] Test zakasnitve dostave: obvestilo prispe pod 10 s v vseh poskusih, v `apps/api/tests/integration/notification-latency.spec.ts` — SC-006
+- [X] T114 [P] [US7] Pogodbeni testi `/devices` in `/notifications/test` v `apps/api/tests/contract/devices.spec.ts`
+- [X] T115 [P] [US7] Enotski test: zavrnitev `UNREGISTERED`/`INVALID_ARGUMENT` **izbriše** zapis naprave, prehodna napaka pa poveča `failureCount`, v `apps/api/tests/unit/device-cleanup.spec.ts` — FR-034
+- [X] T116 [P] [US7] Test zakasnitve dostave: obvestilo prispe pod 10 s v vseh poskusih, v `apps/api/tests/integration/notification-latency.spec.ts` — SC-006
 
 ### Implementation for User Story 7
 
-- [ ] T117 [P] [US7] Ustvari model `devices` v `apps/api/src/platform/notifications/device.model.ts` z unikatnim `pushToken` — data-model.md
-- [ ] T118 [US7] Implementiraj pošiljanje prek `firebase-admin` s poverilnicami iz montirane datoteke v `apps/api/src/platform/notifications/fcm.service.ts`; ključa ni v kodi — člen IV
-- [ ] T119 [P] [US7] Definiraj ločena kanala `system` in `reminders` v `apps/api/src/platform/notifications/channels.ts` — FR-032, research.md §10
-- [ ] T120 [US7] Implementiraj čiščenje zavrnjenih žetonov v `apps/api/src/platform/notifications/token-cleanup.service.ts` (odvisno od T117) — FR-034
-- [ ] T121 [US7] Implementiraj `GET /devices`, `POST /devices`, `DELETE /devices/{deviceId}` v `apps/api/src/platform/notifications/router.ts`; ponovna registracija istega žetona posodobi zapis — FR-030
-- [ ] T122 [US7] Implementiraj `POST /notifications/test` v `apps/api/src/platform/notifications/router.ts` — FR-033
-- [ ] T123 [P] [US7] Implementiraj registracijo naprave in pošiljanje žetona strežniku v `apps/web/src/app/core/notifications/push.service.ts` — FR-030
-- [ ] T124 [US7] Implementiraj razlago **pred** sistemskim pozivom za dovoljenje na Androidu 13+ v `apps/web/src/app/core/notifications/permission-rationale.component.ts` — FR-031, research.md §10
-- [ ] T125 [US7] Implementiraj odpiranje zaslona iz `deepLink` ob tapkanju obvestila v `apps/web/src/app/core/notifications/deep-link.handler.ts` — FR-033
-- [ ] T126 [US7] Implementiraj ločene kanale na strani Androida v `apps/web/android/app/src/main/res/values/notification_channels.xml` — FR-032
+- [X] T117 [P] [US7] Ustvari model `devices` v `apps/api/src/platform/notifications/device.model.ts` z unikatnim `pushToken` — data-model.md
+- [X] T118 [US7] Implementiraj pošiljanje prek `firebase-admin` s poverilnicami iz montirane datoteke v `apps/api/src/platform/notifications/fcm.service.ts`; ključa ni v kodi — člen IV
+- [X] T119 [P] [US7] Definiraj ločena kanala `system` in `reminders` v `apps/api/src/platform/notifications/channels.ts` — FR-032, research.md §10
+- [X] T120 [US7] Implementiraj čiščenje zavrnjenih žetonov v `apps/api/src/platform/notifications/token-cleanup.service.ts` (odvisno od T117) — FR-034
+- [X] T121 [US7] Implementiraj `GET /devices`, `POST /devices`, `DELETE /devices/{deviceId}` v `apps/api/src/platform/notifications/router.ts`; ponovna registracija istega žetona posodobi zapis — FR-030
+- [X] T122 [US7] Implementiraj `POST /notifications/test` v `apps/api/src/platform/notifications/router.ts` — FR-033
+- [X] T123 [P] [US7] Implementiraj registracijo naprave in pošiljanje žetona strežniku v `apps/web/src/app/core/notifications/push.service.ts` — FR-030
+- [X] T124 [US7] Implementiraj razlago **pred** sistemskim pozivom za dovoljenje na Androidu 13+ v `apps/web/src/app/core/notifications/permission-rationale.component.ts` — FR-031, research.md §10
+- [X] T125 [US7] Implementiraj odpiranje zaslona iz `deepLink` ob tapkanju obvestila v `apps/web/src/app/core/notifications/deep-link.handler.ts` — FR-033
+- [X] T126 [US7] Implementiraj ločene kanale na strani Androida v `apps/web/android/app/src/main/res/values/notification_channels.xml` — FR-032
 
 **Checkpoint**: Vseh sedem zgodb deluje. Ogrodje je pripravljeno za 002.
 
@@ -320,17 +320,17 @@ preveri, da se zapis odstrani.
 
 ## Phase 10: Polish & Cross-Cutting Concerns
 
-- [ ] T127 [P] Napiši osnovni E2E tok prijava → dashboard → viden premikajoč se radar v `apps/web/tests/e2e/happy-path.spec.ts`
-- [ ] T128 [P] Preveri SC-001 (prvi izris pod 3 s) z meritvijo v `apps/web/tests/e2e/performance.spec.ts`
-- [ ] T129 Izvedi celotno preverjanje iz `specs/001-app-shell-dashboard/quickstart.md` **§2 in §4** na živem sistemu in zabeleži izide v `docs/acceptance-001.md`
-- [ ] T130 Iz svežega klona izmeri pot do delujočega sistema samo z izpolnjenim `.env` in zabeleži trajanje v `docs/acceptance-001.md`; meja je 15 minut brez ročnih korakov — FR-040, SC-007, vrata 4
-- [ ] T131 Avtomatiziraj preverjanje člena II v `apps/web/tests/e2e/same-origin.spec.ts`: nobene zahteve na drugo domeno, nobene `OPTIONS` predhodne zahteve
-- [ ] T132 Preveri člen VII tako, da ustaviš API vsebnik in potrdiš, da alarm pride od **zunaj**, ne iz notranjega `/health` — `specs/001-app-shell-dashboard/quickstart.md` §4.6
-- [ ] T133 [P] Dopolni `.env.example`, če je izvedba prinesla nove spremenljivke, in uskladi z `docs/env-reference.md`
-- [ ] T134 [P] Zapiši `README.md` z zagonom, razvojnim načinom in kazalom na `specs/001-app-shell-dashboard/`
-- [ ] T135 Poženi detektor skrivnosti po `.gitleaks.toml` nad celotno zgodovino in potrdi, da ni nobenega zadetka (vrata 5, SC-008)
-- [ ] T136 Potrdi, da sta `npm run typecheck` in `npm run lint` čista in da v `apps/api/src/domain/` ter `apps/api/src/modules/` ni `any` (vrata 1)
-- [ ] T137 Potrdi, da je `specs/001-app-shell-dashboard/contracts/openapi.yaml` validen in usklajen z izvedenimi potmi, vključno z zapisano izjemo od `Idempotency-Key` na poteh za izdajo žetonov (vrata 3, člen III)
+- [X] T127 [P] Napiši osnovni E2E tok prijava → dashboard → viden premikajoč se radar v `apps/web/tests/e2e/happy-path.spec.ts`
+- [X] T128 [P] Preveri SC-001 (prvi izris pod 3 s) z meritvijo v `apps/web/tests/e2e/performance.spec.ts`
+- [X] T129 Izvedi celotno preverjanje iz `specs/001-app-shell-dashboard/quickstart.md` **§2 in §4** na živem sistemu in zabeleži izide v `docs/acceptance-001.md`
+- [X] T130 Iz svežega klona izmeri pot do delujočega sistema samo z izpolnjenim `.env` in zabeleži trajanje v `docs/acceptance-001.md`; meja je 15 minut brez ročnih korakov — FR-040, SC-007, vrata 4
+- [X] T131 Avtomatiziraj preverjanje člena II v `apps/web/tests/e2e/same-origin.spec.ts`: nobene zahteve na drugo domeno, nobene `OPTIONS` predhodne zahteve
+- [X] T132 Preveri člen VII tako, da ustaviš API vsebnik in potrdiš, da alarm pride od **zunaj**, ne iz notranjega `/health` — `specs/001-app-shell-dashboard/quickstart.md` §4.6
+- [X] T133 [P] Dopolni `.env.example`, če je izvedba prinesla nove spremenljivke, in uskladi z `docs/env-reference.md`
+- [X] T134 [P] Zapiši `README.md` z zagonom, razvojnim načinom in kazalom na `specs/001-app-shell-dashboard/`
+- [X] T135 Poženi detektor skrivnosti po `.gitleaks.toml` nad celotno zgodovino in potrdi, da ni nobenega zadetka (vrata 5, SC-008)
+- [X] T136 Potrdi, da sta `npm run typecheck` in `npm run lint` čista in da v `apps/api/src/domain/` ter `apps/api/src/modules/` ni `any` (vrata 1)
+- [X] T137 Potrdi, da je `specs/001-app-shell-dashboard/contracts/openapi.yaml` validen in usklajen z izvedenimi potmi, vključno z zapisano izjemo od `Idempotency-Key` na poteh za izdajo žetonov (vrata 3, člen III)
 
 ---
 

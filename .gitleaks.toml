@@ -9,9 +9,19 @@ title = "cleverdash gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Namerno prazne vrednosti in dokumentacijski primeri"
+description = "Namerno prazne vrednosti, dokumentacijski primeri in sintetična testna gesla"
 paths = [
   '''\.env\.example$''',
   '''docs/env-reference\.md$''',
   '''docs/SECURITY-FIRST\.md$''',
+]
+# Ti dve gesli sta izmišljeni, deterministični testni vrednosti iz
+# apps/api/tests/setup/test-env.ts — uporabljeni izključno proti v-pomnilniški testni bazi
+# (mongodb-memory-server), nikoli proti pravemu sistemu. Niso skrivnost; so vhodni podatek
+# testa, ki mora biti stalen, da so testi ponovljivi. Preverjeno z `gitleaks detect` po
+# `npm test` na T135 — brez tega vnosa vsak test, ki uvozi test-env.ts, sproži lažno pozitiven
+# zadetek "generic-api-key".
+regexes = [
+  '''zacetno-geslo-12''',
+  '''novo-mocno-geslo-123''',
 ]

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FR-032, research.md §10: kanala "system" in "reminders" morata biti LOČENA, da ju je
+  mogoče ugašati posamično v sistemskih nastavitvah Androida.
+
+  POMEMBNA OPOMBA: za razliko od nizov ali barv Android kanalov za obvestila NE ustvari iz
+  same te datoteke — od Androida 8 (API 26) dalje se `NotificationChannel` ustvari
+  izključno s klicem `NotificationManager.createNotificationChannel(...)` v izvorni kodi
+  (MainActivity ali Application), ne deklarativno prek `values/*.xml`. Ta datoteka je zato
+  vir resnice za ID-je in besedila (centralno, prevedljivo), klic, ki jih dejansko
+  registrira, pa je v `apps/web/android/NOTIFICATION_CHANNELS_SETUP.md` — tja se prilepi,
+  ko `npx cap add android` ustvari pravi MainActivity.
+-->
+<resources>
+    <string name="notification_channel_system_id" translatable="false">system</string>
+    <string name="notification_channel_system_name">Sistem</string>
+    <string name="notification_channel_system_description">Stanje sistema in potek seje</string>
+
+    <string name="notification_channel_reminders_id" translatable="false">reminders</string>
+    <string name="notification_channel_reminders_name">Opomniki</string>
+    <string name="notification_channel_reminders_description">Opomniki beleženja časa (funkcionalnost 002)</string>
+</resources>

@@ -504,6 +504,8 @@ export interface paths {
                         "X-Source-Stale"?: boolean;
                         /** @description Navedba vira (FR-027) */
                         "X-Source-Attribution"?: string;
+                        /** @description Priporočen razmik do naslednje osvežitve — glej SourceMeta.nextPollSeconds */
+                        "X-Source-Next-Poll-Seconds"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -783,7 +785,9 @@ export interface paths {
         };
         /**
          * Seznam ključev za avtomatizacijo
-         * @description Čistopis ključa se ne vrne nikoli; v seznamu je samo predpona.
+         * @description Čistopis ključa se ne vrne nikoli; v seznamu je samo predpona. Zahteva obseg
+         *     `admin` — sistem je enouporabniški (FR-016), zato je to edini smiselni obseg za
+         *     upravljanje ključev.
          */
         get: {
             parameters: {
@@ -803,6 +807,7 @@ export interface paths {
                         "application/json": components["schemas"]["ApiKey"][];
                     };
                 };
+                403: components["responses"]["Forbidden"];
             };
         };
         put?: never;
@@ -848,6 +853,7 @@ export interface paths {
                     };
                 };
                 400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
             };
         };
         delete?: never;
@@ -891,6 +897,7 @@ export interface paths {
                     };
                     content?: never;
                 };
+                403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
             };
         };
@@ -1031,6 +1038,12 @@ export interface components {
             ageSeconds?: number;
             /** @description Podatek je starejši od TTL in osvežitev ni uspela (FR-026) */
             stale: boolean;
+            /**
+             * @description Priporočen razmik do naslednje osvežitve (TTL predpomnilnika na strežniku).
+             *     Odjemalec ta interval prevzame od strežnika namesto lastne konstante — TTL se
+             *     lahko spremeni brez novega builda (FR-022, research.md §8).
+             */
+            nextPollSeconds?: number;
             /** @description Navedba vira; funkcionalna zahteva FR-027, ne oblikovna podrobnost */
             attribution: {
                 /** @example Vir: ARSO */

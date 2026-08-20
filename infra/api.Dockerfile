@@ -8,7 +8,6 @@ RUN npm ci
 COPY tsconfig.base.json ./
 COPY apps/api apps/api
 COPY packages/contracts packages/contracts
-COPY specs specs
 RUN npm run build --workspace apps/api
 
 FROM node:22-slim

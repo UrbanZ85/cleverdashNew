@@ -7,7 +7,6 @@
     "useDefineForClassFields": false,
     "lib": ["ES2022", "DOM"],
     "outDir": "dist",
-    "rootDir": "src",
     "experimentalDecorators": true,
     "types": ["vitest/globals"]
   },

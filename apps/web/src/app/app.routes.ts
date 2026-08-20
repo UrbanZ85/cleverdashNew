@@ -22,6 +22,11 @@ export const APP_ROUTES: Routes = [
     loadComponent: () => import('./features/dashboard/dashboard.page.js').then((m) => m.DashboardPage),
     canActivate: [authGuard, tabGuard],
   },
+  {
+    path: 'settings',
+    loadComponent: () => import('./features/settings/settings.page.js').then((m) => m.SettingsPage),
+    canActivate: [authGuard, tabGuard],
+  },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
   { path: '**', redirectTo: 'dashboard' },
 ];

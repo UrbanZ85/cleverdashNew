@@ -25,4 +25,12 @@ export const TAB_REGISTRY: TabDefinition[] = [
     order: 0,
     enabled: true,
   },
+  {
+    id: 'settings',
+    title: 'Nastavitve',
+    icon: 'settings-outline',
+    route: '/settings',
+    order: 10,
+    enabled: true,
+  },
 ];

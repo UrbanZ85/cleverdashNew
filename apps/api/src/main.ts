@@ -17,6 +17,8 @@ import { mustChangePasswordGuard } from './modules/auth/guards/must-change-passw
 import { ensureBootstrapUser } from './modules/auth/services/bootstrap-user.service.js';
 import { dashboardRouter } from './modules/dashboard/router.js';
 import { tabsRouter } from './platform/tabs/router.js';
+import { settingsRouter } from './modules/settings/router.js';
+import { notificationsRouter } from './platform/notifications/router.js';
 
 // Ta datoteka je edino mesto, ki poveže module z `/api/v1`. Dodajanje modula (dashboard,
 // settings, tabs — 004+ v tej funkcionalnosti) pomeni en nov `apiV1Router.use(...)` klic
@@ -51,6 +53,8 @@ export async function createApp() {
   apiV1Router.use(authRouter);
   apiV1Router.use(dashboardRouter);
   apiV1Router.use(tabsRouter);
+  apiV1Router.use(settingsRouter);
+  apiV1Router.use(notificationsRouter);
 
   app.use('/api/v1', apiV1Router);
   app.use(problemErrorHandler());
