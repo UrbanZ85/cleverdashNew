@@ -1,11 +1,25 @@
 # Člen II ustave: enotni izvor. /api/* gre na Node, vse ostalo na SPA build s
 # fallbackom na index.html. Brez tega bloka ni druge poddomene za API — ne sme je biti.
 #
-# PUBLIC_BASE_URL vključuje shemo (npr. "https://app.si") — Caddy jo sprejme kot naslov
-# strani in zanjo samodejno pridobi TLS (FR-041). V razvoju nastavi na "http://localhost".
-{$PUBLIC_BASE_URL} {
+# NASLOV STRANI je nastavljiv, ker ta sklad na produkciji NE dela TLS: pred njim stoji
+# skupni Caddy (/opt/caddy na VPS-u), ki drži 80/443 in certifikate tudi za kc.planego.eu
+# in planego-*. Privzetek `:80` torej pomeni "za proxyjem, brez TLS in brez ACME".
+# Za samostojno postavitev nastavi CADDY_SITE_ADDRESS na isto vrednost kot PUBLIC_BASE_URL
+# (npr. https://cleverdash.zuusi.com) — takrat Caddy sam prevzame gostitelja in certifikat
+# (FR-041) — in dodaj infra/docker-compose.standalone.yml, da dobi vrata 80/443.
+{$CADDY_SITE_ADDRESS::80} {
 	handle /api/* {
-		reverse_proxy api:3000
+		reverse_proxy api:3000 {
+			# Pravi naslov obiskovalca je zapisal že skupni Caddy. Brez tega povoza ga ta
+			# Caddy ZAVRŽE in nadomesti z naslovom skupnega Caddyja — privzeto namreč ne
+			# zaupa proxyju pred sabo (preverjeno z dvema Caddyjema, ne sklepano). Posledica
+			# bi bila, da `app.set('trust proxy', 1)` (main.ts) vsem obiskovalcem pripiše
+			# isti IP, s čimer omejevanje ugibanja gesel pri deljenju datotek
+			# (modules/file-sharing/services/throttle.service.ts) šteje skupno namesto po
+			# obiskovalcu. V samostojni postavitvi (brez proxyja pred sabo) to vrstico
+			# odstrani, sicer API ne dobi nobenega naslova.
+			header_up X-Forwarded-For {header.X-Forwarded-For}
+		}
 	}
 
 	handle {

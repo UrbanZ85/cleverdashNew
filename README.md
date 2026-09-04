@@ -162,6 +162,29 @@ okoljem (FR-040, SC-007 — izmerjeno v [`docs/acceptance-001.md`](docs/acceptan
 Podroben postopek, kontrolni seznam po funkcionalnih zahtevah in reševanje težav je v
 [`specs/001-app-shell-dashboard/quickstart.md`](specs/001-app-shell-dashboard/quickstart.md).
 
+### Za skupnim Caddyjem (produkcijski VPS)
+
+Na produkcijskem VPS-u vrata 80/443 že drži skupni Caddy (`/opt/caddy`), ki streže tudi
+`kc.planego.eu` in `planego-*`. Ta sklad zato **ne objavlja vrat**, ampak se s storitvijo
+`caddy` pridruži zunanjemu omrežju `web`, kjer ga skupni Caddy doseže po imenu vsebnika.
+V njegov Caddyfile gre en sam blok:
+
+```caddyfile
+cleverdash.zuusi.com {
+	encode zstd gzip
+	reverse_proxy cleverdash-caddy-1:80
+}
+```
+
+Nato `docker exec <ime-skupnega-caddyja> caddy reload --config /etc/caddy/Caddyfile`.
+TLS naredi skupni Caddy; ta sklad posluša samo na `:80` znotraj omrežja, ker je
+`CADDY_SITE_ADDRESS` prazen. Notranji Caddy pravi naslov obiskovalca prepusti naprej
+nedotaknjen (`header_up X-Forwarded-For` v [`infra/Caddyfile`](infra/Caddyfile)) — brez
+tega bi ga zavrgel in `trust proxy` v API-ju bi vsem pripisal isti IP.
+
+Če postavljaš brez proxyja pred sabo, dodaj `-f infra/docker-compose.standalone.yml`
+(vrne vrata 80/443) in nastavi `CADDY_SITE_ADDRESS` na isto vrednost kot `PUBLIC_BASE_URL`.
+
 ## Razvojni način
 
 ```bash

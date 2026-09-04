@@ -6,7 +6,7 @@
 # Compose isto datoteko potrebuje na DVA načina in oba morata biti nastavljena:
 #   `env_file:`   → vrednosti dobijo PROCESI v vsebnikih (api, caddy)
 #   `--env-file`  → vrednosti, ki jih compose vstavi v to YAML datoteko samo
-#                   (${MONGO_ROOT_PASSWORD}, ${FCM_KEY_FILE}, ${CADDY_HTTP_PORT} ...)
+#                   (${MONGO_ROOT_PASSWORD}, ${FCM_KEY_FILE} ...)
 # Ker je nanju lahko pozabiti in je izpad drugega tih, `docker compose` na produkciji ne
 # kliči neposredno, ampak prek `scripts/vps-compose.sh`, ki nastavi oba.
 name: cleverdash
@@ -94,11 +94,13 @@ services:
     image: caddy:2
     restart: unless-stopped
     env_file: *env-file
-    ports:
-      # Nastavljivo prek .env za lokalno preverjanje, kadar je 80/443 na gostitelju že
-      # zaseden (glej quickstart.md §2) — v produkciji nastavljeni privzetki zadoščajo.
-      - "${CADDY_HTTP_PORT:-80}:80"
-      - "${CADDY_HTTPS_PORT:-443}:443"
+    # Brez `ports:`. Na tem VPS-u 80/443 že drži skupni Caddy iz /opt/caddy (pred njim sta
+    # kc.planego.eu in planego-*), zato ta Caddy ni izpostavljen gostitelju — skupni ga
+    # doseže po zunanjem omrežju `web` pod imenom `cleverdash-caddy-1`. Za samostojno
+    # postavitev, ki sama drži 80/443, dodaj še `-f infra/docker-compose.standalone.yml`.
+    networks:
+      - default
+      - web
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - web-dist:/srv/www:ro
@@ -114,6 +116,13 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+networks:
+  # Skupno omrežje, na katerem že živijo planego-* in skupni Caddy. Ustvarjeno je zunaj
+  # tega sklada (`docker network create web`), zato `external` — ta sklad ga ne sme
+  # lastniti in ga ob `down` ne sme pobrisati.
+  web:
+    external: true
 
 volumes:
   mongo-data:
