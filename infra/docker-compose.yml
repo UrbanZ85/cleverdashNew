@@ -40,6 +40,28 @@ services:
     networks:
       - web
       - planego-network
+    # Brez tega prijava ne deluje, čeprav Keycloak povsem normalno teče (izmerjeno na
+    # produkciji: z gostitelja `curl https://kc.planego.eu/...` vrne 200, iz TEGA vsebnika
+    # pa `connect ECONNREFUSED 172.18.0.6:443`).
+    #
+    # Vzrok je Dockerjev vgrajeni DNS: na skupnem omrežju `web`/`planego-network` neki
+    # vsebnik nosi ime `kc.planego.eu` kot omrežni vzdevek, zato se to ime tu razreši v
+    # njegov notranji naslov namesto v javni — tam pa 443 ne posluša nihče (Keycloak sam
+    # posluša na 8080, TLS zanj opravi Caddy). Brskalnika to ne prizadene, ker ime razreši
+    # javno, zato prijavna stran izgleda v redu; pade vse, kar kliče strežnik sam
+    # (discovery, zamenjava kode, introspekcija) — glej KeycloakUnreachableError v
+    # apps/api/src/platform/keycloak/client.ts.
+    #
+    # `host-gateway` je naslov gostitelja, na katerem skupni Caddy drži 443 in za
+    # `kc.planego.eu` že ima pravi certifikat. Vpis pristane v `/etc/hosts` vsebnika, ta pa
+    # ima pri razreševanju prednost pred Dockerjevim DNS-om, zato vzdevek prebije.
+    #
+    # Zavestno NE popravljamo vzdevka pri viru: ta je v planegovem skladu in bi za njegov
+    # popravek morali vsebnik postaviti na novo, s čimer bi padla kc.planego.eu in planego.
+    # Prav tako NE gremo na Keycloak po notranjem `http://`: naslov izdajatelja se mora
+    # ujemati z `KEYCLOAK_ISSUER_URL` do črke, sicer žetoni niso veljavni.
+    extra_hosts:
+      - "kc.planego.eu:host-gateway"
     environment:
       TZ: Europe/Ljubljana
       # Vrata so lastnost POSTAVITVE, ne operaterjeve datoteke z okoljem: nanje sta vezana
