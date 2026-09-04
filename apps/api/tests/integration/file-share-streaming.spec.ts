@@ -13,7 +13,7 @@ import { loginAndUnlock, unlock } from '../contract/file-sharing/_helpers.js';
 
 // SC-001/SC-002/SC-008, research.md §4: velika datoteka gre CELA skozi, a NE skozi pomnilnik.
 //
-// Vsebnik `api` ima `mem_limit: 1500m` in v njem že raste Chromium. Obstoječi vzorec za binarno
+// Vsebnik `api` ima `mem_limit: 1200m` in v njem že raste Chromium. Obstoječi vzorec za binarno
 // telo (`express.raw` v modules/notes/router.ts) bi telo zbral v `Buffer` — pri 500 MB bi to
 // vsebnik ubilo. Ta test je edino mesto, ki dokazuje, da se to ne dogaja.
 

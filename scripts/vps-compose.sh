@@ -2,10 +2,10 @@
 # Ovojnica okoli `docker compose` za produkcijo (VPS).
 #
 # Obstaja zaradi ene same pasti: compose datoteko z okoljem potrebuje na DVA neodvisna
-# načina — `--env-file` za vrednosti, ki jih vstavi v YAML (${MONGO_ROOT_PASSWORD},
-# ${FCM_KEY_FILE}, ${CADDY_HTTP_PORT}), in `env_file:` za vrednosti, ki jih dobita procesa
-# api in caddy. Če pozabiš prvo, compose pade z jasno napako; če pozabiš drugo, se sklad
-# ZAŽENE, a brez konfiguracije — tiha okvara, ki jo opaziš šele pri prvi prijavi. Skripta
+# načina — `--env-file` za vrednosti, ki jih vstavi v YAML (${FCM_KEY_FILE},
+# ${PLANEGO_NETWORK}), in `env_file:` za vrednosti, ki jih dobi proces api. Če pozabiš
+# prvo, compose pade z jasno napako; če pozabiš drugo, se sklad ZAŽENE, a brez
+# konfiguracije — tiha okvara, ki jo opaziš šele pri prvi prijavi. Skripta
 # nastavi oba iz iste, absolutne poti, zato je vseeno, iz katere mape jo pokličeš.
 #
 # Uporaba (poljubni argumenti gredo naprej v `docker compose`):

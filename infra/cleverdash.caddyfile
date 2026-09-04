@@ -8,6 +8,10 @@
 #   nano /opt/caddy/Caddyfile
 #   docker exec caddy caddy reload --config /etc/caddy/Caddyfile
 #
+# Ta blok NADOMESTI vse, kar je za `cleverdash.zuusi.com` v /opt/caddy/Caddyfile že
+# napisano. Zlasti `reverse_proxy cleverdash-caddy-1:80` je zastarel: sklad svojega Caddyja
+# nima (in ga ni imel nikoli — vsebnika `cleverdash-caddy-1` ni), zato tak blok vrne 502.
+#
 # Člen II ustave: enotni izvor. `/api/*` gre na Node, vse ostalo na SPA build s fallbackom
 # na index.html. Druge poddomene za API ni in je ne sme biti.
 #
@@ -18,7 +22,10 @@
 # postavil še enega, to preveri znova — takrat naslov obiskovalca izgine.
 cleverdash.zuusi.com {
 	handle /api/* {
-		reverse_proxy cleverdash-api-1:3000
+		# Vrata 3010, ne 3000: ta sta na VPS-u že v rabi. Številka je pripeta v
+		# infra/docker-compose.yml (`PORT: "3010"` pri storitvi api) — če se spremeni
+		# tam, mora tudi tu, sicer Caddy vrne 502.
+		reverse_proxy cleverdash-api-1:3010
 	}
 
 	handle {

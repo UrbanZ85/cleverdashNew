@@ -6,9 +6,15 @@
 # Compose isto datoteko potrebuje na DVA načina in oba morata biti nastavljena:
 #   `env_file:`   → vrednosti dobijo PROCESI v vsebnikih (api, caddy)
 #   `--env-file`  → vrednosti, ki jih compose vstavi v to YAML datoteko samo
-#                   (${MONGO_ROOT_PASSWORD}, ${FCM_KEY_FILE} ...)
+#                   (${FCM_KEY_FILE}, ${PLANEGO_NETWORK} ...)
 # Ker je nanju lahko pozabiti in je izpad drugega tih, `docker compose` na produkciji ne
 # kliči neposredno, ampak prek `scripts/vps-compose.sh`, ki nastavi oba.
+#
+# Ta sklad NIMA svojega Monga. Na VPS-u eden že teče (vsebnik `mongo` iz sklada planego) in
+# uporabljamo tistega: api se priključi na njegovo omrežje `planego-network`, povezovalni
+# niz pa je v MONGO_URI. Baza je kljub skupnemu strežniku SVOJA (`cleverdash`) — CleverDash
+# ima zbirke `users`, `settings`, `notes` ..., ki se z planegovimi imensko prekrivajo, in v
+# isti bazi bi se podatki obeh aplikacij pomešali.
 name: cleverdash
 
 # Ena sama navedba poti do datoteke z okoljem za vse storitve. `ENV_FILE` nastavi
@@ -18,50 +24,63 @@ x-env-file: &env-file
   - ${ENV_FILE:-../../envs/.env.cleverdashNew}
 
 services:
-  mongo:
-    image: mongo:7
-    restart: unless-stopped
-    environment:
-      TZ: Europe/Ljubljana
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-cleverdash}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD manjka}
-    volumes:
-      - mongo-data:/data/db
-      - ./mongo-init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   api:
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
     restart: unless-stopped
     env_file: *env-file
-    # `web` je omrežje skupnega Caddyja (/opt/caddy). Brez njega ga ta ne more doseči po
-    # imenu `cleverdash-api-1`. `default` je treba navesti izrecno: takoj ko storitev
-    # našteje omrežja, se privzetemu ne pridruži več sama, Mongo pa je na njem.
+    # Dve omrežji, obe zunanji in obe nujni:
+    #   `web`             → omrežje skupnega Caddyja (/opt/caddy). Brez njega ta ne more
+    #                       doseči vsebnika po imenu `cleverdash-api-1`.
+    #   `planego-network` → omrežje obstoječega Monga. Brez njega se ime `mongo` iz
+    #                       MONGO_URI ne razreši in api se ne poveže z bazo.
+    # Privzetega omrežja tega sklada (`default`) storitev ne potrebuje: odkar Monga ni več
+    # tu, v skladu ni ničesar, s čimer bi se api pogovarjal.
     networks:
-      - default
       - web
+      - planego-network
     environment:
       TZ: Europe/Ljubljana
+      # Vrata so lastnost POSTAVITVE, ne operaterjeve datoteke z okoljem: nanje sta vezana
+      # `reverse_proxy cleverdash-api-1:3010` v infra/cleverdash.caddyfile in preverjanje
+      # zdravja spodaj. Zato so pripeta tukaj (compose `environment` povozi `env_file`) —
+      # sprememba PORT v .env bi sicer tiho podrla proxy. 3010 in ne 3000/3002, ker sta ta
+      # dva na tem VPS-u že v rabi; navzven ta vrata niso objavljena, do njih pride le
+      # Caddy po omrežju `web`.
+      PORT: "3010"
+      # Node velikost kopice izbere iz pomnilnika, ki ga zazna, in cgroup omejitve ne
+      # upošteva zanesljivo — na 4 GB gostitelju bi si privzeto dovolil kopico, večjo od
+      # `mem_limit` spodaj, in vsebnik bi ubilo jedro (137), preden bi V8 začel resno
+      # pospravljati. 512 MB je nad vsem, kar ta proces potrebuje (največje telo v
+      # pomnilniku je 10 MB posnetek; 500 MB datoteke gredo po toku, glej
+      # modules/file-sharing/services/upload.service.ts), in pusti prostor Chromiumu v
+      # istem vsebniku.
+      NODE_OPTIONS: --max-old-space-size=512
       # Pot do brskalnika je lastnost SLIKE, ne operaterjevega računalnika. `env_file` povozi
       # `ENV` iz Dockerfila, zato bi razvijalčev `.env` (kjer mora pot kazati na Chrome na
       # Windowsu/macOS) sicer pokvaril vsebnik. Tu nastavljena vrednost povozi `env_file`.
       PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
-    depends_on:
-      mongo:
-        condition: service_healthy
-    # 002, research.md §2: Chromium v Dockerju brez te trojice ni zanesljiv.
+    # `depends_on: mongo` tu ne more biti — vsebnik z bazo ni del tega sklada. Če Mongo ob
+    # zagonu ni dosegljiv, api pade in ga `restart: unless-stopped` poskuša znova.
+
+    # 002, research.md §2: Chromium v Dockerju brez te trojice ni zanesljiv. Številki sta
+    # umerjeni na VPS s 4 GB, kjer poleg tega vsebnika tečejo še skupni Mongo, Keycloak,
+    # planego in Caddy.
     # - shm_size: privzeti /dev/shm (64 MB) povzroči "Target closed" ob nalaganju strani.
+    #   512 MB je 8× toliko in za eno stran naenkrat z veliko rezervo dovolj. To je zgornja
+    #   meja tmpfs-a, ne rezervacija — a kar Chromium tja zapiše, se šteje v `mem_limit`,
+    #   zato prostor ni zastonj: pri prejšnjem 1 GB bi polna /dev/shm sama presegla mejo in
+    #   jedro bi ubilo cel vsebnik, ne le brskalnika.
     # - init: Chromium pušča zombi procese; brez pravega PID 1 se prostor PID-jev zapolni.
     # - mem_limit: Chromium raste; brez omejitve lahko izstrada Mongo na istem VPS-u.
-    shm_size: '1gb'
+    #   Ustaljena poraba je ~700-900 MB (Node ~200 MB, dolgo živeč Chromium 250-500 MB,
+    #   /dev/shm nekaj deset MB), zato 1200m: dovolj rezerve za odprto stran, hkrati pa
+    #   vsebnik ne more sam pojesti tretjine gostitelja. Meja je varovalka pred uhajanjem,
+    #   ne rezervacija — dokler poraba ne naraste, gostitelj tega pomnilnika ne izgubi.
+    shm_size: '512m'
     init: true
-    mem_limit: 1500m
+    mem_limit: 1200m
     volumes:
       # Ključ za potisna obvestila (Google service account JSON za FCM). Prazna vrednost je
       # sintaktična napaka compose datoteke ("empty section between colons"), zato privzetek:
@@ -78,7 +97,7 @@ services:
       # atomarno preimenovanje, ampak kopiranje (specs/009-file-sharing/research.md §5).
       - shared-files:/app/data/files
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3010/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -110,8 +129,22 @@ networks:
   web:
     external: true
 
+  # Omrežje obstoječega Monga (sklad planego; `driver: bridge` z
+  # `com.docker.network.driver.mtu: "1450"`). Tudi to je `external`, in to je bistveno:
+  # ime `mongo` razreši samo TISTO omrežje, na katerem vsebnik z bazo že teče. Če bi ga tu
+  # definirali z `driver`/`driver_opts`, bi compose ustvaril NOVO, prazno omrežje
+  # `cleverdash_planego-network`; sklad bi se zagnal, `mongo` se ne bi razrešil, okvara pa
+  # bi se pokazala šele ob prvem klicu baze. Pri `external` napačno ime compose zavrne
+  # glasno ("network ... declared as external, but could not be found").
+  #
+  # Če se omrežje na strežniku imenuje drugače (compose ga po projektu pogosto poimenuje
+  # `planego_planego-network` — preveri z `docker network ls`), nastavi PLANEGO_NETWORK v
+  # datoteki z okoljem; privzetek je golo `planego-network`.
+  planego-network:
+    external: true
+    name: ${PLANEGO_NETWORK:-planego-network}
+
 volumes:
-  mongo-data:
   screenshots:
   shared-files:
   # Nosilec SKUPNEGA Caddyja (projekt `caddy`, glej `docker volume ls`), ki ga ta že ima

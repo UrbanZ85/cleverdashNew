@@ -171,15 +171,43 @@ okoljem (FR-040, SC-007 — izmerjeno v [`docs/acceptance-001.md`](docs/acceptan
 Podroben postopek, kontrolni seznam po funkcionalnih zahtevah in reševanje težav je v
 [`specs/001-app-shell-dashboard/quickstart.md`](specs/001-app-shell-dashboard/quickstart.md).
 
+### Skupni Mongo na produkcijskem VPS-u
+
+Ta sklad **nima svojega Monga**. Na VPS-u eden že teče (vsebnik `mongo` iz sklada planego)
+in CleverDash uporablja tistega: storitev `api` je priključena na njegovo omrežje
+`planego-network`, brez katerega se gostitelj `mongo` iz `MONGO_URI` ne razreši. Če je
+omrežje ustvaril compose sklada planego, ima predpono projekta (`planego_planego-network`,
+preveri z `docker network ls`) — ime tedaj povozi `PLANEGO_NETWORK` v datoteki z okoljem.
+
+Baza je kljub skupnemu strežniku **svoja**: `/cleverdash`, ne `/planego`. Zbirke `users`,
+`settings`, `notes` ... se imensko prekrivajo s planegovimi in bi se v isti bazi podatki
+obeh aplikacij pomešali. Uporabnik `admin` z `authSource=admin` do nove baze dostopa brez
+dodatnega ustvarjanja uporabnika, zato `MONGO_ROOT_USER`/`MONGO_ROOT_PASSWORD` odpadeta.
+
+### Pomnilnik na VPS-u (4 GB)
+
+Gostitelj ima 4 GB in na njem tečejo še skupni Mongo, Keycloak, planego in Caddy, zato ima
+storitev `api` `mem_limit: 1200m`, `shm_size: '512m'` in `NODE_OPTIONS=--max-old-space-size=512`
+(utemeljitev je ob vsaki vrednosti v [`infra/docker-compose.yml`](infra/docker-compose.yml)).
+Ustaljena poraba vsebnika je ~700-900 MB; meja je varovalka pred uhajanjem Chromiuma, ne
+rezervacija. Izmeri jo z `docker stats --no-stream`.
+
+Meje ne veljajo za **gradnjo** slik — `docker build` teče izven njih in je na tem gostitelju
+največje tveganje za `exit code: 137`. Zato gradi sliki eno za drugo (zgoraj) in imej vklopljen
+swap (`free -h`; 2 GB swap datoteka zadošča).
+
 ### Skupni Caddy na produkcijskem VPS-u
 
 Ta sklad **nima svojega Caddyja**. Na VPS-u vrata 80/443 že drži skupni Caddy
 (`/opt/caddy/Caddyfile`, vsebnik `caddy`), ki streže tudi `kc.planego.eu` in `planego-*`,
 in ta prevzame tudi CleverDash: `/api/*` proxa na vsebnik `cleverdash-api-1`, SPA pa streže
-iz datotek, ki jih tja odloži storitev `web`.
+iz datotek, ki jih tja odloži storitev `web`. API posluša na 3010, ne na 3000 — ta so na
+VPS-u skupaj s 3002 že v rabi.
 
 Blok, ki mora biti v njegovem Caddyfilu, je verzioniran v
-[`infra/cleverdash.caddyfile`](infra/cleverdash.caddyfile) — prilepi ga in osveži:
+[`infra/cleverdash.caddyfile`](infra/cleverdash.caddyfile) — z njim **zamenjaj** obstoječi
+blok za `cleverdash.zuusi.com` (če ta proxa na `cleverdash-caddy-1:80`, je zastarel: takega
+vsebnika ni, zato vrne 502) in osveži:
 
 ```bash
 docker exec caddy caddy reload --config /etc/caddy/Caddyfile

@@ -70,7 +70,7 @@ url         https://e-racuni.com/S6a/Clockin-<žeton>
 | Spremenljivka | Privzeto | Opomba |
 |---|---|---|
 | `NODE_ENV` | `production` | nadomešča `DEVELOPMENT`, ki je bil niz `"true"` / `"false"` in se je primerjal kot `process.env.DEVELOPMENT == "true"` |
-| `PORT` | `3000` | staro: `3002`, s preslikavo `5000:3002` v composeu |
+| `PORT` | `3000` | staro: `3002`, s preslikavo `5000:3002` v composeu. V produkciji vrednost pripne `infra/docker-compose.yml` (`PORT: "3010"`, ker sta 3000 in 3002 na VPS-u zasedena) — vrednost iz datoteke z okoljem je tam brez učinka |
 | `TZ` | `Europe/Ljubljana` | **novo in obvezno**; brez tega je vsebnik v UTC |
 | `PUBLIC_BASE_URL` | `https://app.si` | za povezave v obvestilih in webhookih |
 | `LOG_LEVEL` | `info` | |
@@ -79,10 +79,19 @@ url         https://e-racuni.com/S6a/Clockin-<žeton>
 
 | Spremenljivka | Opomba |
 |---|---|
-| `MONGO_URI` | staro ime `DB_CONNECTION`; primer `mongodb://user:pass@mongo:27017/cleverdash?authSource=admin` |
+| `MONGO_URI` | staro ime `DB_CONNECTION`; primer `mongodb://admin:pass@mongo:27017/cleverdash?authSource=admin` |
+| `PLANEGO_NETWORK` | ime Dockerjevega omrežja, na katerem teče obstoječi Mongo; privzeto `planego-network` |
 
 Stari sistem je tekel brez avtentikacije na Mongu (`mongodb://mongo_db:27017/belezenjeCasa`).
 Nov naj ima uporabnika in geslo, tudi če je baza samo na internem omrežju Dockerja.
+
+Produkcijski sklad **svojega Monga nima** — uporablja tistega, ki na VPS-u že teče (vsebnik
+`mongo` iz sklada planego). Zato je api v `infra/docker-compose.yml` priključen na zunanje
+omrežje `planego-network` (ime po potrebi povozi `PLANEGO_NETWORK`); brez tega se gostitelj
+`mongo` iz `MONGO_URI` ne razreši. Baza je kljub skupnemu strežniku svoja (`/cleverdash`):
+zbirke `users`, `settings`, `notes` ... se imensko prekrivajo s planegovimi in bi se v isti
+bazi podatki obeh aplikacij pomešali. `MONGO_ROOT_USER`/`MONGO_ROOT_PASSWORD` s tem
+odpadeta — uporabnika v bazi ne ustvarjamo več, `admin` z `authSource=admin` zadošča.
 
 ### Avtentikacija
 
@@ -282,7 +291,8 @@ APP_NAME=CleverDash
 LOG_LEVEL=info
 
 # ─── Baza ───
-MONGO_URI=mongodb://cleverdash:CHANGEME@mongo:27017/cleverdash?authSource=admin
+MONGO_URI=mongodb://admin:CHANGEME@mongo:27017/cleverdash?authSource=admin
+PLANEGO_NETWORK=planego-network
 
 # ─── Avtentikacija (004: Keycloak) ───
 SESSION_COOKIE_SECRET=

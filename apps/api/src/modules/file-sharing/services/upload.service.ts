@@ -6,7 +6,7 @@ import { discardTemp, openTempWrite, publish } from './blob-storage.service.js';
 
 // research.md §4: 500 MB NE SME skozi pomnilnik.
 //
-// Vsebnik `api` ima `mem_limit: 1500m` in v njem že raste Chromium (`shm_size: '1gb'`,
+// Vsebnik `api` ima `mem_limit: 1200m` in v njem že raste Chromium (`shm_size: '512m'`,
 // infra/docker-compose.yml). Obstoječi vzorec za binarno telo — `express.raw({ limit })` v
 // modules/notes/router.ts — telo zbere v `Buffer`. Za 10 MB posnetek je to pravilno, za 500 MB
 // datoteko je napaka: dve sočasni nalaganji bi vsebnik ubili.

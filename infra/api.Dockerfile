@@ -39,5 +39,8 @@ RUN groupadd --gid 1001 cleverdash \
   && mkdir -p /app/data/screenshots \
   && chown -R cleverdash:cleverdash /app
 USER cleverdash
+# Zgolj dokumentacija; dejanska vrata določi PORT (produkcija: 3010, glej
+# infra/docker-compose.yml). Privzetek v apps/api/src/platform/config/env.ts je 3000, ki ga
+# uporablja lokalni razvoj.
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

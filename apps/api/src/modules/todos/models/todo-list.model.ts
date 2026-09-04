@@ -6,8 +6,9 @@ import { MAX_LIST_TITLE_LENGTH, MAX_TASK_TITLE_LENGTH } from '../domain/todo-inp
 //
 // Zakaj opravila NISO svoja zbirka (glavna odločitev tega modela, research.md §1):
 //
-// 1. Ta namestitev ima MongoDB kot SAMOSTOJEN strežnik (infra/docker-compose.yml: `mongo:7`
-//    brez `--replSet`; testi tečejo na `MongoMemoryServer.create()`, prav tako samostojnem).
+// 1. Ta namestitev ima MongoDB kot SAMOSTOJEN strežnik (v produkciji skupni vsebnik `mongo`
+//    na VPS-u, ki teče brez `--replSet` — ta sklad ga ne postavlja, samo se nanj poveže prek
+//    MONGO_URI; testi tečejo na `MongoMemoryServer.create()`, prav tako samostojnem).
 //    Transakcij nad več dokumenti tam NI. Ročna prerazvrstitev prepiše položaje več opravil
 //    hkrati — v ločeni zbirki je to N pisanj brez transakcije, torej stanje, ki ga izpad ali
 //    vzporedna prerazvrstitev sredi operacije pusti s podvojenimi ali preskočenimi položaji,

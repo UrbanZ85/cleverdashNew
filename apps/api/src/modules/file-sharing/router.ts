@@ -223,7 +223,7 @@ fileSharingRouter.post('/files', requireScopes(FILE_SHARE_SCOPES.write), async (
  *
  * Vzorec iz `modules/notes/router.ts` (`express.raw({ limit })`) se tu NE ponovi: `express.raw`
  * telo zbere v `Buffer`, kar je pri 10 MB posnetku pravilno in pri 500 MB datoteki napaka —
- * vsebnik ima `mem_limit: 1500m`. `req` gre naravnost v datoteko (services/upload.service.ts,
+ * vsebnik ima `mem_limit: 1200m`. `req` gre naravnost v datoteko (services/upload.service.ts,
  * research.md §4). Globalni `express.json()` iz main.ts se binarnega telesa ne dotakne, ker
  * razume samo `application/json`.
  */
