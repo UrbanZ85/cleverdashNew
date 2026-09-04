@@ -57,9 +57,13 @@ services:
     init: true
     mem_limit: 1500m
     volumes:
-      # `:?` namesto golega ${FCM_KEY_FILE}: prazna vrednost je sicer sintaktična napaka
-      # compose datoteke ("empty section between colons"), ki ne pove, česa manjka.
-      - ${FCM_KEY_FILE:?FCM_KEY_FILE manjka — pot do datoteke s ključem FCM na GOSTITELJU}:/run/secrets/fcm_key:ro
+      # Ključ za potisna obvestila (Google service account JSON za FCM). Prazna vrednost je
+      # sintaktična napaka compose datoteke ("empty section between colons"), zato privzetek:
+      # /dev/null pomeni "ključa ni". Sklad se v tem primeru normalno zažene, samo `sendPush`
+      # ob prvem pošiljanju vrne neuspeh z zabeleženo kodo — napako ob inicializaciji lovi
+      # isti `try` (platform/notifications/fcm.service.ts). Potisna obvestila torej ne
+      # delujejo, vse ostalo pa da.
+      - ${FCM_KEY_FILE:-/dev/null}:/run/secrets/fcm_key:ro
       - screenshots:/app/data/screenshots
       # 009: vsebina deljenih datotek NI v bazi (500 MB presega dokument Monga), ampak tu.
       # Brez tega nosilca naložene datoteke izginejo ob prvi posodobitvi slike — modul bi
