@@ -63,11 +63,26 @@ KCADM="${KCADM:-/opt/keycloak/bin/kcadm.sh}"
 # v njej je žeton s pravicami nad VSEMI realmi. Pobrišemo jo ob izhodu (trap spodaj).
 KC_CONFIG="/tmp/kcadm-cleverdash-$$.config"
 
+running_containers="$(docker ps --format '{{.Names}}|{{.Image}}' 2>/dev/null || true)"
 if [ -z "${KC_CONTAINER:-}" ]; then
-  KC_CONTAINER="$(docker ps --format '{{.Names}} {{.Image}}' | awk '/keycloak/ {print $1; exit}')"
+  # `|| true` je nujen: `set -o pipefail` bi ob grepu brez zadetka podrl skripto še pred
+  # sporočilom spodaj, torej brez pojasnila, kaj je narobe.
+  KC_CONTAINER="$(printf '%s\n' "$running_containers" | grep -i -m1 'keycloak' | cut -d'|' -f1 || true)"
 fi
-if [ -z "$KC_CONTAINER" ]; then
-  echo "Vsebnika s Keycloakom ni bilo mogoče najti. Preveri 'docker ps' in nastavi KC_CONTAINER=<ime>." >&2
+if [ -z "${KC_CONTAINER:-}" ]; then
+  echo "Vsebnika s Keycloakom ni bilo mogoče najti; nastavi KC_CONTAINER=<ime>." >&2
+  # Izpis tega, kar je docker RES vrnil: ob prvem zagonu na produkciji je bilo ugibanje,
+  # zakaj zaznava ni uspela, edini korak, ki je zahteval dodatno razlago. Sporočilo, ki
+  # pokaže seznam, je odgovor samo po sebi.
+  echo "Vsebniki, ki trenutno tečejo (ime | slika):" >&2
+  printf '%s\n' "${running_containers:-(docker ps ni vrnil ničesar)}" | sed 's/^/  /' >&2
+  exit 1
+fi
+# Vsebnik je lahko najden, a napačen (npr. `keycloak-db` namesto Keycloaka). Brez te
+# preverbe bi se to pokazalo kot nerazumljiv "executable file not found" sredi dela.
+if ! docker exec "$KC_CONTAINER" test -x "$KCADM" 2>/dev/null; then
+  echo "V vsebniku '$KC_CONTAINER' ni izvedljivega $KCADM — je to res Keycloak?" >&2
+  echo "Nastavi pravi vsebnik s KC_CONTAINER=<ime> ali pot do orodja s KCADM=<pot>." >&2
   exit 1
 fi
 
