@@ -220,8 +220,10 @@ function problemDetail(err: unknown): string | null {
         Dodaj akcijo
       </ion-button>
       <ion-note class="facts">
-        Raztros je naključni zamik okoli vpisane ure (±, v sekundah) — pri 300 s se akcija
-        sproži nekje v petih minutah okoli nje, da vpisi niso vsak dan na isto sekundo.
+        Raztros je naključni zamik ZA vpisano uro (v sekundah, nikoli pred njo) — pri
+        300 s se akcija sproži nekje v petih minutah po njej, da vpisi niso vsak dan na
+        isto sekundo. Vsaka akcija dobi svoj zamik, zato malica 12:00–12:30 traja enkrat
+        25, drugič 33 minut — nikoli vsak dan enako.
         Vrstni red se ob shranjevanju uredi po uri.
       </ion-note>
     </div>
