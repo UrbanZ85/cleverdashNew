@@ -1,0 +1,738 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash — Shranjeni linki
+  version: 1.0.0
+  description: |
+    REST pogodba za zavihek shranjenih linkov (008). Samostojna pogodba pod `/saved-links`
+    in `/saved-link-groups`, po istem vzorcu kot 003 in 005 — ne podvaja poti iz 001
+    (`/auth/*`, `/devices`, `/api-keys`, `/settings`, `/health`), ki se v produkciji
+    strežejo iz istega Express app-a.
+
+    **`GET /settings` (001) se ne spremeni.** Ploščica 008 je navaden vnos v obstoječem
+    polju `Settings.tiles` (`{"type": "saved-links", ...}`), zato ta datoteka `/settings`
+    ne podvaja.
+
+    ## Avtentikacija (enako kot 001/002/003)
+
+    - **Uporabniška seja** — `Authorization: Bearer <access JWT>`.
+    - **Avtomatizacija** — `X-API-Key: <ključ>`. Nova obsega za 008: `saved-links:read`,
+      `saved-links:write`.
+
+    ## Idempotentnost (enako kot 001/002/003)
+
+    Mutacijski endpointi (`POST`, `PUT`, `PATCH`, `DELETE`) sprejmejo `Idempotency-Key`.
+    Ponovljena zahteva z istim ključem, isto potjo in istim telesom vrne prvotni odgovor
+    (člen III ustave). Izjema za izdajo žetonov se tu ne uporablja — noben endpoint tega
+    modula žetonov ne izdaja.
+
+    ## Kaj strežnik obišče in kaj ne (research.md §5)
+
+    Shranjeni naslov odpre BRSKALNIK, ne strežnik. Zato je `http://192.168.1.1` veljaven
+    zapis. Strežnik naslov obišče samo zato, da prebere ime strani in razreši favicon, in
+    to stori le, če naslov prestane varovalo odhodnih naslovov (`domain/outbound-url.ts`,
+    isto kot 005). Kadar ga ne prestane, zapis vseeno nastane in dobi
+    `metadataStatus: skipped`.
+
+servers:
+  - url: https://app.si/api/v1
+    description: produkcija
+  - url: http://localhost:3000/api/v1
+    description: razvoj
+
+tags:
+  - name: saved-links
+    description: Seznam, dodajanje, urejanje, brisanje, iskanje in vrstni red zapisov
+  - name: groups
+    description: Mape, v katere uporabnik razvrsti zapise
+  - name: metadata
+    description: Ime strani in favicon — kar strežnik prebere namesto uporabnika
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  # ─────────────────────────── zapisi ───────────────────────────
+
+  /saved-links:
+    get:
+      tags: [saved-links]
+      operationId: listSavedLinks
+      summary: Seznam shranjenih zapisov
+      description: |
+        Vrne zapise prijavljenega uporabnika, razvrščene po `(groupId, order)`. Brez
+        parametrov vrne vse — zbirka je po predpostavki nekaj sto zapisov (spec.md,
+        Assumptions), zato odjemalec seznam naloži enkrat in po njem išče v pomnilniku
+        (SC-003). Parametra `q` in `groupId` obstajata zato, da je isto iskanje mogoče
+        opraviti tudi s HTTP klicem (člen III). Zahtevani obseg: `saved-links:read`.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: |
+            Iskalni niz. Ujemanje je po IMENU, NASLOVU in OPISU hkrati (FR-030), neobčutljivo
+            na velike črke in na diakritiko — `cas` najde `Beleženje časa`. Vsebina se
+            obravnava kot dobesedno besedilo, ne kot regularni izraz.
+        - name: groupId
+          in: query
+          required: false
+          schema:
+            type: [string, 'null']
+          description: |
+            Omeji na eno mapo. Vrednost `none` pomeni nerazvrščene zapise (`groupId: null`).
+            Izpuščen parameter pomeni vse mape — tudi pri iskanju (FR-031).
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+          description: Omejitev števila zapisov; brez njega ni omejitve.
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [manual, recent]
+            default: manual
+          description: |
+            `manual` = uporabnikov vrstni red `(groupId, order)`. `recent` = po času nastanka
+            navzdol; to uporablja ploščica na nadzorni plošči (FR-050).
+      responses:
+        '200':
+          description: Seznam zapisov
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [links]
+                properties:
+                  links:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SavedLink'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [saved-links]
+      operationId: createSavedLink
+      summary: Shrani stran
+      description: |
+        Zapis nastane TAKOJ; branje imena strani ga ne sme preprečiti (FR-004). Strežnik
+        nato znotraj proračuna 2,5 s poskusi prebrati `<title>` in razrešiti favicon
+        (research.md §2) — izid je v `metadataStatus`, zapis pa obstane v vsakem primeru.
+
+        Če uporabnik `title` pošlje sam, se samodejno prebrano ime NE uporabi
+        (`titleSource: manual`, FR-014).
+
+        Zahtevani obseg: `saved-links:write`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedLinkInput'
+      responses:
+        '201':
+          description: |
+            Zapis je nastal. `duplicateOfId` ni napaka — pove, da isti normalizirani naslov
+            uporabnik že ima (research.md §10), da vmesnik lahko ponudi obstoječega.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedSavedLink'
+        '400':
+          description: |
+            Naslov ni veljaven: shema ni `http`/`https` (`javascript:`, `data:`, `file:`),
+            naslov je daljši od 2048 znakov, ali ime/komentar presega dolžino.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Navedena mapa (`groupId`) ne obstaja ali ni uporabnikova.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /saved-links/order:
+    put:
+      tags: [saved-links]
+      operationId: reorderSavedLinks
+      summary: Vrstni red zapisov znotraj mape
+      description: |
+        Ena operacija s celotnim seznamom ID-jev v želenem vrstnem redu (FR-032). Zapisi, ki
+        v seznamu niso, ostanejo nedotaknjeni — tako prerazporeditev ene mape ne premeša
+        drugih. Zahtevani obseg: `saved-links:write`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [linkIds]
+              properties:
+                groupId:
+                  type: [string, 'null']
+                  description: Mapa, katere vrstni red se ureja; `null` = nerazvrščeni.
+                linkIds:
+                  type: array
+                  items:
+                    type: string
+                  description: ID-ji v želenem vrstnem redu; položaj v seznamu postane `order`.
+      responses:
+        '204':
+          description: Vrstni red je shranjen.
+        '400':
+          description: Seznam vsebuje ID, ki ni v navedeni mapi.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /saved-links/{linkId}:
+    parameters:
+      - $ref: '#/components/parameters/LinkId'
+    get:
+      tags: [saved-links]
+      operationId: getSavedLink
+      summary: En zapis
+      description: 'Zahtevani obseg: `saved-links:read`.'
+      responses:
+        '200':
+          description: Zapis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedLink'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+    patch:
+      tags: [saved-links]
+      operationId: updateSavedLink
+      summary: Popravi zapis
+      description: |
+        Poslana polja se prepišejo, izpuščena ostanejo. Poslani `title` pomeni ročni vnos in
+        nastavi `titleSource: manual` — samodejno branje ga po tem ne prepiše več (FR-014).
+        Sprememba `url` pomeni novo normalizacijo; metapodatki se ob tem NE preberejo
+        samodejno (za to je `/refresh-metadata`, da popravek naslova ne pomeni tihega
+        odhodnega klica). Zahtevani obseg: `saved-links:write`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedLinkPatch'
+      responses:
+        '200':
+          description: Popravljeni zapis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedLink'
+        '400':
+          description: Neveljaven naslov ali predolgo polje.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+    delete:
+      tags: [saved-links]
+      operationId: deleteSavedLink
+      summary: Izbriši zapis
+      description: 'Zahtevani obseg: `saved-links:write`.'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Izbrisano.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+
+  # ─────────────────────────── metapodatki ───────────────────────────
+
+  /saved-links/{linkId}/refresh-metadata:
+    parameters:
+      - $ref: '#/components/parameters/LinkId'
+    post:
+      tags: [metadata]
+      operationId: refreshSavedLinkMetadata
+      summary: Znova preberi ime strani in favicon
+      description: |
+        Edini način, da se metapodatki preberejo po nastanku zapisa (FR-014) — samodejnega
+        ponovnega branja ni, ker bi pomenilo klicanje tujih strani brez povoda (člen VIII).
+
+        Ime se prepiše SAMO, če je `titleSource: auto` ali če je poslano `force: true`.
+        Zahtevani obseg: `saved-links:write`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  default: false
+                  description: |
+                    `true` prepiše tudi ime, ki ga je vpisal uporabnik. Vmesnik to ponudi
+                    izrecno ("prevzemi ime s strani"), ne kot privzeto vedenje.
+      responses:
+        '200':
+          description: |
+            Izid branja. `metadataStatus: skipped` pomeni, da naslov ni prestal varovala
+            odhodnih naslovov in strežnik strani ni obiskal — to ni napaka.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedLink'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+
+  /saved-links/{linkId}/favicon:
+    parameters:
+      - $ref: '#/components/parameters/LinkId'
+    get:
+      tags: [metadata]
+      operationId: getSavedLinkFavicon
+      summary: Favicon strani, postrežen prek strežnika
+      description: |
+        Bajti favicona gredo prek strežnika in obstoječega predpomnilnika s ključem po
+        GOSTITELJU (`favicon:<gostitelj>`, TTL 7 dni, research.md §4). Odjemalec tujega
+        gostitelja ne kliče nikoli (člen VIII, SC-005).
+
+        Pot je namenoma vezana na ZAPIS in ne na poljuben gostitelj (`?host=`): sicer bi
+        bila to odprta slikovna preusmeritev, prek katere bi vsak prijavljen uporabnik
+        prenašal poljubne naslove.
+
+        Zahtevani obseg: `saved-links:read`.
+      responses:
+        '200':
+          description: Slika favicona
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: '`private, max-age=604800` — odjemalec je ne prenaša znova.'
+            X-Source-Fetched-At:
+              schema:
+                type: string
+                format: date-time
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: |
+            Zapis ni uporabnikov, ali favicona ni (stran ga nima, naslov ni prestal varovala,
+            prenos je spodletel). Odjemalec ob tem izriše ikono — to ni napaka, ki bi jo bilo
+            treba pokazati uporabniku.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  # ─────────────────────────── mape ───────────────────────────
+
+  /saved-link-groups:
+    get:
+      tags: [groups]
+      operationId: listSavedLinkGroups
+      summary: Seznam map
+      description: 'Razvrščene po `order`. Zahtevani obseg: `saved-links:read`.'
+      responses:
+        '200':
+          description: Seznam map
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [groups]
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SavedLinkGroup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [groups]
+      operationId: createSavedLinkGroup
+      summary: Nova mapa
+      description: 'Zahtevani obseg: `saved-links:write`.'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 60
+      responses:
+        '201':
+          description: Mapa je nastala.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedLinkGroup'
+        '400':
+          description: Mapa s tem imenom pri tem uporabniku že obstaja.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /saved-link-groups/order:
+    put:
+      tags: [groups]
+      operationId: reorderSavedLinkGroups
+      summary: Vrstni red map
+      description: 'Zahtevani obseg: `saved-links:write`.'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [groupIds]
+              properties:
+                groupIds:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '204':
+          description: Vrstni red je shranjen.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /saved-link-groups/{groupId}:
+    parameters:
+      - $ref: '#/components/parameters/GroupId'
+    patch:
+      tags: [groups]
+      operationId: updateSavedLinkGroup
+      summary: Preimenuj ali zloži mapo
+      description: 'Zahtevani obseg: `saved-links:write`.'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 60
+                collapsed:
+                  type: boolean
+      responses:
+        '200':
+          description: Popravljena mapa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedLinkGroup'
+        '400':
+          description: Ime je zasedeno.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+    delete:
+      tags: [groups]
+      operationId: deleteSavedLinkGroup
+      summary: Izbriši mapo
+      description: |
+        Zapisi iz mape se PREMAKNEJO med nerazvrščene (FR-022, research.md §8) — brisanje
+        mape ne izbriše nobenega zapisa. Odgovor pove, koliko jih je bilo premaknjenih.
+        Zahtevani obseg: `saved-links:write`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Mapa je izbrisana.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [movedLinks]
+                properties:
+                  movedLinks:
+                    type: integer
+                    description: Koliko zapisov je postalo nerazvrščenih.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    LinkId:
+      name: linkId
+      in: path
+      required: true
+      schema:
+        type: string
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        Ponovljena zahteva z istim ključem, isto potjo in istim telesom vrne prvotni odgovor
+        (člen III).
+
+  responses:
+    Unauthorized:
+      description: Manjka ali je neveljavna avtentikacija.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Manjka zahtevani obseg (`saved-links:read` / `saved-links:write`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFoundOrNotYours:
+      description: |
+        Zapisa ni — ali pa ni uporabnikov. Namenoma isti odgovor: obstoj tujega zapisa ni
+        podatek, ki bi ga API razkril (vzorec 004).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details — ista oblika kot 001/002/003/005.
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        correlationId: { type: string }
+
+    MetadataStatus:
+      type: string
+      enum: [ok, skipped, failed]
+      description: |
+        Izid zadnjega branja strani. `skipped` = naslov ni prestal varovala odhodnih
+        naslovov in strežnik strani NI obiskal (zasebno omrežje, poverilnice v naslovu).
+        `failed` = prekoračen proračun 2,5 s, napaka omrežja, ali odgovor, ki ni HTML.
+        Nobeno od tega ne pomeni, da zapis ni veljaven (FR-004).
+
+    TitleSource:
+      type: string
+      enum: [manual, auto]
+      description: |
+        `manual` = ime je vpisal uporabnik in samodejno branje ga ne sme prepisati (FR-014).
+        `auto` = ime je prebrano s strani, ali pa je nadomestek (gostitelj naslova).
+
+    SavedLinkInput:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+          description: |
+            Naslov strani. Manjkajoča shema se dopolni v `https://` (FR-002); shema, ki ni
+            `http`/`https`, je zavrnjena s `400` (FR-003). `http://` in naslov v zasebnem
+            omrežju sta VELJAVNA zapisa — strežnik ju samo ne obišče (research.md §5).
+        title:
+          type: string
+          maxLength: 200
+          description: Izpuščeno pomeni "preberi s strani, sicer uporabi gostitelja".
+        comment:
+          type: [string, 'null']
+          maxLength: 1000
+          description: |
+            Zakaj sem to stran shranil — polje, ki ga je imela tudi stara stran "Useful
+            links" (`linkDescription`), tam kot OBVEZNO. Tu je neobvezno: prisiljen komentar
+            ob shranjevanju je razlog, da stran raje ni shranjena.
+        icon:
+          type: [string, 'null']
+          description: |
+            Ime Ionicons ikone iz nabora, ki ga pozna odjemalec. `null` pomeni "brez
+            izbire" in prepusti mesto faviconu (research.md §9).
+        groupId:
+          type: [string, 'null']
+          description: '`null` = nerazvrščeno; veljavno stanje, ne pomanjkljivost.'
+
+    SavedLinkPatch:
+      type: object
+      description: Vsa polja so neobvezna; izpuščena ostanejo nespremenjena.
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+        title:
+          type: string
+          maxLength: 200
+        comment:
+          type: [string, 'null']
+          maxLength: 1000
+        icon:
+          type: [string, 'null']
+        groupId:
+          type: [string, 'null']
+
+    SavedLink:
+      type: object
+      required: [id, url, title, titleSource, groupId, order, metadataStatus, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+        title:
+          type: string
+        titleSource:
+          $ref: '#/components/schemas/TitleSource'
+        comment:
+          type: [string, 'null']
+        icon:
+          type: [string, 'null']
+        hasFavicon:
+          type: boolean
+          description: |
+            Ali je favicon razrešen. Sam naslov favicona ni v odgovoru — bajti gredo prek
+            `GET /saved-links/{linkId}/favicon`, da odjemalec tujega gostitelja ne kliče
+            (člen VIII).
+        groupId:
+          type: [string, 'null']
+        order:
+          type: integer
+        metadataStatus:
+          $ref: '#/components/schemas/MetadataStatus'
+        metadataFetchedAt:
+          type: [string, 'null']
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreatedSavedLink:
+      allOf:
+        - $ref: '#/components/schemas/SavedLink'
+        - type: object
+          properties:
+            duplicateOfId:
+              type: [string, 'null']
+              description: |
+                ID obstoječega zapisa z istim normaliziranim naslovom, sicer `null`. Ni
+                napaka — dvojnik je dovoljen (FR-005), vmesnik nanj samo opozori.
+
+    SavedLinkGroup:
+      type: object
+      required: [id, name, order, collapsed]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        order:
+          type: integer
+        collapsed:
+          type: boolean
+        linkCount:
+          type: integer
+          description: Koliko zapisov je v mapi — da vmesnik ob brisanju pove, kaj se bo premaknilo.

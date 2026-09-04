@@ -4,6 +4,8 @@ import { createApp } from '../../src/main.js';
 import { startTestDb, stopTestDb, clearTestDb } from '../setup/mongo-memory.js';
 import { setTestEnv } from '../setup/test-env.js';
 import { SettingsModel } from '../../src/modules/settings/model.js';
+import { fakeKeycloakForTests as fakeKeycloak } from '../setup/keycloak-global.js';
+import { loginAsTestUser } from '../setup/login-as-test-user.js';
 
 beforeAll(async () => {
   setTestEnv();
@@ -12,15 +14,10 @@ beforeAll(async () => {
 afterAll(stopTestDb);
 afterEach(clearTestDb);
 
+// 004: nadomesti prejšnjo prijavo z e-pošto/geslom — glej tests/setup/login-as-test-user.ts.
 async function loginAndUnlock(app: import('express').Express) {
-  const login = await request(app)
-    .post('/api/v1/auth/login')
-    .send({ email: 'admin@example.com', password: 'zacetno-geslo-12', platform: 'android' });
-  await request(app)
-    .post('/api/v1/auth/password')
-    .set('Authorization', `Bearer ${login.body.accessToken}`)
-    .send({ currentPassword: 'zacetno-geslo-12', newPassword: 'novo-mocno-geslo-123' });
-  return login.body.accessToken as string;
+  const { accessToken } = await loginAsTestUser(app, fakeKeycloak, { roles: ['cleverdash-admin'] });
+  return accessToken;
 }
 
 describe('GET /tabs', () => {
@@ -37,10 +34,11 @@ describe('GET /tabs', () => {
 
   it('izklopljen zavihek v nastavitvah se ne pojavi (FR-003)', async () => {
     const { app } = await createApp();
-    const token = await loginAndUnlock(app);
-    await SettingsModel.findByIdAndUpdate(
-      'singleton',
-      { tabs: { dashboard: { enabled: false } } },
+    const { accessToken: token, userId } = await loginAsTestUser(app, fakeKeycloak, { roles: ['cleverdash-admin'] });
+    // 004: Settings ni več singleton — ena vrstica na uporabnika (userId), glej model.ts.
+    await SettingsModel.findOneAndUpdate(
+      { userId },
+      { $set: { tabs: { dashboard: { enabled: false } } } },
       { upsert: true },
     );
     const res = await request(app).get('/api/v1/tabs').set('Authorization', `Bearer ${token}`);

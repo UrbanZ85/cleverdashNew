@@ -71,6 +71,39 @@ Ustava, člen IV. Konkretno:
   se menja pogosto in restart aplikacije ni sprejemljiva cena za zamenjavo piškotka.
 - V CI teče detektor skrivnosti (`gitleaks` ali `trufflehog`) kot blokirajoč korak.
 
+## 4b. Javna pot (009 — deljenje datotek)
+
+Do 009 je bil **vsak** zaslon in **vsak** endpoint za prijavljenega uporabnika. Modul za
+deljenje datotek to prvič prebije, ker mora: prejemnik datoteke nima računa in ga ne bo dobil.
+Kar iz tega sledi, je zbrano tu, da se ob naslednji javni poti ne izumlja znova.
+
+**Javnost ni vratar, ampak njegova odsotnost.** `apiKeyGuard` in `accessTokenGuard` zahteve
+brez poverilnic ne zavrneta — samo nastavita `req.auth`. Zavrne šele `requireScopes`. Javna pot
+je torej pot, ki ga NE pokliče, in prav zato je nevarna: ne vidi se. Pravila:
+
+- vse javne poti so v ENI datoteki, `modules/file-sharing/public.router.ts`, katere glava pove,
+  zakaj obstaja. Nobene javne poti ne sme biti drugje;
+- `tests/contract/file-sharing/auth-surface.spec.ts` bere seznam poti **iz pogodbe** in preveri,
+  da je vsak `/files*` brez žetona 401 in vsak `/share/*` dosegljiv. Nova pot ne more tiho uiti;
+- javna koda `req.auth` NE bere. Veljaven ali potekel žeton v brskalniku na prevzem ne sme
+  vplivati v nobeno smer (FR-024);
+- odjemalec na `/api/v1/share/*` ne pripenja glave `Authorization` (`auth.interceptor.ts`) —
+  potekla seja ne sme podreti strani, ki s sejo nima zveze.
+
+**Kar javna pot mora imeti pod sabo:**
+
+| Zahteva | Kje je uveljavljena |
+|---|---|
+| Dušenje ugibanja — po povezavi IN po izvornem naslovu | `services/throttle.service.ts`; števec je v BAZI, ker se pomnilniški ob vsakem zagonu ponastavi |
+| Geslo kot nepovraten povzetek, primerjava v konstantnem času | `domain/share-password.ts` (`scrypt` + `timingSafeEqual`) |
+| Enak odgovor za neznano, poteklo, preklicano in izbrisano povezavo | `public.router.ts`, `unavailable()` |
+| Nič občutljivega v dnevnik — poskušeno geslo NIKAMOR | `public.router.ts`; pokrito v `tests/integration/unlock-throttle.spec.ts` |
+| `Idempotency-Key` se ne sprejme (endpoint izdaja dovolilnico) | `platform/idempotency/middleware.ts`, `EXEMPT_PREFIXES` |
+| `Cache-Control: no-store` na vseh javnih odgovorih | `public.router.ts` |
+
+**Kar javna pot NE sme razkriti:** ime datoteke pred vpisom gesla (pogosto pove vsebino).
+Velikost in rok sta v redu — brez njiju prejemnik ne bi vedel, ali je povezava sploh živa.
+
 ## 5. Kontrolni seznam
 
 - [ ] Firebase ključ `b11a3b86…` izbrisan v Cloud Console

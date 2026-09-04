@@ -12,7 +12,12 @@ afterAll(stopTestDb);
 afterEach(clearTestDb);
 
 async function seedDevice() {
-  const user = await UserModel.create({ email: 'u@example.com', passwordHash: 'x' });
+  // 004: User nima več passwordHash — keycloakSubject je zdaj primarni identifikator.
+  const user = await UserModel.create({
+    keycloakSubject: 'kc-sub-device-test',
+    email: 'u@example.com',
+    displayName: 'Test uporabnik',
+  });
   return DeviceModel.create({ userId: user._id, pushToken: 'tok-1', platform: 'android' });
 }
 

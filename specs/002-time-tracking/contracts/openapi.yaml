@@ -1,0 +1,1437 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash — Beleženje časa
+  version: 1.0.0
+  description: |
+    REST pogodba za zavihek beleženja časa (002). Dodaja poti pod `/time-tracking` k že
+    obstoječi pogodbi 001 (`specs/001-app-shell-dashboard/contracts/openapi.yaml`).
+
+    **Ta datoteka NE podvaja poti, ki jih 001 že definira in ki jih 002 uporablja
+    nespremenjene**: `POST/GET/DELETE /devices` (registracija naprav za obvestila),
+    `GET/POST/DELETE /api-keys` in `/api-keys/{keyId}`, `POST /auth/*`. Te ostanejo v
+    001-ovi pogodbi in se v produkcijskem sistemu strežejo iz istega Express app-a.
+
+    **`GET /health` (001) se RAZŠIRI, ne podvoji.** Ta datoteka dokumentira samo dodatna
+    polja sheme `Health`, ki jih 002 doda (glej `components.schemas.HealthExtension` na
+    dnu) — pri združevanju v eno servirano pogodbo se ta polja pripnejo obstoječi shemi
+    `Health` iz 001, pot `/health` se ne podvoji z drugačno varnostjo ali drugim URL-jem.
+
+    ## Avtentikacija (enako kot 001)
+
+    - **Uporabniška seja** — `Authorization: Bearer <access JWT>`, za web in Android.
+    - **Avtomatizacija** — `X-API-Key: <ključ>`, za n8n. Ključ ima omejene obsege.
+      Novi obsegi za 002: `state:read`, `action:write`, `schedule:read`,
+      `schedule:write`, `calendar:read`, `calendar:write`, `history:read`,
+      `webhooks:write`.
+
+    ## Idempotentnost (enako kot 001)
+
+    Mutacijski endpointi sprejmejo `Idempotency-Key`. Ponovljena zahteva z istim ključem,
+    isto potjo in istim telesom vrne prvotni odgovor. Za `POST /time-tracking/actions` je
+    uporaba te glave iz n8n **priporočena** (ni tehnično obvezna, a brez nje ponovljena
+    zahteva ob časovnem izteku pomeni dvojni klik na strani delodajalca) — glej člen III
+    ustave in Podedovane omejitve v spec.md.
+
+servers:
+  - url: https://app.si/api/v1
+    description: produkcija
+  - url: http://localhost:3000/api/v1
+    description: razvoj
+
+tags:
+  - name: state
+    description: Branje trenutnega stanja pri delodajalcu
+  - name: actions
+    description: Izvedba in pregled akcij
+  - name: schedule
+    description: Urniški profili
+  - name: calendar
+    description: Prazniki, dopusti, izjeme
+  - name: history
+    description: Zgodovina
+  - name: health
+    description: Diagnostika modula (razširitev `/health` iz 001 je ločeno dokumentirana spodaj)
+  - name: settings
+    description: Lokacije, seje
+  - name: webhooks
+    description: Izhodni webhooki ob dogodkih (FR-083)
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  # ─────────────────────────── stanje ───────────────────────────
+
+  /time-tracking/state:
+    get:
+      tags: [state]
+      operationId: readState
+      summary: Preberi trenutno stanje ure
+      description: |
+        Odpre stran delodajalca in prebere, katere akcije so na voljo (FR-020). Ne klikne
+        ničesar. Rezultat je predpomnjen za `cacheSeconds` (privzeto 60), ker vsak klic
+        pomeni zagon brskalnika; `refresh=true` predpomnilnik obide.
+
+        Prazen `availableActions` **ni** veljavno stanje — je okvara, in `diagnostics`
+        pove kakšna (FR-022). Zahtevani obseg: `state:read`.
+      parameters:
+        - name: locationId
+          in: query
+          schema: { type: string }
+          description: Če ni podan, se uporabi privzeta lokacija.
+        - name: refresh
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Stanje prebrano
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StateReading" }
+        "503":
+          description: Stanja ni bilo mogoče prebrati
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /time-tracking/available-actions:
+    get:
+      tags: [state]
+      operationId: listAvailableActions
+      summary: Seznam trenutno razpoložljivih imen akcij
+      description: |
+        Krajša oblika `readState` — samo imena gumbov, kot so na strani (FR-021, imena se
+        ne trdo kodirajo). Zahtevani obseg: `state:read`.
+      parameters:
+        - name: locationId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Seznam imen
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [availableActions, readAt]
+                properties:
+                  availableActions:
+                    type: array
+                    items: { type: string }
+                    examples: [["Malica", "Konec dela"]]
+                  readAt: { type: string, format: date-time }
+
+  # ─────────────────────────── akcije ───────────────────────────
+
+  /time-tracking/actions:
+    post:
+      tags: [actions]
+      operationId: performAction
+      summary: Izvedi akcijo takoj (ročno ali prek API-ja)
+      description: |
+        Pritisne gumb na strani delodajalca in **preveri**, da se je stanje spremenilo
+        (FR-030). Uporablja tudi Story 1 (ročni pritisk iz zaslona "Danes") in Story 11
+        (n8n) — vir izvedbe (`manual` vs `api`) se ugotovi iz vrste avtentikacije, ne iz
+        telesa zahteve.
+
+        Pred klikom preveri stanje: če je stanje že takšno, kot bi bilo po akciji →
+        `already_done`, brez klika (FR-033); če akcija v trenutnem stanju ni dovoljena →
+        `unexpected_state`, brez klika. Vrne šele, ko je verifikacija končana — tipično
+        5 do 20 sekund (SC-006). Zahtevani obseg: `action:write`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [actionName]
+              properties:
+                actionName:
+                  type: string
+                  description: Točno besedilo gumba (člen X — ni prevedeno).
+                  examples: ["Prijava na delo", "Malica", "Konec malice", "Konec dela"]
+                locationId: { type: string }
+                dryRun:
+                  type: boolean
+                  default: false
+                  description: Vse prebere in zabeleži, a ne klikne (FR-035).
+      responses:
+        "200":
+          description: Akcija obdelana — glej `outcome` za izid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionResult" }
+        "409":
+          description: Vzporedna zahteva z istim `Idempotency-Key` še teče, ali za ta profil že teče druga akcija (FR-034)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: Akcija v trenutnem stanju ni dovoljena
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /time-tracking/planned-actions:
+    get:
+      tags: [actions]
+      operationId: listPlannedActions
+      summary: Načrtovane akcije
+      description: "Privzeto današnji dan. Zahtevani obseg: `schedule:read`."
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - name: state
+          in: query
+          schema: { $ref: "#/components/schemas/PlannedActionState" }
+      responses:
+        "200":
+          description: Seznam
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PlannedAction" }
+
+  /time-tracking/planned-actions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [actions]
+      operationId: getPlannedAction
+      summary: Ena načrtovana akcija, s poskusi
+      description: "Zahtevani obseg: `schedule:read`."
+      responses:
+        "200":
+          description: Akcija
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlannedActionDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [actions]
+      operationId: updatePlannedAction
+      summary: Premakni, preskoči ali ponovno omogoči
+      description: |
+        Ne uporablja se za izvedbo — za to je `POST /time-tracking/actions`.
+        Zahtevani obseg: `schedule:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scheduledAt: { type: string, format: date-time }
+                state:
+                  type: string
+                  enum: [planned, skipped]
+      responses:
+        "200":
+          description: Posodobljeno
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlannedAction" }
+
+  /time-tracking/rebuild-plan:
+    post:
+      tags: [actions]
+      operationId: rebuildPlan
+      summary: Sestavi dnevni načrt znova
+      description: |
+        Idempotentno: obstoječih izvedenih akcij ne podvoji in ne prepiše (unikatni ključ
+        `(localDate, profileId, actionName)`). Za `mode: OFF` profile ustvari `CalendarDay`,
+        a nobene `PlannedAction` (FR-008). Zahtevani obseg: `schedule:write`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date:
+                  type: string
+                  format: date
+                  description: Privzeto danes.
+                profileId: { type: string }
+      responses:
+        "200":
+          description: Načrt sestavljen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created: { type: integer }
+                  skipped: { type: integer }
+                  dayStatus: { $ref: "#/components/schemas/CalendarDayStatus" }
+                  reason: { type: [string, "null"] }
+
+  # ─────────────────────────── urnik ───────────────────────────
+
+  /time-tracking/profiles:
+    get:
+      tags: [schedule]
+      operationId: listProfiles
+      summary: Urniški profili
+      description: "Zahtevani obseg: `schedule:read`."
+      responses:
+        "200":
+          description: Seznam
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TrackingProfile" }
+    post:
+      tags: [schedule]
+      operationId: createProfile
+      summary: Nov profil
+      description: |
+        Zavrne se, če se `daysOfWeek` prekriva z drugim **aktivnim** profilom (FR-006).
+        Brez `mode` v telesu je privzeta vrednost `AUTO` (FR-007). Zahtevani obseg:
+        `schedule:write`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrackingProfileInput" }
+      responses:
+        "201":
+          description: Ustvarjeno
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrackingProfile" }
+        "422":
+          description: Prekrivanje dni ali neveljaven vnos
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /time-tracking/profiles/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [schedule]
+      operationId: getProfile
+      summary: Profil
+      responses:
+        "200":
+          description: Profil
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrackingProfile" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [schedule]
+      operationId: updateProfile
+      summary: Posodobi profil
+      description: "Zahtevani obseg: `schedule:write`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrackingProfileInput" }
+      responses:
+        "200":
+          description: Posodobljeno
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrackingProfile" }
+    delete:
+      tags: [schedule]
+      operationId: deleteProfile
+      summary: Izbriši profil
+      description: "Prihodnje načrtovane akcije tega profila preidejo v `cancelled`. Zahtevani obseg: `schedule:write`."
+      responses:
+        "204": { description: Izbrisano }
+
+  /time-tracking/profiles/{id}/mode:
+    put:
+      tags: [schedule]
+      operationId: setProfileMode
+      summary: Nastavi način profila
+      description: |
+        Ločen endpoint, ker je to najpogostejša sprememba prek n8n (npr. izklop urnika ob
+        nenačrtovani odsotnosti). `OFF` ne izbriše prihodnjih `PlannedAction` — te preidejo
+        v `cancelled` ob naslednjem sestavljanju načrta (FR-008). Zahtevani obseg:
+        `schedule:write`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { $ref: "#/components/schemas/Mode" }
+      responses:
+        "200":
+          description: Nastavljeno
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrackingProfile" }
+
+  /time-tracking/profiles/{id}/preview:
+    get:
+      tags: [schedule]
+      operationId: previewProfile
+      summary: Predogled načrta brez zapisovanja
+      description: |
+        Izračuna, kaj bi se za dani datum zgodilo — vključno z raztrosom, statusom dneva
+        in razlogom. Nič ne zapiše. Namenjeno preverjanju pred vklopom `AUTO`
+        (quickstart.md §6, korak 5). Zahtevani obseg: `schedule:read`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Predogled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  localDate: { type: string, format: date }
+                  dayStatus: { $ref: "#/components/schemas/CalendarDayStatus" }
+                  reason: { type: [string, "null"] }
+                  actions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        actionName: { type: string }
+                        baseLocalTime: { type: string }
+                        scheduledAt: { type: string, format: date-time }
+
+  # ─────────────────────────── koledar ───────────────────────────
+
+  /time-tracking/calendar:
+    get:
+      tags: [calendar]
+      operationId: getCalendar
+      summary: Pregled dni s statusi
+      description: "FR-015. Zahtevani obseg: `calendar:read`."
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: profileId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Dnevi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CalendarDay" }
+
+  /time-tracking/absences:
+    get:
+      tags: [calendar]
+      operationId: listAbsences
+      summary: Obdobja odsotnosti
+      description: "Zahtevani obseg: `calendar:read`."
+      responses:
+        "200":
+          description: Seznam
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AbsencePeriod" }
+    post:
+      tags: [calendar]
+      operationId: createAbsence
+      summary: Vnesi dopust ali odsotnost
+      description: |
+        `endDate` je **vključen** (FR-012). Prihodnje načrtovane akcije v tem obdobju
+        preidejo v `cancelled`. Zavrnjeno z `422`, če se prekriva z `forceWorkday` izjemo
+        za isti profil in datum (edge case, Story 6). Zahtevani obseg: `calendar:write`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AbsencePeriodInput" }
+      responses:
+        "201":
+          description: Ustvarjeno
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AbsencePeriod" }
+        "422":
+          description: Prekrivanje s `forceWorkday` izjemo
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /time-tracking/absences/{id}:
+    delete:
+      tags: [calendar]
+      operationId: deleteAbsence
+      summary: Izbriši odsotnost
+      description: "Načrt za prizadete prihodnje dni se sestavi znova. Zahtevani obseg: `calendar:write`."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Izbrisano }
+
+  /time-tracking/holidays:
+    get:
+      tags: [calendar]
+      operationId: listHolidays
+      summary: Prazniki
+      description: "FR-010. Zahtevani obseg: `calendar:read`."
+      parameters:
+        - name: year
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Seznam
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Holiday" }
+    post:
+      tags: [calendar]
+      operationId: upsertHoliday
+      summary: Dodaj ali popravi praznik
+      description: "Ročni vnos prevlada nad izračunanim (FR-011). Zahtevani obseg: `calendar:write`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Holiday" }
+      responses:
+        "200":
+          description: Shranjeno
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Holiday" }
+
+  /time-tracking/overrides:
+    post:
+      tags: [calendar]
+      operationId: createOverride
+      summary: Vsili delovni ali nedelovni dan
+      description: |
+        Najvišja prednost v odločitvi o dnevu (FR-014). Zavrnjeno z `422`, če se prekriva
+        z obstoječo odsotnostjo za isti profil in datum. Zahtevani obseg: `calendar:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [localDate, kind]
+              properties:
+                localDate: { type: string, format: date }
+                kind:
+                  type: string
+                  enum: [forceWorkday, forceNonWorking]
+                profileId: { type: [string, "null"] }
+                note: { type: [string, "null"] }
+      responses:
+        "201":
+          description: Ustvarjeno
+        "422":
+          description: Prekrivanje z obstoječo odsotnostjo
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  # ─────────────────────────── zgodovina ───────────────────────────
+
+  /time-tracking/history:
+    get:
+      tags: [history]
+      operationId: getHistory
+      summary: Zgodovina akcij
+      description: "Privzeto zadnjih 7 dni (FR-051). Zahtevani obseg: `history:read`."
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - name: profileId
+          in: query
+          schema: { type: string }
+        - name: actionName
+          in: query
+          schema: { type: string }
+        - name: outcome
+          in: query
+          schema: { $ref: "#/components/schemas/FinalOutcome" }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1, minimum: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, default: 50, maximum: 500 }
+      responses:
+        "200":
+          description: Stran zapisov
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, pageSize, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ActionRecord" }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  total: { type: integer }
+
+  /time-tracking/history/{id}/attempts:
+    get:
+      tags: [history]
+      operationId: getAttempts
+      summary: Poskusi za en zapis
+      description: "FR-050. Zahtevani obseg: `history:read`."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Poskusi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ActionAttempt" }
+
+  /time-tracking/history/attempts/{id}/screenshot:
+    get:
+      tags: [history]
+      operationId: getAttemptScreenshot
+      summary: Posnetek zaslona enega poskusa
+      description: >
+        US9 AS3, FR-032: posnetek, ki je nastal ob neuspelem poskusu. Pot do datoteke se bere
+        iz zapisa poskusa (ki mora pripadati klicatelju), nikoli iz zahtevka. Po FR-053
+        datoteke izginejo prej kot zapisi — takrat 404. Zahtevani obseg: `history:read`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID poskusa (`ActionAttempt.id`), ne ID zgodovinskega zapisa.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Slika PNG
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+        "404":
+          description: Poskus ne obstaja, ni tvoj, nima posnetka ali je bil posnetek že počiščen
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  # ─────────────────────────── diagnostika ───────────────────────────
+
+  /time-tracking/diagnostics/test-read:
+    post:
+      tags: [health]
+      operationId: testRead
+      summary: Preizkusno branje stanja (dry-run)
+      description: |
+        Zažene brskalnik, naloži stran, prebere gumbe in vrne podrobno diagnostiko,
+        vključno s posnetkom zaslona. Ne klikne ničesar (FR-035, FR-064). Priporočen prvi
+        korak po prvem zagonu (quickstart.md §6, korak 3) — brez zanesljivega branja
+        ničesar drugega ni smiselno vklapljati. Zahtevani obseg: `health:read` (obstoječ
+        obseg iz 001).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                locationId: { type: string }
+                includeScreenshot: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Diagnostika
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  state: { $ref: "#/components/schemas/ClockState" }
+                  availableActions:
+                    type: array
+                    items: { type: string }
+                  selectorFound: { type: boolean }
+                  sessionValid: { type: boolean }
+                  geolocationSent:
+                    type: boolean
+                    description: S čim je bilo branje izvedeno — ali je bila strani poslana lega naprave (FR-094).
+                  durationMs: { type: integer }
+                  screenshotBase64: { type: [string, "null"] }
+                  diagnostics: { $ref: "#/components/schemas/Diagnostics" }
+
+  # ─────────────────────────── nastavitve ───────────────────────────
+
+  /time-tracking/locations:
+    get:
+      tags: [settings]
+      operationId: listLocations
+      summary: Lokacije
+      description: "FR-090. Zahtevani obseg: `schedule:read`."
+      responses:
+        "200":
+          description: Seznam
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TrackingLocation" }
+    post:
+      tags: [settings]
+      operationId: createLocation
+      summary: Nova lokacija
+      description: "Zahtevani obseg: `schedule:write`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrackingLocationInput" }
+      responses:
+        "201":
+          description: Ustvarjeno
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrackingLocation" }
+
+  /time-tracking/locations/{id}:
+    put:
+      tags: [settings]
+      operationId: updateLocation
+      summary: Popravi lokacijo
+      description: |
+        Delni popravek — poslana so samo polja, ki se spremenijo. V praksi se spremeni
+        `url` (žeton v poti `Clockin-…`) ali par koordinat. Zahtevani obseg:
+        `schedule:write`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrackingLocationPatch" }
+      responses:
+        "200":
+          description: Shranjeno
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrackingLocation" }
+        "404": { description: Lokacija ne obstaja }
+    delete:
+      tags: [settings]
+      operationId: deleteLocation
+      summary: Izbriši lokacijo
+      description: |
+        Zavrnjeno s 409, če lokacijo uporablja kak profil — brisanje ni kaskadno, ker bi
+        tiho razveljavilo urnik. Zahtevani obseg: `schedule:write`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Izbrisano }
+        "404": { description: Lokacija ne obstaja }
+        "409": { description: Lokacijo uporablja profil }
+
+  /time-tracking/sessions:
+    get:
+      tags: [settings]
+      operationId: listSessions
+      summary: Seje pri delodajalcu
+      description: |
+        Vrednost piškotka je vedno maskirana (FR-092). Zahtevani obseg: `schedule:read`.
+      responses:
+        "200":
+          description: Seznam
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RemoteSession" }
+    post:
+      tags: [settings]
+      operationId: createSession
+      summary: Nova seja (piškotek delodajalca)
+      description: |
+        Ob prvem zagonu je baza prazna: brez tega ni seje, brez seje ni lokacije in
+        Nastavitve so slepa ulica (quickstart.md §6, korak 1). Nastavljive so vse štiri
+        lastnosti piškotka, ki jih je staro okolje imelo kot obvezne spremenljivke
+        `cookie_property_name`, `_value`, `_domain`, `_expires`
+        (docs/env-reference.md §1). Nova seja je `unknown`, dokler je preizkusno branje ne
+        potrdi. Zahtevani obseg: `schedule:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RemoteSessionInput" }
+      responses:
+        "201":
+          description: Ustvarjeno
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoteSession" }
+
+  /time-tracking/sessions/{id}:
+    put:
+      tags: [settings]
+      operationId: updateSession
+      summary: Popravi sejni piškotek
+      description: |
+        Uporablja se, ko seja pri delodajalcu poteče (FR-091). Ne zahteva ponovnega
+        zagona. Delni popravek: poslana so samo polja, ki se spremenijo — ime piškotka in
+        domena sta popravljiva enako kot vrednost, ker sta v starem sistemu bila obvezna
+        podatka okolja. Po shranjevanju sistem takoj opravi preizkusno branje in vrne, ali
+        seja deluje. Vrednost piškotka se v odgovorih **nikoli** ne vrne v celoti
+        (FR-092). Zahtevani obseg: `schedule:write`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RemoteSessionPatch" }
+      responses:
+        "200":
+          description: Shranjeno in preverjeno
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session: { $ref: "#/components/schemas/RemoteSession" }
+                  verified: { type: boolean }
+                  availableActions:
+                    type: array
+                    items: { type: string }
+        "404": { description: Seja ne obstaja }
+    delete:
+      tags: [settings]
+      operationId: deleteSession
+      summary: Izbriši sejo
+      description: |
+        Zavrnjeno s 409, če sejo uporablja kaka lokacija. Zahtevani obseg:
+        `schedule:write`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Izbrisano }
+        "404": { description: Seja ne obstaja }
+        "409": { description: Sejo uporablja lokacija }
+
+  # ─────────────────────────── webhooki ───────────────────────────
+
+  /time-tracking/webhooks:
+    get:
+      tags: [webhooks]
+      operationId: listWebhookEndpoints
+      summary: Seznam nastavljenih webhook naslovov
+      description: "`secret` se v odgovoru ne vrne. Zahtevani obseg: `webhooks:write`."
+      responses:
+        "200":
+          description: Seznam
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WebhookEndpoint" }
+    post:
+      tags: [webhooks]
+      operationId: createWebhookEndpoint
+      summary: Dodaj webhook naslov
+      description: |
+        `secret` se vrne samo v tem odgovoru, ob ustvarjanju (FR-083, enak vzorec kot
+        `apiKeys` iz 001). Dogodki: `action.succeeded`, `action.failed`, `action.missed`,
+        `session.expiring`. Zahtevani obseg: `webhooks:write`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookEndpointInput" }
+      responses:
+        "201":
+          description: Ustvarjeno — vsebuje čistopis `secret`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebhookEndpointCreated" }
+
+  /time-tracking/webhooks/{id}:
+    delete:
+      tags: [webhooks]
+      operationId: deleteWebhookEndpoint
+      summary: Odstrani webhook naslov
+      description: "Zahtevani obseg: `webhooks:write`."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Odstranjeno }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Kratkoživ dostopni žeton (15 min) za web in Android — enako kot 001.
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Avtentikacija za avtomatizacijo (n8n) — enako kot 001, razširjeno z novimi obsegi za 002.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Ponovljen klic z isto vrednostjo vrne prvotni rezultat. Ista vrednost z drugačnim
+        telesom zahteve vrne `422` — enaka semantika kot v 001.
+      schema:
+        type: string
+        maxLength: 200
+
+  responses:
+    NotFound:
+      description: Ni najdeno
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details — ista oblika kot 001.
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        correlationId: { type: string }
+
+    ClockState:
+      type: string
+      enum: [OFF_DUTY, ON_DUTY, ON_BREAK, UNKNOWN]
+      description: Izpeljano iz nabora razpoložljivih akcij. `UNKNOWN` pomeni okvaro, ne stanje.
+
+    Mode:
+      type: string
+      enum: [AUTO, REMIND_ONLY, OFF]
+      default: AUTO
+      description: |
+        Privzeta vrednost za nov profil je `AUTO` (FR-007). `OFF` ne ustvari nobene
+        `PlannedAction` niti obvestila za dneve tega profila — koledarski status dneva se
+        kljub temu izračuna naprej (FR-008).
+
+    PlannedActionState:
+      type: string
+      enum: [planned, due, running, succeeded, failed, already_done, missed, skipped, cancelled]
+
+    FinalOutcome:
+      type: string
+      enum: [succeeded, failed, missed, skipped, already_done, cancelled]
+
+    CalendarDayStatus:
+      type: string
+      enum: [workday, weekend, holiday, vacation, sick, other, forced]
+
+    AttemptOutcome:
+      type: string
+      enum:
+        - verified
+        - not_verified
+        - action_unavailable
+        - unexpected_state
+        - browser_error
+        - session_expired
+        - timeout
+
+    Diagnostics:
+      type: object
+      description: Zakaj branje ni uspelo. Loči vzroke, ki so v starem sistemu bili videti enako (FR-022).
+      properties:
+        reason:
+          type: string
+          enum:
+            - ok
+            - session_expired
+            - page_unreachable
+            - selector_not_found
+            - geolocation_denied
+            - browser_launch_failed
+            - timeout
+        message: { type: [string, "null"] }
+        hint:
+          type: [string, "null"]
+          description: Berljiv nasvet, npr. "vpiši nov sejni piškotek v Nastavitvah".
+
+    StateReading:
+      type: object
+      required: [state, availableActions, readAt, fromCache]
+      properties:
+        state: { $ref: "#/components/schemas/ClockState" }
+        availableActions:
+          type: array
+          items: { type: string }
+        readAt: { type: string, format: date-time }
+        fromCache: { type: boolean }
+        locationId: { type: [string, "null"] }
+        locationName: { type: [string, "null"] }
+        sessionStatus:
+          type: string
+          enum: [active, expiring, expired, unknown]
+        diagnostics: { $ref: "#/components/schemas/Diagnostics" }
+
+    ActionResult:
+      type: object
+      required: [outcome, actionName, verified]
+      properties:
+        outcome: { $ref: "#/components/schemas/AttemptOutcome" }
+        actionName: { type: string }
+        verified:
+          type: boolean
+          description: "`true` samo, če je ponovno branje stanja potrdilo pričakovano spremembo (FR-030)."
+        stateBefore: { $ref: "#/components/schemas/ClockState" }
+        stateAfter: { $ref: "#/components/schemas/ClockState" }
+        attemptCount: { type: integer }
+        plannedActionId: { type: [string, "null"] }
+        durationMs: { type: integer }
+        dryRun: { type: boolean }
+        failureReason: { type: [string, "null"] }
+
+    PlannedAction:
+      type: object
+      properties:
+        id: { type: string }
+        localDate: { type: string, format: date }
+        profileId: { type: string }
+        profileName: { type: string }
+        locationName: { type: string }
+        actionName: { type: string }
+        actionOrder: { type: integer }
+        scheduledAt: { type: string, format: date-time }
+        baseLocalTime: { type: string, examples: ["06:18:00"] }
+        mode: { $ref: "#/components/schemas/Mode" }
+        state: { $ref: "#/components/schemas/PlannedActionState" }
+        attemptCount: { type: integer }
+        reminderCount: { type: integer }
+        source:
+          type: string
+          enum: [schedule, manual, api, legacy]
+        completedAt: { type: [string, "null"], format: date-time }
+        failureReason: { type: [string, "null"] }
+
+    PlannedActionDetail:
+      allOf:
+        - $ref: "#/components/schemas/PlannedAction"
+        - type: object
+          properties:
+            attempts:
+              type: array
+              items: { $ref: "#/components/schemas/ActionAttempt" }
+
+    ActionAttempt:
+      type: object
+      properties:
+        id: { type: string }
+        attemptNumber: { type: integer }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        outcome: { $ref: "#/components/schemas/AttemptOutcome" }
+        clockStateBefore: { $ref: "#/components/schemas/ClockState" }
+        clockStateAfter: { $ref: "#/components/schemas/ClockState" }
+        availableActionsBefore:
+          type: array
+          items: { type: string }
+        availableActionsAfter:
+          type: array
+          items: { type: string }
+        errorMessage: { type: [string, "null"] }
+        screenshotUrl:
+          type: [string, "null"]
+          description: >
+            Naslov, ki posnetek postreže (`/time-tracking/history/attempts/{id}/screenshot`),
+            ne pot na disku strežnika. `null`, kadar poskus posnetka nima.
+        durationMs: { type: integer }
+
+    ActionRecord:
+      type: object
+      properties:
+        id: { type: string }
+        localDate: { type: string, format: date }
+        profileName: { type: string }
+        locationName: { type: string }
+        actionName: { type: string }
+        scheduledAt: { type: string, format: date-time }
+        completedAt: { type: [string, "null"], format: date-time }
+        finalOutcome: { $ref: "#/components/schemas/FinalOutcome" }
+        source:
+          type: string
+          enum: [schedule, manual, api, legacy]
+        stateBefore: { $ref: "#/components/schemas/ClockState" }
+        stateAfter: { $ref: "#/components/schemas/ClockState" }
+        attemptSummary:
+          type: object
+          properties:
+            count: { type: integer }
+            firstAt: { type: string, format: date-time }
+            lastAt: { type: string, format: date-time }
+        failureReason: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+
+    ActionPlan:
+      type: object
+      required: [actionName, localTime, order]
+      properties:
+        actionName:
+          type: string
+          description: Točno besedilo gumba na strani delodajalca.
+        localTime:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$"
+          examples: ["06:18:00"]
+        jitterSeconds: { type: integer, default: 300, minimum: 0, maximum: 3600 }
+        order: { type: integer }
+        enabled: { type: boolean, default: true }
+
+    TrackingProfileInput:
+      type: object
+      required: [name, daysOfWeek, locationId, actions]
+      properties:
+        name: { type: string }
+        daysOfWeek:
+          type: array
+          description: ISO dnevi, 1 = ponedeljek … 7 = nedelja.
+          items: { type: integer, minimum: 1, maximum: 7 }
+          examples: [[1, 2, 3, 4]]
+        locationId: { type: string }
+        mode: { $ref: "#/components/schemas/Mode" }
+        actions:
+          type: array
+          items: { $ref: "#/components/schemas/ActionPlan" }
+        graceMinutes: { type: integer, default: 10 }
+        maxDelayMinutes: { type: integer, default: 90 }
+        maxAttempts: { type: integer, default: 3 }
+        retryBackoffSeconds:
+          type: array
+          items: { type: integer }
+          default: [30, 120, 300]
+        maxReminders: { type: integer, default: 3 }
+        reminderIntervalMinutes: { type: integer, default: 10 }
+        active: { type: boolean, default: true }
+
+    TrackingProfile:
+      allOf:
+        - $ref: "#/components/schemas/TrackingProfileInput"
+        - type: object
+          properties:
+            id: { type: string }
+            locationName: { type: string }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+
+    TrackingLocationInput:
+      type: object
+      description: |
+        `coordinateTemplate` je obvezen, dokler je `sendGeolocation` `true` (privzeto);
+        lokacija, ki lege ne pošilja, koordinat ne potrebuje in jih ni treba izmisliti
+        (FR-094). Vklop pošiljanja na lokaciji brez koordinat je zavrnjen s 400.
+      required: [name, url, sessionId]
+      properties:
+        name: { type: string }
+        url: { type: string, format: uri }
+        sessionId: { type: string }
+        startAction:
+          type: string
+          enum: [Prijava na delo, Prihod na delo, Delo od doma, Delo na terenu]
+          default: Prijava na delo
+          description: |
+            Gumb, s katerim se na tej lokaciji ZAČNE delo (FR-090). Vse štiri različice
+            vodijo v isto stanje `ON_DUTY` in se izključujejo; katera velja, je lastnost
+            kraja, ne urnika. Načrt in zgodovina zapišeta ime, razrešeno po tem polju, ne
+            imena iz profila.
+        coordinateTemplate:
+          type: object
+          required: [latitude, longitude]
+          description: |
+            Znak `_` označuje mesto, kamor se ob vsaki uporabi vstavi naključna števka —
+            glej `docs/legacy-engine.md` §3.
+          properties:
+            latitude: { type: string, examples: ["46.0629_6"] }
+            longitude: { type: string, examples: ["14.5602_9"] }
+        sendGeolocation:
+          type: boolean
+          default: true
+          description: |
+            Ali se lega naprave pošlje strani (FR-094). `false` pomeni, da brskalnik
+            geolokacije nima — dovoljenje je izrecno zavrnjeno, koordinati pa OSTANETA
+            shranjeni, da je stikalo mogoče kadar koli vklopiti nazaj. Stran, ki lego
+            zahteva, ob izklopu morda ne pokaže nobenega gumba; diagnostika na to opozori.
+        jitterMeters: { type: integer, default: 10 }
+        active: { type: boolean, default: true }
+
+    TrackingLocationPatch:
+      type: object
+      description: |
+        Delni popravek lokacije — brez privzetih vrednosti, da popravek enega polja ne
+        vrne `jitterMeters`/`active` na privzeto. Vsaka lokacija ima SVOJ par koordinat:
+        doma, služba, terén — koordinate so podatek beleženja časa in se v aplikaciji ne
+        uporabljajo nikjer drugje (lokacija za vreme je ločena nastavitev).
+      minProperties: 1
+      properties:
+        name: { type: string }
+        url: { type: string, format: uri }
+        sessionId: { type: string }
+        startAction:
+          type: string
+          enum: [Prijava na delo, Prihod na delo, Delo od doma, Delo na terenu]
+        coordinateTemplate:
+          type: object
+          required: [latitude, longitude]
+          properties:
+            latitude: { type: string, examples: ["46.0629_6"] }
+            longitude: { type: string, examples: ["14.5602_9"] }
+        sendGeolocation: { type: boolean }
+        jitterMeters: { type: integer }
+        active: { type: boolean }
+
+    TrackingLocation:
+      allOf:
+        - $ref: "#/components/schemas/TrackingLocationInput"
+        - type: object
+          properties:
+            id: { type: string }
+            sessionStatus:
+              type: string
+              enum: [active, expiring, expired, unknown]
+
+    RemoteSessionInput:
+      type: object
+      description: |
+        Štiri lastnosti piškotka, ki jih je staro okolje imelo kot obvezne spremenljivke
+        `cookie_property_name`, `_value`, `_domain` in `_expires`
+        (docs/env-reference.md §1). Vse so nastavljive iz Nastavitev — zamenjava same
+        vrednosti ne zadošča, ker brez imena in domene brskalnik piškotka ne pošlje.
+      required: [name, cookieValue, cookieDomain]
+      properties:
+        name: { type: string, examples: ["Agenda — e-računi"] }
+        cookieName: { type: string, default: ItcClientID }
+        cookieValue:
+          type: string
+          description: Zapisljiva, nikoli vrnjena v celoti (FR-092).
+        cookieDomain: { type: string, examples: ["e-racuni.com"] }
+        expiresAt:
+          type: [string, integer, "null"]
+          description: |
+            ISO 8601 čas, unix SEKUNDE (oblika starega sistema,
+            `cookie_property_expires=1737717074`) ali `null`, kadar rok ni znan.
+
+    RemoteSessionPatch:
+      type: object
+      description: Delni popravek seje — poslana so samo polja, ki se spremenijo.
+      minProperties: 1
+      properties:
+        name: { type: string }
+        cookieName: { type: string }
+        cookieValue: { type: string }
+        cookieDomain: { type: string }
+        expiresAt: { type: [string, integer, "null"] }
+
+    RemoteSession:
+      type: object
+      description: Vrednost piškotka se nikoli ne vrne v celoti (FR-092).
+      properties:
+        id: { type: string }
+        name: { type: string }
+        cookieName: { type: string }
+        cookieValueMasked: { type: string, examples: ["pMLxj97D…8284"] }
+        cookieDomain: { type: string }
+        cookieSize:
+          type: integer
+          description: |
+            Izpeljano: bajti imena + vrednosti, enako stolpcu "Size" v brskalnikovem
+            razhroščevalniku. Ni nastavljiv — piškotek te lastnosti ne nosi. Prikazan je
+            zato, da je vidno, ali je bila vrednost prilepljena cela.
+        expiresAt: { type: [string, "null"], format: date-time }
+        status:
+          type: string
+          enum: [active, expiring, expired, unknown]
+        lastVerifiedAt: { type: [string, "null"], format: date-time }
+        lastVerifyError: { type: [string, "null"] }
+        daysUntilExpiry: { type: [integer, "null"] }
+
+    CalendarDay:
+      type: object
+      properties:
+        localDate: { type: string, format: date }
+        profileId: { type: string }
+        status: { $ref: "#/components/schemas/CalendarDayStatus" }
+        reason:
+          type: [string, "null"]
+          examples: ["Marijino vnebovzetje", "dopust", "ni v dneh profila"]
+        plannedActionCount: { type: integer }
+
+    AbsencePeriodInput:
+      type: object
+      required: [type, startDate, endDate]
+      properties:
+        type:
+          type: string
+          enum: [vacation, sick, other]
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date, description: Vključen. }
+        note: { type: [string, "null"] }
+        profileIds:
+          type: array
+          description: Prazno pomeni vse profile.
+          items: { type: string }
+
+    AbsencePeriod:
+      allOf:
+        - $ref: "#/components/schemas/AbsencePeriodInput"
+        - type: object
+          properties:
+            id: { type: string }
+            dayCount: { type: integer }
+
+    Holiday:
+      type: object
+      required: [date, name]
+      properties:
+        date: { type: string, format: date }
+        name: { type: string }
+        isWorkFree:
+          type: boolean
+          default: true
+          description: 17. avgust in 23. november sta praznika, ki nista dela prosta. Za urnik šteje samo to polje.
+        isHoliday: { type: boolean, default: true }
+        source:
+          type: string
+          enum: [computed, manual, imported]
+
+    WebhookEndpointInput:
+      type: object
+      required: [url, events]
+      properties:
+        url: { type: string, format: uri }
+        events:
+          type: array
+          items:
+            type: string
+            enum: [action.succeeded, action.failed, action.missed, session.expiring]
+        active: { type: boolean, default: true }
+
+    WebhookEndpoint:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpointInput"
+        - type: object
+          properties:
+            id: { type: string }
+            createdAt: { type: string, format: date-time }
+
+    WebhookEndpointCreated:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpoint"
+        - type: object
+          required: [secret]
+          properties:
+            secret:
+              type: string
+              description: Skrivnost za `X-CleverDash-Signature` (HMAC-SHA256). Prikazana samo tukaj, samo enkrat.
+
+    HealthExtension:
+      type: object
+      description: |
+        Polja, ki jih 002 doda k shemi `Health` iz 001 ob združitvi v eno servirano
+        pogodbo (glej opombo v `info.description`). Niso samostojna pot.
+      properties:
+        schedulerLastTickAt: { type: [string, "null"], format: date-time }
+        schedulerLastTickAgeSeconds: { type: [integer, "null"] }
+        browser:
+          type: string
+          enum: [ok, failed, unknown]
+        remoteSessions:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              status: { type: string }
+              daysUntilExpiry: { type: [integer, "null"] }
+        failedActionsLast24h: { type: integer }
+        missedActionsLast24h: { type: integer }
+        diskFreeBytes: { type: [integer, "null"] }
+        screenshotBytes: { type: [integer, "null"] }

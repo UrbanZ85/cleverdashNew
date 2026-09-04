@@ -83,4 +83,18 @@ describe('validateTileLayout', () => {
     const result = validateTileLayout([{ type: 'weather', position: 0 }], logger);
     expect(result[0]?.visible).toBe(true);
   });
+
+  // Ta test je nastal iz prave napake, najdene ob načrtovanju 010: ploščica "Pot" (005) je
+  // bila registrirana samo v apps/web/.../shared/tiles/tile-registry.ts, v KNOWN_TILE_TYPES
+  // pa ne. Vsaka shranjena razporeditev, ki jo je vsebovala, je torej ob PUT /settings tiho
+  // izgubila prav to ploščico. Test je tu, da se to ne ponovi pri naslednji vrsti ploščice.
+  it.each(['weather', 'forecast', 'radar', 'commute'])(
+    'vgrajena vrsta ploščice "%s" PREŽIVI shranjevanje razporeditve',
+    (type) => {
+      const logger = fakeLogger();
+      const result = validateTileLayout([{ type, position: 0 }], logger);
+      expect(result.map((t) => t.type)).toEqual([type]);
+      expect(logger.warn).not.toHaveBeenCalled();
+    },
+  );
 });

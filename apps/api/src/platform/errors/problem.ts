@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { ZodError } from 'zod';
 
 /** RFC 9457. Sporočila so v slovenščini in brez tehničnih podrobnosti (FR-026) —
  * `detail` je namenjen uporabniku, tehnični vzrok gre samo v dnevnik pod `correlationId`. */
@@ -51,7 +52,16 @@ export function problemErrorHandler() {
   return (err: unknown, req: Request, res: Response, _next: NextFunction): void => {
     const correlationId = req.correlationId;
     if (err instanceof ProblemError) {
-      req.log?.warn({ err, correlationId }, err.title);
+      // 401 je REDNO stanje, ne opozorilo: dostopni žeton poteče vsakih nekaj minut in
+      // odjemalec sejo obnovi sam (apps/web/.../core/auth/token-lifetime.ts). Zabeleži se
+      // torej, a brez sklada klicev in brez stopnje, ki v dnevniku izgleda kot okvara —
+      // prej je vsak iztek pustil šop opozoril s skladom in zakril prave težave.
+      // Vse ostalo (403, 404, 429, 503 …) ostane opozorilo, ker ni pričakovan del delovanja.
+      if (err.status === 401) {
+        req.log?.info({ correlationId, detail: err.detail, path: req.originalUrl }, err.title);
+      } else {
+        req.log?.warn({ err, correlationId }, err.title);
+      }
       const body: Problem = {
         type: err.type,
         title: err.title,
@@ -60,6 +70,21 @@ export function problemErrorHandler() {
         correlationId,
       };
       res.status(err.status).type('application/problem+json').json(body);
+      return;
+    }
+    // 002-najdba: `schema.parse(req.body)` po vsej kodi (001 in 002) meče `ZodError`, ki ga
+    // ta obravnavalec brez tega loči od resnično nepričakovane napake — vsako neveljavno
+    // telo zahteve bi tiho postalo `500`, ne `400`. Popravek koristi obema funkcionalnostma.
+    if (err instanceof ZodError) {
+      req.log?.warn({ err, correlationId }, 'Neveljavno telo zahteve');
+      const body: Problem = {
+        type: 'about:blank',
+        title: 'Neveljavna zahteva',
+        status: 400,
+        detail: err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+        correlationId,
+      };
+      res.status(400).type('application/problem+json').json(body);
       return;
     }
     req.log?.error({ err, correlationId }, 'Nepričakovana napaka');

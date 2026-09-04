@@ -54,10 +54,12 @@ describe('meje TTL predpomnilnika (SC-002)', () => {
       TZ: 'Europe/Ljubljana',
       PUBLIC_BASE_URL: 'http://localhost',
       MONGO_URI: 'mongodb://unused/test',
-      JWT_ACCESS_SECRET: 'a'.repeat(32),
-      JWT_REFRESH_SECRET: 'b'.repeat(32),
-      ADMIN_EMAIL: 'a@example.com',
-      ADMIN_INITIAL_PASSWORD: 'x'.repeat(12),
+      SESSION_COOKIE_SECRET: 'b'.repeat(32),
+      KEYCLOAK_ISSUER_URL: 'https://sso.example.com/realms/cleverdash-dev',
+      KEYCLOAK_CLIENT_ID: 'cleverdash-api',
+      KEYCLOAK_CLIENT_SECRET: 'x'.repeat(12),
+      // 003, research.md §14: brez privzetka v shemi.
+      CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString('base64'),
     });
     expect(env.RADAR_CACHE_SECONDS).toBe(300);
     expect(env.WEATHER_CACHE_SECONDS).toBe(600);

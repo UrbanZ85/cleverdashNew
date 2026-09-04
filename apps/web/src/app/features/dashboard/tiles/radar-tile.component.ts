@@ -1,12 +1,12 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { IonCard, IonCardContent } from '@ionic/angular/standalone';
 import { apiUrl } from '../../../core/api/api-base.js';
 import { ForegroundRefreshService } from '../../../core/refresh/foreground-refresh.service.js';
 import { AttributionComponent } from '../../../shared/attribution/attribution.component.js';
 import { StalenessBadgeComponent } from '../../../shared/staleness/staleness-badge.component.js';
 import { NoDataComponent } from '../../../shared/staleness/no-data.component.js';
+import { TileCardComponent } from '../../../shared/layout/tile-card.component.js';
 
 // FR-021, FR-025: slika se nalaga IZKLJUČNO prek /api/v1/dashboard/radar — nikoli
 // neposredno z ARSO (research.md §2: mešana vsebina na https://app.si, in člen VIII).
@@ -15,26 +15,39 @@ import { NoDataComponent } from '../../../shared/staleness/no-data.component.js'
 @Component({
   selector: 'app-radar-tile',
   standalone: true,
-  imports: [IonCard, IonCardContent, AttributionComponent, StalenessBadgeComponent, NoDataComponent],
+  imports: [TileCardComponent, AttributionComponent, StalenessBadgeComponent, NoDataComponent],
   template: `
-    <ion-card>
-      <ion-card-content>
-        @if (imageUrl(); as url) {
-          <img [src]="url" alt="Radarska slika padavin ARSO" />
+    <app-tile-card title="Radar padavin" icon="rainy-outline" [loading]="loading()">
+      @if (imageUrl(); as url) {
+        <img class="radar" [src]="url" alt="Radarska slika padavin ARSO" />
+      } @else if (neverLoaded()) {
+        <app-no-data (retry)="load()"></app-no-data>
+      } @else {
+        <!-- Skeleton v razmerju animacije ARSO, da se ploščica ob nalaganju ne skrči. -->
+        <div class="radar-skeleton cd-skeleton" aria-hidden="true"></div>
+      }
+
+      <div slot="footer">
+        @if (imageUrl()) {
           @if (stale()) {
             <app-staleness-badge [ageSeconds]="ageSeconds()"></app-staleness-badge>
           }
           <app-attribution [text]="attributionText()" [url]="attributionUrl()"></app-attribution>
-        } @else if (neverLoaded()) {
-          <app-no-data (retry)="load()"></app-no-data>
         }
-      </ion-card-content>
-    </ion-card>
+      </div>
+    </app-tile-card>
   `,
   styles: `
-    img {
-      max-width: 100%;
+    .radar {
       display: block;
+      width: 100%;
+      height: auto;
+      border-radius: var(--cd-radius-sm);
+      background: var(--cd-surface-sunken);
+    }
+    .radar-skeleton {
+      width: 100%;
+      aspect-ratio: 4 / 3;
     }
   `,
 })
@@ -48,6 +61,7 @@ export class RadarTileComponent implements OnInit, OnDestroy {
   readonly ageSeconds = signal(0);
   readonly attributionText = signal('Vir: ARSO');
   readonly attributionUrl = signal('https://meteo.arso.gov.si');
+  readonly loading = signal(true);
 
   private unregister?: () => void;
   private previousObjectUrl: string | null = null;
@@ -86,6 +100,8 @@ export class RadarTileComponent implements OnInit, OnDestroy {
     } catch {
       if (!this.imageUrl()) this.neverLoaded.set(true);
       return { intervalMs: 60_000 };
+    } finally {
+      this.loading.set(false);
     }
   }
 }

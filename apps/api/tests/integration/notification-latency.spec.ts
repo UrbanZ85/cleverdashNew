@@ -2,6 +2,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import request from 'supertest';
 import { startTestDb, stopTestDb, clearTestDb } from '../setup/mongo-memory.js';
 import { setTestEnv } from '../setup/test-env.js';
+import { fakeKeycloakForTests } from '../setup/keycloak-global.js';
+import { loginAsTestUser } from '../setup/login-as-test-user.js';
 
 // SC-006: obvestilo prispe na napravo v manj kot 10 s. Prava dostava do naprave je zunaj
 // dosega tega testa (odvisna od omrežja ponudnika, ne od naše kode) — kar TA test dokaže,
@@ -29,15 +31,10 @@ afterEach(() => {
   return clearTestDb();
 });
 
+// 004: nadomesti prejšnjo prijavo z e-pošto/geslom — glej tests/setup/login-as-test-user.ts.
 async function loginAndUnlock(app: import('express').Express) {
-  const login = await request(app)
-    .post('/api/v1/auth/login')
-    .send({ email: 'admin@example.com', password: 'zacetno-geslo-12', platform: 'android' });
-  await request(app)
-    .post('/api/v1/auth/password')
-    .set('Authorization', `Bearer ${login.body.accessToken}`)
-    .send({ currentPassword: 'zacetno-geslo-12', newPassword: 'novo-mocno-geslo-123' });
-  return login.body.accessToken as string;
+  const { accessToken } = await loginAsTestUser(app, fakeKeycloakForTests, { roles: ['cleverdash-admin'] });
+  return accessToken;
 }
 
 describe('SC-006: pot do oddaje obvestila je hitra', () => {

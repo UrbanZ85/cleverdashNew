@@ -1,0 +1,175 @@
+// Oblikovni žetoni CleverDash.
+//
+// Do zdaj te datoteke NI bilo: aplikacija je tekla na Ionicovih tovarniških privzetkih
+// (modra #3880ff, bela ozadja, brez lestvice razmikov), zato je izgledala kot demo in ne
+// kot izdelek. Vse spodaj je ena sama plast spremenljivk — komponente ne pišejo barv,
+// ampak berejo te žetone, tako da je sprememba videza sprememba te datoteke.
+//
+// Ionic zahteva za vsako barvo peterico `--ion-color-X`, `-rgb`, `-contrast`,
+// `-contrast-rgb`, `-shade` (−12 %), `-tint` (+10 %). Peterica ni okras: `ion-button`,
+// `ion-badge` in `ion-note` berejo `-contrast` za besedilo in `-shade`/`-tint` za stanja
+// pritiska in lebdenja.
+
+:root {
+  // ─── Blagovna barva: globlja, manj "bootstrap" modra od Ionicove privzete ───
+  --ion-color-primary: #1f6feb;
+  --ion-color-primary-rgb: 31, 111, 235;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #1b62cf;
+  --ion-color-primary-tint: #357ded;
+
+  --ion-color-secondary: #5b6b7f;
+  --ion-color-secondary-rgb: 91, 107, 127;
+  --ion-color-secondary-contrast: #ffffff;
+  --ion-color-secondary-contrast-rgb: 255, 255, 255;
+  --ion-color-secondary-shade: #505e70;
+  --ion-color-secondary-tint: #6b7a8c;
+
+  --ion-color-tertiary: #6b4ee6;
+  --ion-color-tertiary-rgb: 107, 78, 230;
+  --ion-color-tertiary-contrast: #ffffff;
+  --ion-color-tertiary-contrast-rgb: 255, 255, 255;
+  --ion-color-tertiary-shade: #5e45ca;
+  --ion-color-tertiary-tint: #7a60e9;
+
+  // ─── Statusne barve. Uporablja jih značka stanja seje v meniju (člen VII) ───
+  --ion-color-success: #1a7f4b;
+  --ion-color-success-rgb: 26, 127, 75;
+  --ion-color-success-contrast: #ffffff;
+  --ion-color-success-contrast-rgb: 255, 255, 255;
+  --ion-color-success-shade: #177042;
+  --ion-color-success-tint: #318c5d;
+
+  --ion-color-warning: #b06a00;
+  --ion-color-warning-rgb: 176, 106, 0;
+  --ion-color-warning-contrast: #ffffff;
+  --ion-color-warning-contrast-rgb: 255, 255, 255;
+  --ion-color-warning-shade: #9b5d00;
+  --ion-color-warning-tint: #bd791a;
+
+  --ion-color-danger: #c02626;
+  --ion-color-danger-rgb: 192, 38, 38;
+  --ion-color-danger-contrast: #ffffff;
+  --ion-color-danger-contrast-rgb: 255, 255, 255;
+  --ion-color-danger-shade: #a92121;
+  --ion-color-danger-tint: #c63c3c;
+
+  --ion-color-medium: #6b7280;
+  --ion-color-medium-rgb: 107, 114, 128;
+  --ion-color-medium-contrast: #ffffff;
+  --ion-color-medium-contrast-rgb: 255, 255, 255;
+  --ion-color-medium-shade: #5e6471;
+  --ion-color-medium-tint: #7a808d;
+
+  --ion-color-light: #f1f3f6;
+  --ion-color-light-rgb: 241, 243, 246;
+  --ion-color-light-contrast: #10151c;
+  --ion-color-light-contrast-rgb: 16, 21, 28;
+  --ion-color-light-shade: #d4d6d8;
+  --ion-color-light-tint: #f2f4f7;
+
+  // ─── Površine ───
+  // `--cd-surface` je ozadje kartice, `--ion-background-color` ozadje strani. Namenoma
+  // razmaknjena: kartica na enako beli podlagi ni kartica, ampak pravokotnik.
+  --ion-background-color: #f6f7f9;
+  --ion-background-color-rgb: 246, 247, 249;
+  --ion-text-color: #10151c;
+  --ion-text-color-rgb: 16, 21, 28;
+  --ion-border-color: #dfe3e8;
+
+  --cd-surface: #ffffff;
+  --cd-surface-raised: #ffffff;
+  --cd-surface-sunken: #eceff3;
+  --cd-text-muted: #5b6b7f;
+  --cd-divider: #e4e8ed;
+
+  --ion-toolbar-background: var(--cd-surface);
+  --ion-item-background: var(--cd-surface);
+  --ion-card-background: var(--cd-surface);
+
+  // ─── Lestvica razmikov (4 px korak) ───
+  --cd-space-1: 0.25rem;
+  --cd-space-2: 0.5rem;
+  --cd-space-3: 0.75rem;
+  --cd-space-4: 1rem;
+  --cd-space-5: 1.5rem;
+  --cd-space-6: 2rem;
+
+  // ─── Radiji in sence ───
+  --cd-radius-sm: 6px;
+  --cd-radius-md: 10px;
+  --cd-radius-lg: 14px;
+  --cd-shadow-sm: 0 1px 2px rgba(16, 21, 28, 0.06), 0 1px 3px rgba(16, 21, 28, 0.04);
+  --cd-shadow-md: 0 2px 6px rgba(16, 21, 28, 0.08), 0 4px 14px rgba(16, 21, 28, 0.06);
+
+  // ─── Tipografija ───
+  --ion-font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --cd-font-size-xs: 0.75rem;
+  --cd-font-size-sm: 0.8125rem;
+  --cd-font-size-md: 0.9375rem;
+  --cd-font-size-lg: 1.125rem;
+  --cd-font-size-xl: 1.5rem;
+  --cd-font-size-display: 2.25rem;
+
+  // ─── Postavitev ───
+  // Najmanjša širina ploščice na nadzorni plošči; mreža sama izračuna število stolpcev.
+  --cd-tile-min-width: 320px;
+  --cd-menu-width: 268px;
+}
+
+// Temna paleta. Ionic 8 jo pričakuje pod razredom `ion-palette-dark` na korenskem elementu
+// — natanko to preklaplja `core/theme/theme.service.ts`. Poleg te datoteke `global.scss`
+// uvozi še Ionicov `palettes/dark.class.css`, ki potemni Ionicove NOTRANJE komponentne
+// spremenljivke; brez njega bi bili potemnjeni samo naši žetoni.
+.ion-palette-dark {
+  --ion-background-color: #0f1319;
+  --ion-background-color-rgb: 15, 19, 25;
+  --ion-text-color: #e8ecf1;
+  --ion-text-color-rgb: 232, 236, 241;
+  --ion-border-color: #262c36;
+
+  --cd-surface: #171c24;
+  --cd-surface-raised: #1d232c;
+  --cd-surface-sunken: #12161d;
+  --cd-text-muted: #98a3b3;
+  --cd-divider: #262c36;
+
+  --ion-toolbar-background: var(--cd-surface);
+  --ion-item-background: var(--cd-surface);
+  --ion-card-background: var(--cd-surface);
+
+  --cd-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --cd-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
+
+  // Blagovna barva na temnem ozadju potrebuje več svetlosti, sicer ne doseže kontrasta 4.5:1.
+  --ion-color-primary: #4d94ff;
+  --ion-color-primary-rgb: 77, 148, 255;
+  --ion-color-primary-contrast: #08111f;
+  --ion-color-primary-contrast-rgb: 8, 17, 31;
+  --ion-color-primary-shade: #4482e0;
+  --ion-color-primary-tint: #5f9fff;
+
+  --ion-color-success: #3fbb77;
+  --ion-color-success-rgb: 63, 187, 119;
+  --ion-color-success-contrast: #08111f;
+  --ion-color-success-contrast-rgb: 8, 17, 31;
+
+  --ion-color-warning: #e0a137;
+  --ion-color-warning-rgb: 224, 161, 55;
+  --ion-color-warning-contrast: #08111f;
+  --ion-color-warning-contrast-rgb: 8, 17, 31;
+
+  --ion-color-danger: #f2555a;
+  --ion-color-danger-rgb: 242, 85, 90;
+  --ion-color-danger-contrast: #08111f;
+  --ion-color-danger-contrast-rgb: 8, 17, 31;
+
+  --ion-color-light: #1d232c;
+  --ion-color-light-rgb: 29, 35, 44;
+  --ion-color-light-contrast: #e8ecf1;
+  --ion-color-light-contrast-rgb: 232, 236, 241;
+  --ion-color-light-shade: #191e26;
+  --ion-color-light-tint: #343943;
+}

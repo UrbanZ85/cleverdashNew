@@ -1,30 +1,49 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
-import { IonList, IonItem, IonLabel, IonToggle, IonButton } from '@ionic/angular/standalone';
-import { apiUrl } from '../../core/api/api-base.js';
-import { TILE_REGISTRY, defaultTileLayout } from '../../shared/tiles/tile-registry.js';
-
-interface TileEntry {
-  type: string;
-  position: number;
-  visible: boolean;
-}
+import { IonList, IonItem, IonLabel, IonToggle, IonButton, IonIcon, IonNote } from '@ionic/angular/standalone';
+import { SettingsStore, type TileEntry } from '../../core/settings/settings.store.js';
+import { PluginStore } from '../../core/plugins/plugin.store.js';
+import { PLUGIN_TILE_TYPE, tileTypeTitle, withMissingBuiltIns } from '../../shared/tiles/tile-registry.js';
 
 // FR-028: vrstni red in vidnost ploščic sta nastavljiva in se ohranita med sejami. Ta
 // zaslon je edino mesto, ki piše v Settings.tiles — dashboard.page.ts ga samo bere.
 @Component({
   selector: 'app-tile-arrangement',
   standalone: true,
-  imports: [IonList, IonItem, IonLabel, IonToggle, IonButton],
+  imports: [IonList, IonItem, IonLabel, IonToggle, IonButton, IonIcon, IonNote],
   template: `
-    <ion-list>
-      @for (tile of tiles(); track tile.type; let i = $index) {
+    <ion-list class="tiles" lines="full">
+      @for (tile of tiles(); track trackKey(tile); let i = $index) {
         <ion-item>
-          <ion-label>{{ tile.type }}</ion-label>
-          <ion-button fill="clear" size="small" [disabled]="i === 0" (click)="moveUp(i)">↑</ion-button>
-          <ion-button fill="clear" size="small" [disabled]="i === tiles().length - 1" (click)="moveDown(i)">↓</ion-button>
-          <ion-toggle [checked]="tile.visible" (ionChange)="toggleVisible(i, $event)"></ion-toggle>
+          <ion-label>
+            <span class="tile-name">{{ title(tile) }}</span>
+            <ion-note class="tile-state">{{ tile.visible ? 'Prikazana' : 'Skrita' }}</ion-note>
+          </ion-label>
+          <ion-button
+            slot="end"
+            fill="clear"
+            size="small"
+            [disabled]="i === 0"
+            (click)="moveUp(i)"
+            [attr.aria-label]="'Premakni ' + title(tile) + ' gor'"
+          >
+            <ion-icon slot="icon-only" name="arrow-up-outline"></ion-icon>
+          </ion-button>
+          <ion-button
+            slot="end"
+            fill="clear"
+            size="small"
+            [disabled]="i === tiles().length - 1"
+            (click)="moveDown(i)"
+            [attr.aria-label]="'Premakni ' + title(tile) + ' dol'"
+          >
+            <ion-icon slot="icon-only" name="arrow-down-outline"></ion-icon>
+          </ion-button>
+          <ion-toggle
+            slot="end"
+            [checked]="tile.visible"
+            (ionChange)="toggleVisible(i, $event)"
+            [attr.aria-label]="'Prikaži ' + title(tile)"
+          ></ion-toggle>
         </ion-item>
       }
     </ion-list>
@@ -32,31 +51,54 @@ interface TileEntry {
       {{ saving() ? 'Shranjujem ...' : 'Shrani razporeditev' }}
     </ion-button>
   `,
+  styles: `
+    .tiles {
+      border: 1px solid var(--cd-divider);
+      border-radius: var(--cd-radius-md);
+      overflow: hidden;
+      margin-bottom: var(--cd-space-3);
+    }
+    .tile-name {
+      font-weight: 600;
+    }
+    .tile-state {
+      display: block;
+      font-size: var(--cd-font-size-xs);
+    }
+  `,
 })
 export class TileArrangementComponent implements OnInit {
-  private readonly http = inject(HttpClient);
+  private readonly settings = inject(SettingsStore);
+  private readonly plugins = inject(PluginStore);
 
   readonly tiles = signal<TileEntry[]>([]);
   readonly saving = signal(false);
 
-  async ngOnInit(): Promise<void> {
-    try {
-      const settings = await firstValueFrom(
-        this.http.get<{ tiles: TileEntry[] }>(apiUrl('/settings'), { withCredentials: true }),
-      );
-      const layout = settings.tiles.length > 0 ? settings.tiles : defaultTileLayout();
-      // Vrste iz registra, ki še niso v shranjeni razporeditvi (nove, dodane po zadnji
-      // shranitvi), se dodajo na konec — FR-020, nova vrsta se pojavi brez izgube stanja.
-      const known = new Set(layout.map((t) => t.type));
-      const missing = TILE_REGISTRY.filter((t) => !known.has(t.type)).map((t, i) => ({
-        type: t.type,
-        position: layout.length + i,
-        visible: true,
-      }));
-      this.tiles.set([...layout, ...missing].sort((a, b) => a.position - b.position));
-    } catch {
-      this.tiles.set(defaultTileLayout());
+  /** Naslov vrstice. Za vgrajeno vrsto slovenski naslov iz registra (surov identifikator
+   * "weather" v slovenskem vmesniku je kršitev člena X), za vtičnik pa njegovo IME — vse
+   * uporabnikove ploščice bi se sicer imenovale "plugin". */
+  title(tile: TileEntry): string {
+    if (tile.type === PLUGIN_TILE_TYPE) {
+      const id = tile.config?.['pluginId'];
+      const plugin = typeof id === 'string' ? this.plugins.byId().get(id) : undefined;
+      return plugin?.name ?? 'Neznan vtičnik';
     }
+    return tileTypeTitle(tile.type);
+  }
+
+  /** Vrsta sama ni edinstvena: vtičnikov je lahko več in bi si `track` podvojil ključ. */
+  trackKey(tile: TileEntry): string {
+    return tile.type === PLUGIN_TILE_TYPE ? `plugin:${String(tile.config?.['pluginId'])}` : tile.type;
+  }
+
+  async ngOnInit(): Promise<void> {
+    // Imena vtičnikov pridejo iz svoje shrambe — brez nje bi vse uporabnikove ploščice
+    // pisale "plugin".
+    await Promise.all([this.settings.ensureLoaded(), this.plugins.ensureLoaded()]);
+
+    // Vgrajene vrste, ki jih shranjena razporeditev še ne pozna, se dodajo na konec
+    // (FR-020) — isto funkcijo uporablja nadzorna plošča, da vidita oba zaslona enako.
+    this.tiles.set(withMissingBuiltIns(this.settings.tiles()));
   }
 
   moveUp(index: number): void {
@@ -84,9 +126,7 @@ export class TileArrangementComponent implements OnInit {
   async save(): Promise<void> {
     this.saving.set(true);
     try {
-      await firstValueFrom(
-        this.http.put(apiUrl('/settings'), { tiles: this.tiles() }, { withCredentials: true }),
-      );
+      await this.settings.patch({ tiles: this.tiles() });
     } finally {
       this.saving.set(false);
     }

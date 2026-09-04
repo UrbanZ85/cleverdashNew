@@ -1,48 +1,28 @@
 import { Injectable, signal } from '@angular/core';
-import { Capacitor } from '@capacitor/core';
-import { Preferences } from '@capacitor/preferences';
 
-// research.md §7: dostopni žeton živi samo v pomnilniku odjemalca (nikoli na disku). V
-// brskalniku je obnovitveni žeton httpOnly piškotek — odjemalec ga sploh ne vidi, zato tu
-// zanj ni kode. Na Androidu ni piškotkov, zato se hrani prek Capacitor Preferences.
+// 004, research.md §1: poenostavljeno — dostopni žeton živi samo v pomnilniku odjemalca
+// (nikoli na disku), za web IN Android enako. Seja sama je httpOnly piškotek, ki ga
+// odjemalec sploh ne vidi (Capacitorjev Android WebView ga deli z lastnimi HTTP klici
+// enako kot pravi brskalnik) — zato tu ni več nič v zvezi z `@capacitor/preferences`.
 //
-// Opomba: Preferences ni namenski "secure storage" (Keystore-backed) vtičnik — za višjo
-// stopnjo zaščite je to mesto, kjer bi se pozneje zamenjalo za @capacitor/secure-storage-plugin
-// ali enakovreden. Za 001 zadošča, ker je obnovitveni žeton kratkoživ prek rotacije (FR-011)
-// in preklican ob zaznani zlorabi (FR-012).
-const REFRESH_KEY = 'cd_refresh_token';
-
+// Poleg žetona se hrani tudi njegov ITEK. Brez njega odjemalec ni imel načina, da bi vedel,
+// kdaj je žeton star — obnovil ga je šele, ko je zahteva padla s 401 (glej token-lifetime.ts).
 @Injectable({ providedIn: 'root' })
 export class TokenStore {
   private readonly accessTokenSignal = signal<string | null>(null);
+  private readonly expiresAtSignal = signal<number | null>(null);
 
   readonly accessToken = this.accessTokenSignal.asReadonly();
+  /** Epoch ms izteka žetona, ali `null`, kadar ni znan. */
+  readonly expiresAt = this.expiresAtSignal.asReadonly();
 
-  setAccessToken(token: string | null): void {
+  setAccessToken(token: string | null, expiresAt: number | null = null): void {
     this.accessTokenSignal.set(token);
-  }
-
-  isAndroid(): boolean {
-    return Capacitor.getPlatform() === 'android';
-  }
-
-  async getRefreshToken(): Promise<string | null> {
-    if (!this.isAndroid()) return null; // v brskalniku je v httpOnly piškotku
-    const { value } = await Preferences.get({ key: REFRESH_KEY });
-    return value;
-  }
-
-  async setRefreshToken(token: string | null): Promise<void> {
-    if (!this.isAndroid()) return;
-    if (token) {
-      await Preferences.set({ key: REFRESH_KEY, value: token });
-    } else {
-      await Preferences.remove({ key: REFRESH_KEY });
-    }
+    this.expiresAtSignal.set(token === null ? null : expiresAt);
   }
 
   clear(): void {
     this.accessTokenSignal.set(null);
-    void this.setRefreshToken(null);
+    this.expiresAtSignal.set(null);
   }
 }

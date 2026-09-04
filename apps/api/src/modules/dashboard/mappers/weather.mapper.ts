@@ -1,5 +1,5 @@
 import type { FreshnessState } from '../../../domain/freshness.js';
-import type { ArsoTimelineEntry, ArsoWeatherData } from '../clients/arso-weather.client.js';
+import type { ArsoTimelineEntry, ArsoWeatherData } from '../../../platform/arso/weather.client.js';
 
 // FR-027, SC-009: navedba vira je funkcionalna zahteva. Strežnik jo postavi tukaj, enkrat,
 // za oba odgovora — odjemalec je ne more pozabiti izrisati, ker je del podatka samega.

@@ -15,3 +15,9 @@ export function toLjubljanaDisplay(date: Date): string {
 export function ljubljanaCalendarDay(date: Date): string {
   return DateTime.fromJSDate(date, { zone: 'utc' }).setZone(ZONE).toFormat('yyyy-LL-dd');
 }
+
+/** Ura dneva (0-23) v Ljubljanski coni — 003, `domain/camera-ordering.ts` (razvrstitev
+ * dopoldan/popoldan, FR-004, research.md §8). NIKOLI `date.getUTCHours()`. */
+export function ljubljanaHour(date: Date): number {
+  return DateTime.fromJSDate(date, { zone: 'utc' }).setZone(ZONE).hour;
+}

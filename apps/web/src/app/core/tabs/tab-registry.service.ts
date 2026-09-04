@@ -3,6 +3,19 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { apiUrl } from '../api/api-base.js';
 
+/** Neobvezen dodatek, ki ga zavihku prispeva njegov MODUL, ne register — glej
+ * `platform/tabs/extension.ts` na strani API-ja. Meni tako pokaže, kateri vir je pod
+ * zavihkom dejansko v uporabi (npr. katera lokacija se beleži) in ali ta vir živi, ne da
+ * bi `platform/tabs` karkoli vedel o modulu (člen I). */
+export interface TabDetail {
+  /** Ena vrstica pod naslovom zavihka — npr. ime lokacije in gostitelj portala. */
+  subtitle?: string;
+  /** Barva značke v meniju. `warning`/`danger` pomenita, da vir potrebuje pozornost. */
+  status?: 'ok' | 'warning' | 'danger';
+  /** Kratko besedilo značke, npr. "seji poteče". */
+  statusLabel?: string;
+}
+
 export interface ResolvedTab {
   id: string;
   title: string;
@@ -10,6 +23,7 @@ export interface ResolvedTab {
   route: string;
   order: number;
   requiredScopes?: string[];
+  detail?: TabDetail;
 }
 
 // FR-002, FR-003: meni (in usmerjanje, prek tab-guard.ts) se sestavi iz razrešenega

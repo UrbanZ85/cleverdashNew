@@ -16,7 +16,7 @@
     "dev:api": "npm run dev --workspace apps/api",
     "dev:web": "npm run dev --workspace apps/web",
     "build:web": "npm run build --workspace apps/web",
-    "generate:contracts": "node packages/contracts/scripts/generate.ts"
+    "generate:contracts": "npm run generate --workspace packages/contracts"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

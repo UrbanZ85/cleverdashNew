@@ -3,6 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <title>CleverDash</title>
+    <!--
+      Brez tega je aplikacija dosegljiva samo prek navigacije znotraj nje, ne pa z
+      neposrednim naslovom, osvežitvijo (F5), zaznamkom ali globoko povezavo iz obvestila.
+
+      Angular v index.html vpiše naslove svežnjev RELATIVNO (`src="main-XXXX.js"`). Brez
+      <base> jih brskalnik razreši glede na imenik trenutnega naslova:
+        /dashboard              → imenik "/"                → /main-XXXX.js        ✔
+        /time-tracking/schedule → imenik "/time-tracking/"  → /time-tracking/main-XXXX.js  ✘
+      Strežnik na drugo pot vrne index.html (SPA fallback), torej HTML namesto JavaScripta;
+      `type="module"` ga zaradi napačnega MIME zavrne in stran ostane PRAZNA, brez vidne
+      napake. Zato je odpovedala vsaka dvosegmentna pot — Urnik, Koledar, Zgodovina,
+      Diagnostika, cameras/manage, notes/:id — enosegmentne pa so delovale.
+
+      "/" drži tudi za Capacitor: WebView aplikacijo streže iz korena (webDir).
+    -->
+    <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link rel="icon" type="image/png" href="assets/icon/favicon.png" />
   </head>

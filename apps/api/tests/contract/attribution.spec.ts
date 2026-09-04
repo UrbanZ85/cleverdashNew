@@ -3,15 +3,21 @@ import request from 'supertest';
 import { createApp } from '../../src/main.js';
 import { startTestDb, stopTestDb, clearTestDb } from '../setup/mongo-memory.js';
 import { setTestEnv } from '../setup/test-env.js';
+import { fakeKeycloakForTests as fakeKeycloak } from '../setup/keycloak-global.js';
+import { loginAsTestUser } from '../setup/login-as-test-user.js';
 
 // FR-027, SC-009: navedba vira ni oblikovna podrobnost, je funkcionalna zahteva. Ta test
 // obstaja ločeno od dashboard.spec.ts, da sprememba tam po pomoti ne izgubi pokritja tega
 // pogoja — namen je posebej izpostavljen, ne le naključno preverjen mimogrede.
 
+// 004: `openid-client` (Keycloak) uporablja isti globalni `fetch` — klici proti ponarejenemu
+// Keycloaku (127.0.0.1, glej fake-keycloak.ts) MORAJO iti do resničnega omrežja.
+const realFetch = globalThis.fetch;
+
 function stubFetch() {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: string | URL) => {
+    vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes('vreme.arso.gov.si')) {
         return new Response(
@@ -21,6 +27,9 @@ function stubFetch() {
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
+      }
+      if (url.includes('127.0.0.1')) {
+        return realFetch(input, init);
       }
       return new Response(Buffer.from('gif'), {
         status: 200,
@@ -41,15 +50,10 @@ afterEach(() => {
 });
 beforeEach(stubFetch);
 
+// 004: nadomesti prejšnjo prijavo z e-pošto/geslom — glej tests/setup/login-as-test-user.ts.
 async function loginAndUnlock(app: import('express').Express) {
-  const login = await request(app)
-    .post('/api/v1/auth/login')
-    .send({ email: 'admin@example.com', password: 'zacetno-geslo-12', platform: 'android' });
-  await request(app)
-    .post('/api/v1/auth/password')
-    .set('Authorization', `Bearer ${login.body.accessToken}`)
-    .send({ currentPassword: 'zacetno-geslo-12', newPassword: 'novo-mocno-geslo-123' });
-  return login.body.accessToken as string;
+  const { accessToken } = await loginAsTestUser(app, fakeKeycloak, { roles: ['cleverdash-admin'] });
+  return accessToken;
 }
 
 describe('navedba vira ARSO (FR-027, SC-009)', () => {

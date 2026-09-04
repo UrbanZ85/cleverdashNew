@@ -104,6 +104,8 @@ export default [
     // Strežnik, root-level orodni config in generator tečejo pod Node.js.
     files: [
       'apps/api/**/*.ts',
+      // Gradbene skripte modula (kopiranje sredstev v dist) so navaden Node ESM, ne TypeScript.
+      'apps/api/scripts/**/*.mjs',
       '*.config.{js,ts}',
       'apps/*/*.config.{js,ts}',
       'apps/*/capacitor.config.ts',

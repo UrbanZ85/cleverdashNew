@@ -11,8 +11,13 @@ info:
     Enotni izvor: API je na isti domeni kot aplikacija, pod `/api/v1`. CORS ni
     konfiguriran in ni potreben (člen II).
 
-    Glava `Idempotency-Key` je sprejeta na vseh mutacijah razen `POST /auth/login` in
-    `POST /auth/refresh` — utemeljitev je v plan.md, razdelek Complexity Tracking.
+    Glava `Idempotency-Key` je sprejeta na vseh mutacijah razen `POST /auth/refresh` —
+    utemeljitev je v plan.md, razdelek Complexity Tracking. `GET /auth/login` in
+    `GET /auth/callback` sta preusmeritvi (GET), ne mutaciji, zato vprašanje niti ne nastopi.
+
+    004 (specs/004-keycloak-sso-multiuser): `/auth/*` je Keycloak OIDC (backend-for-frontend)
+    namesto prejšnje prijave z e-pošto/geslom — glej specs/004-keycloak-sso-multiuser/research.md
+    §9 za utemeljitev, zakaj je ta sprememba tu, ne v ločeni, trajno vzporedni pogodbi.
 
 servers:
   - url: https://app.si/api/v1
@@ -22,7 +27,7 @@ servers:
 
 tags:
   - name: auth
-    description: Prijava, žetoni, geslo
+    description: Prijava prek Keycloaka (OIDC), seje, obseg
   - name: tabs
     description: Razrešen register zavihkov
   - name: dashboard
@@ -45,56 +50,110 @@ security:
 
 paths:
   /auth/login:
-    post:
+    get:
       tags: [auth]
-      summary: Prijava z e-pošto in geslom
+      summary: Začni prijavo prek Keycloaka
       description: |
-        Vrne kratkoživ dostopni žeton in vzpostavi družino sej za to napravo.
-        Obnovitveni žeton se v brskalniku vrne kot `httpOnly` piškotek, omejen na pot
-        obnovitve; na Androidu je v telesu odgovora, ker aplikacija nima piškotkov.
-
-        Glave `Idempotency-Key` ta pot ne sprejema (FR-011, FR-012).
+        Preusmeri brskalnik (`302`) na Keycloakov `authorization_endpoint` (Authorization
+        Code + PKCE). `redirectTo` pove, kam nazaj v CleverDash preusmeriti po uspešni
+        prijavi (FR-002); privzeto `/`.
       security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
+      parameters:
+        - name: redirectTo
+          in: query
+          required: false
+          schema:
+            type: string
+            default: /
       responses:
-        '200':
-          description: Prijava uspela
-          content:
-            application/json:
+        '302':
+          description: Preusmeritev na Keycloak
+          headers:
+            Location:
               schema:
-                $ref: '#/components/schemas/TokenResponse'
+                type: string
+        '503':
+          description: |
+            Ponudnika prijave (Keycloak) ni bilo mogoče doseči.
+
+            Na tej poti je klicatelj BRSKALNIK (navigacija, ne XHR), zato je telo stran
+            `text/html` in NE `application/problem+json`: dokument JSON bi se v naslovni
+            vrstici izrisal kot surovo besedilo, gola napaka `500` pa kot Chromova stran
+            "This page isn't working" brez pojasnila (člen VII). Stran imenuje razlog in
+            `correlationId` za dnevnik.
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          description: Nepričakovana napaka pri začetku prijave; telo je stran `text/html` (glej `503`).
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /auth/callback:
+    get:
+      tags: [auth]
+      summary: Povratni klic Keycloaka (redirect_uri)
+      description: |
+        Izmenja avtorizacijsko kodo za žetone pri Keycloaku, ustvari/najde `User` po
+        `keycloakSubject` (FR-003, FR-009), ob prvi prijavi ustvari privzete osebne
+        nastavitve (specs/004-keycloak-sso-multiuser/research.md §11), nastavi `httpOnly`
+        sejni piškotek in preusmeri (`302`) na `redirectTo` iz `/auth/login`.
+
+        Glave `Idempotency-Key` ta pot ne sprejema — izdaja žetonov (člen III izjema).
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Prijava uspela, preusmeritev v CleverDash
         '401':
-          $ref: '#/components/responses/Unauthorized'
-        '429':
-          description: Preveč neuspelih poskusov (FR-015)
+          description: |
+            Koda neveljavna, prijavni tok potekel, ALI je uporabnik pri Keycloaku potrjen, a
+            nima nobene prepoznane vloge/skupine (FR-007) — sporočilo ločeno od napačnih
+            poverilnic.
+
+            Telo je stran `text/html` in ne `application/problem+json`: klicatelj je
+            BRSKALNIK, ki se vrača s Keycloaka (enako kot pri `/auth/login`, člen VII).
           content:
-            application/problem+json:
+            text/html:
               schema:
-                $ref: '#/components/schemas/Problem'
+                type: string
+        '503':
+          description: Ponudnika prijave ni bilo mogoče doseči; telo je stran `text/html`.
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          description: Nepričakovana napaka pri zaključku prijave; telo je stran `text/html`.
+          content:
+            text/html:
+              schema:
+                type: string
 
   /auth/refresh:
     post:
       tags: [auth]
       summary: Obnovi dostopni žeton
       description: |
-        Zavrti obnovitveni žeton: prejšnji preide v stanje `used`, izda se nov v isti
-        družini. Predložen že porabljen žeton prekliče **celotno družino** (FR-012).
+        Zavrti Keycloakov `refresh_token` za trenutno sejo (data-model.md, `KeycloakSession`).
+        Seja pride iz `httpOnly` piškotka — enako za web IN Android (Capacitorjev WebView
+        deli piškotke z lastnimi HTTP klici).
 
-        Glave `Idempotency-Key` ta pot ne sprejema — shranjen odgovor bi vrnil žeton, ki
-        je bil medtem zavrten.
+        Glave `Idempotency-Key` ta pot ne sprejema.
       security: []
-      requestBody:
-        required: false
-        description: Na Androidu; v brskalniku žeton pride kot piškotek
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshRequest'
       responses:
         '200':
           description: Žeton obnovljen
@@ -103,7 +162,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
-          description: Žeton neveljaven, iztečen ali preklican; ob zaznani ponovni uporabi je preklicana celotna družina
+          description: |
+            Seja neveljavna, iztekla ali preklicana pri Keycloaku (FR-005/FR-006) — vključno
+            s primerom, ko je Keycloak med preverjanjem nedosegljiv (FR-007).
           content:
             application/problem+json:
               schema:
@@ -112,36 +173,26 @@ paths:
   /auth/logout:
     post:
       tags: [auth]
-      summary: Odjava te naprave
-      description: Prekliče družino sej te naprave. Druge naprave ostanejo prijavljene (FR-017).
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '204':
-          description: Odjavljen
-
-  /auth/password:
-    post:
-      tags: [auth]
-      summary: Zamenjaj geslo
+      summary: Odjava te naprave (in enotna odjava pri Keycloaku)
       description: |
-        Edini endpoint poleg odjave, ki je dosegljiv, dokler je `mustChangePassword`
-        resničen (FR-014).
+        Prekliče `KeycloakSession` te naprave. Vrne Keycloakov `end_session_endpoint`
+        (RP-Initiated Logout) — SPA MORA brskalnik preusmeriti nanj, da se dejansko konča
+        tudi Keycloakova seja (FR-004); brez tega naslednji obisk dobi tiho ponovno prijavo
+        prek še vedno veljavne Keycloak seje.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PasswordChangeRequest'
       responses:
-        '204':
-          description: Geslo zamenjano; vse druge družine sej so preklicane
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+        '200':
+          description: Lokalna seja preklicana
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [endSessionUrl]
+                properties:
+                  endSessionUrl:
+                    type: string
+                    format: uri
 
   /auth/me:
     get:
@@ -161,7 +212,7 @@ paths:
     get:
       tags: [auth]
       summary: Seznam aktivnih naprav
-      description: Ena vrstica na družino sej. Omogoča preklic posamezne naprave.
+      description: Ena vrstica na `KeycloakSession`. Omogoča preklic posamezne naprave.
       responses:
         '200':
           description: Aktivne seje
@@ -170,14 +221,14 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/SessionFamily'
+                  $ref: '#/components/schemas/DeviceSession'
 
-  /auth/sessions/{familyId}:
+  /auth/sessions/{sessionId}:
     delete:
       tags: [auth]
       summary: Prekliči sejo izbrane naprave
       parameters:
-        - name: familyId
+        - name: sessionId
           in: path
           required: true
           schema:
@@ -306,6 +357,36 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+
+  /dashboard/commute:
+    get:
+      tags: [dashboard]
+      summary: Pot v službo in domov — čas poti, zamuda zaradi prometa in zemljevid
+      description: |
+        Ploščica "Pot" na nadzorni plošči. Vrne OBE smeri naenkrat: pot domov je ista pot v
+        nasprotni smeri, in odjemalec vedno potrebuje obe (obe sta v ploščici hkrati).
+
+        Kraja prideta iz osebnih nastavitev (`Settings.commute`); klicatelj z API ključem
+        osebnih nastavitev nima in dobi `configured: false`.
+
+        Čas poti je iz Google Routes API (`directions/v2:computeRoutes`,
+        `TRAFFIC_AWARE`), pridobljen IZKLJUČNO prek strežniškega predpomnilnika
+        (`COMMUTE_CACHE_SECONDS`, privzeto 300 s — člen VIII; vsaka osvežitev je plačljiva
+        zahteva na smer). Ključ `GOOGLE_MAPS_SERVER_KEY` ostane na strežniku (člen IV) in v
+        odgovoru ne nastopa.
+
+        **Odgovor je vedno `200`, tudi ko časa poti ni.** Manjkajoč podatek je opisan v
+        `travelUnavailable` na tisti smeri, ne kot napaka celotne zahteve: izpad enega vira
+        ne sme podreti ploščice (FR-026), uporabnik pa mora videti, KAJ je narobe in kaj
+        storiti (člen VII). Zemljevid je odvisen samo od krajev, zato ostane na voljo tudi
+        takrat, ko časa poti ni.
+      responses:
+        '200':
+          description: Obe smeri; posamezna je lahko brez časa poti
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommuteResponse'
 
   /settings:
     get:
@@ -542,7 +623,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Kratkoživ dostopni žeton (15 min) za web in Android
+      description: |
+        Kratkoživ dostopni žeton, izdan prek Keycloaka (relay). Veljavnost se pri
+        pomembnejših zahtevah preveri v živo pri Keycloaku, s kratkim TTL predpomnjenjem
+        (specs/004-keycloak-sso-multiuser/research.md §4) — ne samo z lokalnim preverjanjem
+        podpisa/`exp`.
     apiKeyAuth:
       type: apiKey
       in: header
@@ -607,75 +692,39 @@ components:
           type: string
           description: ID korelacije iz dnevnika, da je prijavljeno napako mogoče najti
 
-    LoginRequest:
-      type: object
-      required: [email, password]
-      properties:
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-        deviceLabel:
-          type: string
-          description: Človeku berljiva oznaka naprave za seznam sej
-        platform:
-          type: string
-          enum: [web, android]
-
-    RefreshRequest:
-      type: object
-      properties:
-        refreshToken:
-          type: string
-          description: Samo za Android; v brskalniku pride kot piškotek
-
     TokenResponse:
       type: object
-      required: [accessToken, expiresIn, mustChangePassword]
+      required: [accessToken, expiresIn]
       properties:
         accessToken:
           type: string
         expiresIn:
           type: integer
           description: Veljavnost dostopnega žetona v sekundah
-        refreshToken:
-          type: string
-          description: Samo za Android; v brskalniku je vrnjen kot httpOnly piškotek
-        mustChangePassword:
-          type: boolean
-          description: Dokler je resničen, so drugi endpointi zavrnjeni s 403 (FR-014)
-
-    PasswordChangeRequest:
-      type: object
-      required: [currentPassword, newPassword]
-      properties:
-        currentPassword:
-          type: string
-        newPassword:
-          type: string
-          minLength: 12
 
     Account:
       type: object
-      required: [id, email, scopes, mustChangePassword]
+      required: [id, email, displayName, scopes]
       properties:
         id:
           type: string
         email:
           type: string
           format: email
+        displayName:
+          type: string
         scopes:
           type: array
           items:
             type: string
-        mustChangePassword:
-          type: boolean
         lastLoginAt:
           type: [string, "null"]
           format: date-time
+      description: |
+        004: `mustChangePassword` je ODSTRANJEN (FR-017 — ni več lokalnega gesla). Dodan
+        `displayName` iz Keycloakovega `name`/`preferred_username` claima.
 
-    SessionFamily:
+    DeviceSession:
       type: object
       required: [id, platform, createdAt, lastUsedAt, current]
       properties:
@@ -833,7 +882,7 @@ components:
 
     Settings:
       type: object
-      required: [weather, theme, tiles, tabs]
+      required: [weather, theme, tiles, tabs, cameraDataSaverEnabled]
       properties:
         weather:
           type: object
@@ -861,9 +910,171 @@ components:
                 type: boolean
               order:
                 type: integer
+        cameraDataSaverEnabled:
+          type: boolean
+          default: true
+          description: |
+            003, specs/003-cameras/data-model.md "Nastavitve porabe podatkov" — Story 7.
+            Modul kamer to polje samo bere/piše prek te poti, brez lastnega endpointa.
+        commute:
+          $ref: '#/components/schemas/SettingsCommute'
         updatedAt:
           type: string
           format: date-time
+
+    SettingsCommute:
+      type: object
+      description: |
+        Ploščica "Pot" na nadzorni plošči: DVA KRAJA, ne dva zemljevida. Iz njiju strežnik
+        izpelje oboje — čas poti (`GET /dashboard/commute`) in naslov vdelanega zemljevida —
+        za obe smeri, ker je pot domov ista pot v nasprotni smeri. Zgoraj v ploščici je
+        smer, ki ustreza času dneva; meja je 12:00 po `Europe/Ljubljana` (ista meja kot
+        razvrstitev kamer v 003) in ni nastavljiva.
+
+        Vsak kraj potrebuje `address` ALI oba `latitude`/`longitude`. Koordinati imata
+        prednost: natančnejši sta in Googlu ni treba geokodirati. Nepopoln kraj je dovoljen
+        (vmes med vnašanjem) — ploščica takrat pove, da pot ni nastavljena.
+
+        Delna posodobitev velja PO KRAJU in PO POLJU: `{"commute":{"work":{"label":"…"}}}`
+        spremeni samo ime službe. `null` ali prazen niz izprazni polje; prazno ime se vrne
+        na privzeto (`Doma` / `Služba`).
+
+        `latitude` in `longitude` je treba navesti SKUPAJ — polovica para je kraj, ki ga ni
+        mogoče poslati ne Routes API-ju ne zemljevidu, zato je zavrnjena s `400`.
+
+        `mapHeightPx` in `layout` sta videz ploščice, ne podatek o poti: koliko zemljevida
+        kdo potrebuje in ali ima na nadzorni plošči prostor za dva drug ob drugem, je odvisno
+        od zaslona. Pri `layout: horizontal` se ploščica samodejno razširi (odjemalec, glej
+        `commuteTileWidthPx`).
+      properties:
+        home:
+          $ref: '#/components/schemas/CommutePlace'
+        work:
+          $ref: '#/components/schemas/CommutePlace'
+        mapHeightPx:
+          type: integer
+          minimum: 100
+          maximum: 600
+          default: 170
+          description: |
+            Višina posameznega zemljevida. Vrednost izven mej je zavrnjena s `400` in NE tiho
+            obrezana — uporabnik mora vedeti, da vpisano ni bilo shranjeno. `null` pomeni
+            "vrni na privzeto".
+        layout:
+          type: string
+          enum: [vertical, horizontal]
+          default: vertical
+          description: '`vertical` = zemljevida drug pod drugim, `horizontal` = drug ob drugem.'
+
+    CommutePlace:
+      type: object
+      properties:
+        label:
+          type: string
+          maxLength: 40
+          description: Ime za nad zemljevidom; prazno se vrne na privzeto.
+        address:
+          type: [string, 'null']
+          maxLength: 200
+        latitude:
+          type: [number, 'null']
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: [number, 'null']
+          minimum: -180
+          maximum: 180
+
+    CommuteTravel:
+      type: object
+      required: [durationSeconds, staticDurationSeconds, delaySeconds, distanceMeters]
+      description: |
+        Iz Routes API. `delaySeconds` je `duration - staticDuration`, nikoli negativno —
+        hitrejše od običajnega ni "zamuda". Zaradi te razlike se `staticDuration` sploh
+        zahteva: samo "40 min" ne pove, ali je to običajno.
+      properties:
+        durationSeconds:
+          type: integer
+          description: Trajanje z upoštevanim prometom.
+        staticDurationSeconds:
+          type: integer
+          description: Trajanje brez prometa.
+        delaySeconds:
+          type: integer
+        distanceMeters:
+          type: integer
+
+    CommuteLeg:
+      type: object
+      required: [direction, label, from, to, mapEmbedUrl, travel, travelUnavailable, stale, ageSeconds]
+      properties:
+        direction:
+          type: string
+          enum: [to-work, to-home]
+        label:
+          type: string
+          example: V službo
+        from:
+          type: string
+          description: Ime izhodiščnega kraja.
+        to:
+          type: string
+        mapEmbedUrl:
+          type: [string, 'null']
+          format: uri
+          description: |
+            Naslov za `<iframe>`, ki ga sestavi strežnik (`domain/map-embed.ts`): uradni
+            Maps Embed API, kadar je `GOOGLE_MAPS_EMBED_KEY` nastavljen, sicer klasična
+            oblika `output=embed`, ki ključa ne potrebuje. Navadne povezave do poti Google
+            v tujem okvirju ne dovoli. `null`, kadar kraja nista dovolj določena.
+        travel:
+          oneOf:
+            - $ref: '#/components/schemas/CommuteTravel'
+            - type: 'null'
+        travelUnavailable:
+          type: [string, 'null']
+          enum: [not-configured, no-api-key, no-route, source-unavailable, null]
+          description: |
+            Prisoten natanko takrat, ko je `travel` `null`. Stanja so ločena, ker ima vsako
+            svojo pot ven: kraja nista nastavljena / namestitev nima ključa / med krajema ni
+            poti / vir ni dosegljiv in predpomnjenega podatka še nikoli ni bilo.
+        stale:
+          type: boolean
+          description: '`true`, kadar je čas poti zadnji znani in ne svež (FR-026).'
+        ageSeconds:
+          type: [integer, 'null']
+
+    CommuteResponse:
+      type: object
+      required: [configured, legs, source]
+      properties:
+        configured:
+          type: boolean
+          description: '`true`, kadar sta oba kraja dovolj določena za izračun poti.'
+        legs:
+          type: array
+          description: Vedno dva vnosa, `to-work` in `to-home`.
+          items:
+            $ref: '#/components/schemas/CommuteLeg'
+        source:
+          type: object
+          required: [nextPollSeconds, attribution]
+          properties:
+            nextPollSeconds:
+              type: integer
+              description: |
+                `COMMUTE_CACHE_SECONDS`. Pogosteje klicati nima smisla — do izteka TTL
+                strežnik vrača isti podatek in zunanjega vira ne kliče (člen VIII).
+            attribution:
+              type: object
+              required: [text, url]
+              description: Navedba vira; Googlovi pogoji uporabe jo zahtevajo (kot člen VIII za ARSO).
+              properties:
+                text:
+                  type: string
+                url:
+                  type: string
+                  format: uri
 
     SettingsUpdate:
       type: object
@@ -894,6 +1105,10 @@ components:
                 type: boolean
               order:
                 type: integer
+        cameraDataSaverEnabled:
+          type: boolean
+        commute:
+          $ref: '#/components/schemas/SettingsCommute'
 
     DeviceRegistration:
       type: object

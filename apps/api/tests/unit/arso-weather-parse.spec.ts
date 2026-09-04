@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { parseArsoWeather } from '../../src/modules/dashboard/clients/arso-weather.client.js';
+import { parseArsoWeather } from '../../src/platform/arso/weather.client.js';
 
 // Fixture je prirezana pravo oblika odgovora, preverjena neposredno proti
 // https://vreme.arso.gov.si/api/1.0/location/?location=Ljubljana dne 19. 8. 2026
-// (research.md §3). Neuporabljena polja (webcam, ddff_icon, ...) so namenoma ohranjena,
-// da test dokaže, da jih shema prezre in ne podre razčlenjevanja.
+// (research.md §3, 001). `webcam` je bil do 003 neuporabljen (samo dokaz, da shema ne
+// podre razčlenjevanja); od 003 dalje (research.md §2) se dejansko prebere — glej
+// spodnji opis "prebere webcam ...". Ostala neuporabljena polja (msl, ddff_icon, ...)
+// ostajajo namenoma prezrta.
 
 function fixture(overrides: Partial<{ observation: unknown; forecast3h: unknown }> = {}) {
   return {
@@ -73,7 +75,35 @@ describe('parseArsoWeather', () => {
       skyCondition: 'jasno',
       icon: 'clear_day',
       validAt: '2026-08-19T13:00:00+00:00',
+      webcam: [{ direction: '', image: 'x.jpg' }],
     });
+  });
+
+  it('prebere webcam iz trenutne meritve za predlogo pri dodajanju kamere (003, FR-037)', () => {
+    const data = parseArsoWeather(fixture());
+    expect(data.current?.webcam).toEqual([{ direction: '', image: 'x.jpg' }]);
+  });
+
+  it('manjkajoč webcam v odgovoru vrne prazen seznam, ne napako (lokacija brez slike)', () => {
+    const data = parseArsoWeather(
+      fixture({
+        observation: {
+          features: [
+            {
+              properties: {
+                days: [
+                  {
+                    date: '2026-08-19',
+                    timeline: [{ t: '20', valid: '2026-08-19T13:00:00+00:00' }],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(data.current?.webcam).toEqual([]);
   });
 
   it('sploščí forecast3h čez več dni in omeji na 8 vnosov (~24h)', () => {
@@ -82,7 +112,7 @@ describe('parseArsoWeather', () => {
     expect(data.forecast[0]?.temperatureC).toBe(33);
   });
 
-  it('prezre neuporabljena polja (webcam, msl, ddff_icon) brez napake', () => {
+  it('prezre neuporabljena polja (msl, ddff_icon, ...) brez napake', () => {
     expect(() => parseArsoWeather(fixture())).not.toThrow();
   });
 

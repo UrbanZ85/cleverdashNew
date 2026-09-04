@@ -1,0 +1,78 @@
+import { Component, Input, OnChanges, inject, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
+import { firstValueFrom } from 'rxjs';
+import { apiUrl } from '../../../core/api/api-base.js';
+
+interface EmbedHostsResponse {
+  hosts: { host: string }[];
+}
+
+// research.md §5: odprava hrošča starega CleverDasha (`bypassSecurityTrustHtml` nad nizom,
+// sestavljenim iz uporabniškega polja). Ta komponenta sprejme SAMO en, že preverjen naslov
+// (nikoli HTML), in ga veže na `<iframe [src]>` prek `bypassSecurityTrustResourceUrl` — ne
+// `bypassSecurityTrustHtml`. Gostitelj je preverjen dvoplastno: strežnik ob shranjevanju
+// (FR-034) in tu, na odjemalcu, tik pred izrisom (obratovalna varovalka, ne nadomestek).
+@Component({
+  selector: 'app-embedded-camera',
+  standalone: true,
+  template: `
+    @if (safeUrl(); as url) {
+      <iframe
+        [src]="url"
+        sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+        referrerpolicy="strict-origin-when-cross-origin"
+        loading="lazy"
+        class="embedded-camera-frame"
+      ></iframe>
+    } @else if (checked()) {
+      <p>Vdelave ni mogoče prikazati — gostitelj ni (več) na seznamu dovoljenih.</p>
+    }
+  `,
+  styles: `
+    .embedded-camera-frame { width: 100%; height: 100%; border: 0; }
+  `,
+})
+export class EmbeddedCameraComponent implements OnChanges {
+  @Input({ required: true }) url!: string;
+
+  // Atributa sta skupna z vtičnikom vrste `iframe` na nadzorni plošči — brez tega bi ista
+  // vdelava v enem zaslonu delovala, v drugem pa ne. Zapisana sta STATIČNO in ne kot vezava,
+  // ker Angular vezavo `referrerpolicy`/`allow` na <iframe> zavrne z NG0910 in se vdelava
+  // sploh ne izriše. Kanonični vrednosti sta v core/embeds/embed-address.ts, ujemanje čuva
+  // tests/unit/embed-iframe-attributes.spec.ts.
+
+  private readonly http = inject(HttpClient);
+  private readonly sanitizer = inject(DomSanitizer);
+
+  readonly safeUrl = signal<SafeResourceUrl | null>(null);
+  readonly checked = signal(false);
+
+  async ngOnChanges(): Promise<void> {
+    this.safeUrl.set(null);
+    this.checked.set(false);
+    const allowed = await this.isHostAllowed(this.url);
+    if (allowed) {
+      this.safeUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(this.url));
+    }
+    this.checked.set(true);
+  }
+
+  private async isHostAllowed(url: string): Promise<boolean> {
+    let hostname: string;
+    try {
+      hostname = new URL(url).hostname.toLowerCase();
+    } catch {
+      return false;
+    }
+    try {
+      const { hosts } = await firstValueFrom(
+        this.http.get<EmbedHostsResponse>(apiUrl('/cameras/embed-hosts'), { withCredentials: true }),
+      );
+      return hosts.some((h) => hostname === h.host || hostname.endsWith(`.${h.host}`));
+    } catch {
+      return false;
+    }
+  }
+}

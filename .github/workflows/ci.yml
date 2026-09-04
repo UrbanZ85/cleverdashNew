@@ -27,6 +27,8 @@ jobs:
         with:
           node-version: 22
       - run: npx --yes @redocly/cli lint specs/001-app-shell-dashboard/contracts/openapi.yaml
+      - run: npx --yes @redocly/cli lint specs/002-time-tracking/contracts/openapi.yaml
+      - run: npx --yes @redocly/cli lint specs/003-cameras/contracts/openapi.yaml
 
   build:
     name: Typecheck, lint, test (vrata 1)

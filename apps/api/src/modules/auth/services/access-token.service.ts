@@ -1,52 +1,64 @@
-import jwt from 'jsonwebtoken';
 import type { NextFunction, Request, Response } from 'express';
+import { introspectAccessToken } from '../../../platform/keycloak/introspection-cache.js';
+import { mapRolesToAccess } from '../../../platform/keycloak/role-mapping.js';
+import { UserModel } from '../models/user.model.js';
+import { ProblemError, unauthorized } from '../../../platform/errors/problem.js';
 import type { Env } from '../../../platform/config/env.js';
-import { unauthorized } from '../../../platform/errors/problem.js';
 import type { AuthContext } from '../../../platform/auth/scopes.js';
 
-// FR-011: dostopni žeton velja kratko (15 min privzeto) in ni shranjen trajno — živi v
-// pomnilniku odjemalca. To je edini JWT v sistemu; obnovitveni žeton je naključna
-// vrednost, ne JWT (research.md §7), zato se tu ne pojavlja.
+// FR-005/FR-006/FR-007, research.md §4: v nasprotju s prejšnjim, ki je dostopni žeton
+// preveril samo lokalno (podpis + `exp`), ta različica pri VSAKEM preverjanju (znotraj
+// kratkega TTL predpomnjenega, glej introspection-cache.ts) vpraša Keycloak, ali je žeton
+// še aktiven — odvzeta vloga ali onemogočen račun se tako pozna praktično takoj, ne šele ob
+// izteku žetona. `scopes` se prav tako VEDNO znova izpelje iz trenutnega odgovora
+// introspekcije (FR-011/FR-012), ne bere shranjene vrednosti na `User` dokumentu.
 
-interface AccessTokenPayload {
-  sub: string; // userId
-  scopes: string[];
-  fam: string; // familyId — glej AuthContext.familyId
-}
+type AccessTokenEnv = Pick<
+  Env,
+  | 'KEYCLOAK_ISSUER_URL'
+  | 'KEYCLOAK_CLIENT_ID'
+  | 'KEYCLOAK_CLIENT_SECRET'
+  | 'KEYCLOAK_INTROSPECTION_CACHE_SECONDS'
+  | 'KEYCLOAK_ADMIN_ROLE'
+  | 'KEYCLOAK_USER_ROLE'
+  | 'NODE_ENV'
+>;
 
-export function issueAccessToken(
-  env: Pick<Env, 'JWT_ACCESS_SECRET' | 'ACCESS_TOKEN_TTL'>,
-  userId: string,
-  scopes: string[],
-  familyId: string,
-): { token: string; expiresIn: number } {
-  const token = jwt.sign(
-    { sub: userId, scopes, fam: familyId } satisfies AccessTokenPayload,
-    env.JWT_ACCESS_SECRET,
-    { expiresIn: env.ACCESS_TOKEN_TTL },
-  );
-  const decoded = jwt.decode(token) as { exp?: number; iat?: number } | null;
-  const expiresIn = decoded?.exp && decoded?.iat ? decoded.exp - decoded.iat : 15 * 60;
-  return { token, expiresIn };
-}
+/** Preveri dostopni žeton pri Keycloaku (živo, s kratkim TTL predpomnjenjem) in sestavi
+ * `AuthContext`. Vrže `unauthorized`, če žeton ni aktiven, ali če pripadajočega uporabnika v
+ * CleverDashu (še) ni — ta MORA nastati prek `/auth/callback` (user-provisioning.service.ts),
+ * preden je karkoli drugega dosegljivo. */
+export async function verifyAccessToken(env: AccessTokenEnv, token: string): Promise<AuthContext> {
+  const introspection = await introspectAccessToken(env, token);
+  if (!introspection.active || !introspection.subject) {
+    throw unauthorized('Neveljaven, potekel ali preklican dostopni žeton.');
+  }
 
-export function verifyAccessToken(
-  env: Pick<Env, 'JWT_ACCESS_SECRET'>,
-  token: string,
-): AuthContext {
-  const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as AccessTokenPayload;
+  const { hasAccess, scopes } = mapRolesToAccess(introspection.roles, env.KEYCLOAK_ADMIN_ROLE, env.KEYCLOAK_USER_ROLE);
+  if (!hasAccess) {
+    // FR-006: vloga/skupina je bila odvzeta med aktivno sejo — dostop se prekine praktično
+    // takoj (naslednja zahteva po izteku introspekcijskega predpomnilnika), ne šele ob
+    // izteku žetona.
+    throw unauthorized('Nimate dostopa do te aplikacije.');
+  }
+
+  const user = await UserModel.findOne({ keycloakSubject: introspection.subject });
+  if (!user) {
+    throw unauthorized('Uporabnik ne obstaja v CleverDashu.');
+  }
+
   return {
     subjectType: 'user',
-    subjectId: payload.sub,
-    scopes: payload.scopes,
-    familyId: payload.fam,
+    subjectId: String(user._id),
+    scopes,
   };
 }
 
-/** Bere `Authorization: Bearer <token>`, preveri veljavnost in nastavi `req.auth`. Ne
- * zavrne zahteve brez glave — pusti odločitev naslednjemu vratarju (apiKeyGuard je
- * mounted vzporedno; requireScopes na koncu terja, da je req.auth sploh nastavljen). */
-export function accessTokenGuard(env: Pick<Env, 'JWT_ACCESS_SECRET'>) {
+/** Bere `Authorization: Bearer <token>`, preveri veljavnost pri Keycloaku in nastavi
+ * `req.auth`. Ne zavrne zahteve brez glave — pusti odločitev naslednjemu vratarju
+ * (apiKeyGuard je mounted vzporedno; requireScopes na koncu terja, da je req.auth sploh
+ * nastavljen). */
+export function accessTokenGuard(env: AccessTokenEnv) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const header = req.header('authorization');
     if (!header?.startsWith('Bearer ')) {
@@ -54,11 +66,19 @@ export function accessTokenGuard(env: Pick<Env, 'JWT_ACCESS_SECRET'>) {
       return;
     }
     const token = header.slice('Bearer '.length);
-    try {
-      req.auth = verifyAccessToken(env, token);
-      next();
-    } catch {
-      next(unauthorized('Neveljaven ali potekel dostopni žeton.'));
-    }
+    verifyAccessToken(env, token)
+      .then((auth) => {
+        req.auth = auth;
+        next();
+      })
+      .catch((err: unknown) => {
+        // Sporočilo iz `verifyAccessToken` se OHRANI. Prej je vsak neuspeh — potekel žeton,
+        // odvzeta vloga, neobstoječ uporabnik, nedosegljiv Keycloak — postal isto besedilo
+        // "Neveljaven ali potekel dostopni žeton", zato iz dnevnika ni bilo mogoče ločiti
+        // rednega izteka od resničnega problema (člen VII: sistem mora povedati, KAJ je
+        // narobe). Nepričakovana napaka ostane 401, ker je brez preverjenega žetona ni
+        // mogoče obravnavati drugače.
+        next(err instanceof ProblemError ? err : unauthorized('Dostopnega žetona ni bilo mogoče preveriti.'));
+      });
   };
 }

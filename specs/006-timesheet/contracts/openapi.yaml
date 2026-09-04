@@ -1,0 +1,323 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash — Evidenca delovnega časa
+  version: 1.0.0
+  description: |
+    REST pogodba zavihka "Evidenca delovnega časa" (006). Modul iz izbranega meseca in nekaj
+    polj sestavi mesečno evidenco v obliki `.xlsx` po predlogi delodajalca — prenos
+    samostojne aplikacije (`Kaja_EDC`) v CleverDash.
+
+    Samostojna pogodba pod `/timesheet`, po istem vzorcu kot 002/003 — ne podvaja poti iz 001.
+
+    ## Avtentikacija
+
+    - **Uporabniška seja** — `Authorization: Bearer <access token>`.
+    - **Avtomatizacija** — `X-API-Key`. Novi obsegi za 006: `timesheet:generate`,
+      `timesheet:read`, `timesheet:write`.
+
+    Člen III: evidenca se da izdelati brez odpiranja aplikacije — n8n lahko vsak prvi v
+    mesecu pokliče `POST /timesheet/workbook` s `timesheet:generate` in dobi isto datoteko,
+    kot bi jo dobil uporabnik s klikom.
+
+    ## Vrste dni
+
+    `sickDays`, `holidays` in `offDays` so ŠTEVILKE DNI v izbranem mesecu (1–31), npr.
+    9. april je `9`. `0` je dovoljena in prezrta (združljivost s payloadi izvirne aplikacije).
+    Sobota in nedelja sta vedno vikend, tudi če je njuna številka navedena med odsotnostmi.
+    Ista številka v več seznamih se razreši po vrstnem redu: bolniška, praznik, dopust.
+
+    ## Idempotentnost
+
+    `POST /timesheet/preview` in `POST /timesheet/workbook` sta po učinku BRALNA — sta `POST`
+    samo zato, ker je vhod prevelik za `query`. Nimata stranskih učinkov in ne shranjujeta
+    ničesar, zato `Idempotency-Key` na njiju nima kaj podvojiti; ponovljen klic z istim telesom
+    vrne enak rezultat po definiciji. `PUT /timesheet/defaults` je mutacija in ključ sprejme.
+
+servers:
+  - url: https://app.si/api/v1
+    description: produkcija
+  - url: http://localhost:3000/api/v1
+    description: razvoj
+
+tags:
+  - name: timesheet
+    description: Izdelava mesečne evidence in predogled
+  - name: defaults
+    description: Shranjeni privzetki (ime, tedenske ure, delovni čas)
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  /timesheet/preview:
+    post:
+      tags: [timesheet]
+      operationId: previewTimesheet
+      summary: Predogled meseca kot JSON
+      description: |
+        Vrne iste dneve in seštevke kot `.xlsx`, samo brez preglednice — odjemalec zato ne
+        podvaja koledarske logike (kateri dan je vikend, koliko ur nosi teden).
+        Zahtevani obseg: `timesheet:generate`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TimesheetRequest" }
+      responses:
+        "200":
+          description: Razrešen mesec
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimesheetPreview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /timesheet/workbook:
+    post:
+      tags: [timesheet]
+      operationId: generateTimesheetWorkbook
+      summary: Mesečna evidenca kot .xlsx
+      description: |
+        Vrne datoteko `evidenca-<leto>-<mesec>.xlsx`, zgrajeno po predlogi delodajalca.
+        Odgovor je binaren in nosi `Cache-Control: no-store` — evidenca je osebni dokument.
+        Zahtevani obseg: `timesheet:generate`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TimesheetRequest" }
+      responses:
+        "200":
+          description: Preglednica
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+              description: 'attachment; filename="evidenca-2026-03.xlsx"'
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /timesheet/defaults:
+    get:
+      tags: [defaults]
+      operationId: readTimesheetDefaults
+      summary: Shranjeni privzetki
+      description: |
+        Vrednosti, ki so za vsak mesec enake. Neshranjen urnik vrne privzetek 9:00–17:00 z
+        malico 12:30–13:00. Zahtevani obseg: `timesheet:read`.
+      responses:
+        "200":
+          description: Privzetki
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimesheetDefaults" }
+
+    put:
+      tags: [defaults]
+      operationId: writeTimesheetDefaults
+      summary: Shrani privzetke
+      description: |
+        Delna posodobitev: neposlana polja obdržijo trenutno vrednost. Urnik z odhodom pred
+        prihodom je zavrnjen, da ne pokvari vseh naslednjih evidenc.
+        Zahtevani obseg: `timesheet:write`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TimesheetDefaultsWrite" }
+      responses:
+        "200":
+          description: Shranjeni privzetki
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimesheetDefaults" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloakov dostopni žeton, posredovan naprej — enako kot 001–005.
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Avtentikacija za avtomatizacijo — enako kot 001–005, razširjeno z obsegi 006.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Ponovljen klic z isto vrednostjo vrne prvotni rezultat — enaka semantika kot 001–005.
+      schema:
+        type: string
+        maxLength: 200
+
+  responses:
+    BadRequest:
+      description: Neveljavno telo zahteve (neobstoječ dan, obrnjen urnik, manjkajoče ime)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details — ista oblika kot 001–005.
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        correlationId: { type: string }
+
+    TimeHm:
+      type: object
+      required: [h, m]
+      properties:
+        h: { type: integer, minimum: 0, maximum: 23 }
+        m: { type: integer, minimum: 0, maximum: 59 }
+
+    DaySchedule:
+      type: object
+      description: |
+        Delovni čas, ki velja za vsak delovni dan v mesecu. Imena polj so angleška (člen X);
+        slovenski so naslovi stolpcev v predlogi (prihod, odhod, malica).
+      required: [arrival, departure, breakStart, breakEnd]
+      properties:
+        arrival: { $ref: "#/components/schemas/TimeHm" }
+        departure: { $ref: "#/components/schemas/TimeHm" }
+        breakStart: { $ref: "#/components/schemas/TimeHm" }
+        breakEnd: { $ref: "#/components/schemas/TimeHm" }
+
+    PartialDaySchedule:
+      type: object
+      description: Vsako polje in vsaka ura/minuta je neobvezna — manjkajoče prevzame shranjeni privzetek.
+      properties:
+        arrival: { $ref: "#/components/schemas/PartialTimeHm" }
+        departure: { $ref: "#/components/schemas/PartialTimeHm" }
+        breakStart: { $ref: "#/components/schemas/PartialTimeHm" }
+        breakEnd: { $ref: "#/components/schemas/PartialTimeHm" }
+
+    PartialTimeHm:
+      type: object
+      properties:
+        h: { type: integer, minimum: 0, maximum: 23 }
+        m: { type: integer, minimum: 0, maximum: 59 }
+
+    DayNumbers:
+      type: array
+      maxItems: 31
+      items: { type: integer, minimum: 0, maximum: 31 }
+
+    TimesheetRequest:
+      type: object
+      required: [year, month]
+      properties:
+        year: { type: integer, minimum: 1970, maximum: 2100 }
+        month: { type: integer, minimum: 1, maximum: 12 }
+        fullName:
+          type: string
+          maxLength: 120
+          description: Brez tega mora ime priti iz shranjenih privzetkov, sicer je odgovor 400.
+        weeklyWorkHours: { type: number, minimum: 1, maximum: 80, default: 40 }
+        sickDays: { $ref: "#/components/schemas/DayNumbers" }
+        holidays: { $ref: "#/components/schemas/DayNumbers" }
+        offDays: { $ref: "#/components/schemas/DayNumbers" }
+        schedule: { $ref: "#/components/schemas/PartialDaySchedule" }
+
+    DayKind:
+      type: string
+      enum: [work, weekend, sick, holiday, off, pad]
+      description: |
+        `pad` je dan iz sosednjega meseca, ki dopolni teden do ponedeljek–nedelja — v
+        preglednici ima vrstico, a nima datuma.
+
+    ResolvedDay:
+      type: object
+      required: [date, dayOfMonth, inMonth, isoWeekday, kind, minutes]
+      properties:
+        date: { type: string, format: date }
+        dayOfMonth: { type: integer, minimum: 1, maximum: 31 }
+        inMonth: { type: boolean }
+        isoWeekday:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: 1 = ponedeljek … 7 = nedelja.
+        kind: { $ref: "#/components/schemas/DayKind" }
+        minutes:
+          type: integer
+          description: Minute, ki jih dan prispeva v svoj stolpec (redne ure ali odsotnost).
+
+    Totals:
+      type: object
+      description: Minute po vrstah — cela števila, da se ure nikjer ne zaokrožujejo.
+      required: [work, holiday, sick, off]
+      properties:
+        work: { type: integer }
+        holiday: { type: integer }
+        sick: { type: integer }
+        off: { type: integer }
+
+    ResolvedWeek:
+      type: object
+      required: [days, totals]
+      properties:
+        days:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items: { $ref: "#/components/schemas/ResolvedDay" }
+        totals: { $ref: "#/components/schemas/Totals" }
+
+    TimesheetPreview:
+      type: object
+      required:
+        [year, month, fullName, weeklyWorkHours, schedule, nominalMonthHours, breakMinutes, totals, weeks, fileName]
+      properties:
+        year: { type: integer }
+        month: { type: integer }
+        fullName: { type: string }
+        weeklyWorkHours: { type: number }
+        schedule: { $ref: "#/components/schemas/DaySchedule" }
+        nominalMonthHours:
+          type: integer
+          description: Mesečna delovna obveza — število delovnikov (pon–pet) krat 8 ur.
+        breakMinutes: { type: integer }
+        totals: { $ref: "#/components/schemas/Totals" }
+        weeks:
+          type: array
+          items: { $ref: "#/components/schemas/ResolvedWeek" }
+        fileName: { type: string, example: evidenca-2026-03.xlsx }
+
+    TimesheetDefaults:
+      type: object
+      required: [fullName, weeklyWorkHours, schedule]
+      properties:
+        fullName:
+          type: [string, "null"]
+          description: |
+            `null`, dokler ga uporabnik ne shrani. Ime NI privzeto ime računa — evidenca se
+            lahko izpolnjuje za osebo, ki ni prijavljeni uporabnik.
+        weeklyWorkHours: { type: number }
+        schedule: { $ref: "#/components/schemas/DaySchedule" }
+
+    TimesheetDefaultsWrite:
+      type: object
+      properties:
+        fullName: { type: [string, "null"], maxLength: 120 }
+        weeklyWorkHours: { type: number, minimum: 1, maximum: 80 }
+        schedule: { $ref: "#/components/schemas/PartialDaySchedule" }

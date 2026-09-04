@@ -14,9 +14,16 @@
             "outputPath": "www",
             "index": "src/index.html",
             "browser": "src/main.ts",
+            "polyfills": [
+              "zone.js"
+            ],
             "tsConfig": "tsconfig.json",
-            "assets": ["src/assets"],
-            "styles": ["src/global.scss"]
+            "assets": [
+              "src/assets"
+            ],
+            "styles": [
+              "src/global.scss"
+            ]
           },
           "configurations": {
             "production": {
@@ -32,10 +39,17 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "configurations": {
-            "production": { "buildTarget": "web:build:production" },
-            "development": { "buildTarget": "web:build:development" }
+            "production": {
+              "buildTarget": "web:build:production"
+            },
+            "development": {
+              "buildTarget": "web:build:development"
+            }
           },
-          "defaultConfiguration": "development"
+          "defaultConfiguration": "development",
+          "options": {
+            "proxyConfig": "proxy.conf.json"
+          }
         }
       }
     }

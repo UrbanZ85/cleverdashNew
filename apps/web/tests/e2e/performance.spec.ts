@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
 
+// 004 TODO (specs/004-keycloak-sso-multiuser): ta test še predpostavlja staro prijavo z
+// e-pošto/geslom na '/login', ki ne obstaja več (FR-017) — prijava je zdaj preusmeritev na
+// Keycloaka (quickstart.md §3). Preden se ta datoteka spet zažene, jo je treba prenoviti na
+// dejansko Keycloakovo prijavno stran (selektorji so odvisni od Keycloakove teme, zato niso
+// uganjeni tu) — glej tasks.md T068. Test ostaja zapisan, a NEIZVEDEN (glej opombo spodaj).
+
 // SC-001: od odprtja aplikacije do vidnega vremena in premikajoče se radarske slike mine
 // manj kot 3 sekunde pri običajni povezavi. Meri se od navigacije do trenutka, ko sta OBE
 // ploščici vidni — ne od DOMContentLoaded, ker uporabnika zanima, kdaj VIDI podatek, ne

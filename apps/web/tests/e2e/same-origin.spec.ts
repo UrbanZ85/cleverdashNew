@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
 
+// 004 TODO (specs/004-keycloak-sso-multiuser): ta test še predpostavlja staro prijavo z
+// e-pošto/geslom na '/login', ki ne obstaja več (FR-017) — prijava je zdaj preusmeritev na
+// Keycloaka (quickstart.md §3). Preden se ta datoteka spet zažene, jo je treba prenoviti na
+// dejansko Keycloakovo prijavno stran (selektorji so odvisni od Keycloakove teme, zato niso
+// uganjeni tu) — glej tasks.md T068. Test ostaja zapisan, a NEIZVEDEN (glej opombo spodaj).
+
 // Člen II ustave: enotni izvor, brez CORS. Ta test opazuje VSE mrežne zahteve med celotnim
 // tokom prijave in nalaganja dashboarda ter preveri dve stvari, ki ju je pri ročnem
 // pregledu omrežnega zavihka najlažje spregledati enkrat, tu pa se preverita vsakič:

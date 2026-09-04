@@ -4,6 +4,21 @@ import { createApp } from '../../src/main.js';
 import { startTestDb, stopTestDb, clearTestDb } from '../setup/mongo-memory.js';
 import { setTestEnv } from '../setup/test-env.js';
 import { ExternalCacheModel } from '../../src/platform/cache/model.js';
+import { fakeKeycloakForTests } from '../setup/keycloak-global.js';
+import { loginAsTestUser } from '../setup/login-as-test-user.js';
+
+// 004: `openid-client` (Keycloak) uporablja isti globalni `fetch` — klici proti ponarejenemu
+// Keycloaku (127.0.0.1) MORAJO iti do resničnega omrežja, ne v spodnje ročne mocke.
+const realFetch = globalThis.fetch;
+function stubFetchOnly(impl: (input: string | URL) => Promise<Response>) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL, init?: RequestInit) => {
+      if (String(input).includes('127.0.0.1')) return realFetch(input, init);
+      return impl(input);
+    }),
+  );
+}
 
 // research.md §13: uspešen odgovor (HTTP 200) s spremenjeno strukturo uporabljenega dela
 // MORA šteti kot neuspel poskus osvežitve, ne kot uspeh z napačnimi podatki. Brez tega bi
@@ -19,15 +34,10 @@ afterEach(() => {
   return clearTestDb();
 });
 
+// 004: nadomesti prejšnjo prijavo z e-pošto/geslom — glej tests/setup/login-as-test-user.ts.
 async function loginAndUnlock(app: import('express').Express) {
-  const login = await request(app)
-    .post('/api/v1/auth/login')
-    .send({ email: 'admin@example.com', password: 'zacetno-geslo-12', platform: 'android' });
-  await request(app)
-    .post('/api/v1/auth/password')
-    .set('Authorization', `Bearer ${login.body.accessToken}`)
-    .send({ currentPassword: 'zacetno-geslo-12', newPassword: 'novo-mocno-geslo-123' });
-  return login.body.accessToken as string;
+  const { accessToken } = await loginAsTestUser(app, fakeKeycloakForTests, { roles: ['cleverdash-admin'] });
+  return accessToken;
 }
 
 const GOOD = {
@@ -40,7 +50,7 @@ describe('spremenjena struktura odgovora vira (schema drift)', () => {
     const { app } = await createApp();
     const token = await loginAndUnlock(app);
 
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(GOOD), { status: 200, headers: { 'content-type': 'application/json' } })));
+    stubFetchOnly(async () => new Response(JSON.stringify(GOOD), { status: 200, headers: { 'content-type': 'application/json' } }));
     const first = await request(app).get('/api/v1/dashboard/weather').set('Authorization', `Bearer ${token}`);
     expect(first.body.observation.temperatureC).toBe(25);
 
@@ -49,7 +59,7 @@ describe('spremenjena struktura odgovora vira (schema drift)', () => {
     // Vir zdaj vrne HTTP 200, a "valid" manjka — shema to zavrne kot neveljavno.
     const broken = JSON.parse(JSON.stringify(GOOD));
     delete broken.observation.features[0].properties.days[0].timeline[0].valid;
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(broken), { status: 200, headers: { 'content-type': 'application/json' } })));
+    stubFetchOnly(async () => new Response(JSON.stringify(broken), { status: 200, headers: { 'content-type': 'application/json' } }));
 
     const second = await request(app).get('/api/v1/dashboard/weather').set('Authorization', `Bearer ${token}`);
     expect(second.status).toBe(200);

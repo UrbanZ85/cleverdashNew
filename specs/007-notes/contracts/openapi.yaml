@@ -1,0 +1,522 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash — Beležke
+  version: 1.0.0
+  description: |
+    REST pogodba zavihka "Beležke" (007). Beležka je osebno besedilo z oznakami, ki ga je
+    mogoče napisati, narekovati (prepoznava govora v brskalniku) ali posneti kot zvok.
+
+    Samostojna pogodba pod `/notes`, po istem vzorcu kot 002/003/006 — ne podvaja poti iz 001.
+    `/settings` se v 007 samo RAZŠIRI z objektom `notes` (glej spodaj), ne podvoji.
+
+    ## Avtentikacija
+
+    - **Uporabniška seja** — `Authorization: Bearer <access token>`.
+    - **Avtomatizacija** — `X-API-Key`. Novi obsegi za 007: `notes:read`, `notes:write`.
+
+    Člen III: beležka se da ustvariti brez odpiranja aplikacije — n8n lahko z `notes:write`
+    pošlje `POST /notes` in beležka se pojavi v seznamu enako, kot bi jo napisal uporabnik.
+
+    ## Izolacija med uporabniki
+
+    Beležke so osebne. Vsaka poizvedba je omejena z `userId` prijavljenega uporabnika; tuja
+    beležka vrne `404`, nikoli `403` — obstoj tujega zapisa ni podatek, ki bi ga kdo smel
+    prebrati (enak dogovor kot pri kamerah po 004).
+
+    ## Zvok in prepis
+
+    Posnetek se naloži kot SUROVO telo zahteve (`Content-Type: audio/webm` ipd.), ne kot
+    multipart: ena datoteka na zahtevo ne potrebuje ovoja. Zgornja meja je
+    `NOTES_AUDIO_MAX_MB` (privzeto 10 MB) in je vidna v `GET /notes/capabilities`.
+
+    Prepis govora ima dve poti in ju je treba ločiti:
+
+    - **v brskalniku** (Web Speech API) — besedilo nastane na napravi in se pošlje kot
+      parameter `transcript`. Ta pogodba o tem ne odloča ničesar.
+    - **na strežniku** — posnetek se pošlje zunanji storitvi za prepis. Zgodi se SAMO ob
+      dvojni privolitvi: `NOTES_TRANSCRIPTION_URL` + `NOTES_TRANSCRIPTION_API_KEY` v okolju
+      strežnika IN osebna nastavitev `notes.serverTranscription`. Manjkajoč pogoj vrne `409`
+      z razlogom, KATERI od dveh manjka. Ključ v okolju sam po sebi torej ne zadošča.
+
+    ## Idempotentnost
+
+    Mutacijski endpointi sprejemajo `Idempotency-Key` — enaka semantika kot 001–006.
+    `POST /notes/{noteId}/audio` je izjema in ključ na njem NE deluje: telo je binarno, zato
+    ga varovalka ne more primerjati z prvotnim, ključ pa je obljuba, da gre za isto zahtevo.
+    Namesto lažne obljube (dva različna posnetka bi bila videti kot ponovitev in drugi bi
+    dobil odgovor prvega, torej tiho izgubljen posnetek) platform tako zahtevo preprosto
+    spusti mimo varovalke — glej `platform/idempotency/middleware.ts`.
+
+servers:
+  - url: https://app.si/api/v1
+    description: produkcija
+  - url: http://localhost:3000/api/v1
+    description: razvoj
+
+tags:
+  - name: notes
+    description: Beležke — branje, pisanje, brisanje
+  - name: audio
+    description: Zvočni posnetki beležke in njihov prepis
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  /notes/capabilities:
+    get:
+      tags: [notes]
+      operationId: getNotesCapabilities
+      summary: Kaj modul v tej namestitvi zmore
+      description: |
+        Vmesnik potrebuje razliko med "storitev za prepis ni nastavljena" in "nisi je
+        vklopil": prvo je stvar namestitve, drugo en klik v profilu.
+        Zahtevani obseg: `notes:read`.
+      responses:
+        "200":
+          description: Zmožnosti modula za tega uporabnika
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotesCapabilities" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /notes:
+    get:
+      tags: [notes]
+      operationId: listNotes
+      summary: Seznam beležk
+      description: |
+        Pripete najprej, nato najnovejše spremenjene. Vrne tudi vse oznake uporabnika, da
+        odjemalec filtrov ne sestavlja iz vsebine seznama. Zahtevani obseg: `notes:read`.
+      parameters:
+        - name: query
+          in: query
+          required: false
+          description: Iskanje po naslovu IN vsebini, brez razlikovanja velikosti črk.
+          schema: { type: string, maxLength: 200 }
+        - name: tag
+          in: query
+          required: false
+          description: Filter po eni oznaki (normalizirana na male črke).
+          schema: { type: string, maxLength: 40 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Seznam beležk
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+    post:
+      tags: [notes]
+      operationId: createNote
+      summary: Nova beležka
+      description: |
+        Brez naslova se uporabi prva neprazna vrstica vsebine. Beležka brez naslova IN brez
+        vsebine je zavrnjena. Zahtevani obseg: `notes:write`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoteWrite" }
+      responses:
+        "201":
+          description: Ustvarjena beležka
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /notes/{noteId}:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+    get:
+      tags: [notes]
+      operationId: getNote
+      summary: Ena beležka, s seznamom posnetkov
+      description: "Zahtevani obseg: `notes:read`."
+      responses:
+        "200":
+          description: Beležka
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    put:
+      tags: [notes]
+      operationId: updateNote
+      summary: Popravek beležke
+      description: |
+        Delna posodobitev: navedejo se samo polja, ki se spremenijo. Prazen niz je pomenska
+        vrednost ("pobriši vsebino") in se loči od odsotnega polja ("ne spreminjaj").
+        Zahtevani obseg: `notes:write`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoteWrite" }
+      responses:
+        "200":
+          description: Spremenjena beležka
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    delete:
+      tags: [notes]
+      operationId: deleteNote
+      summary: Izbriši beležko
+      description: |
+        Izbriše tudi vse njene posnetke — posnetek brez beležke ne bi bil niti viden niti
+        izbrisljiv. Zahtevani obseg: `notes:write`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "204": { description: Izbrisano }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /notes/{noteId}/audio:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+    post:
+      tags: [audio]
+      operationId: uploadNoteAudio
+      summary: Naloži zvočni posnetek k beležki
+      description: |
+        Telo je SUROV posnetek, `Content-Type` pove njegovo vrsto (parameter kodeka, npr.
+        `;codecs=opus`, se odreže). Zahtevani obseg: `notes:write`.
+
+        `transcribe=true` pošlje posnetek zunanji storitvi za prepis — samo ob dvojni
+        privolitvi, sicer `409` in posnetek se NE naloži. Če je storitev dosegljiva, a prepis
+        spodleti, se posnetek vseeno shrani s `transcriptStatus: failed` in razlogom.
+      parameters:
+        - name: durationMs
+          in: query
+          required: false
+          description: Trajanje, kot ga je izmeril brskalnik — strežnik posnetka ne dekodira.
+          schema: { type: integer, minimum: 0 }
+        - name: transcript
+          in: query
+          required: false
+          description: Besedilo, ki ga je prepoznal BRSKALNIK (Web Speech API).
+          schema: { type: string, maxLength: 100000 }
+        - name: transcribe
+          in: query
+          required: false
+          description: Zahteva za prepis na strežniku. Privzeto `false`.
+          schema: { type: boolean, default: false }
+      requestBody:
+        required: true
+        content:
+          audio/webm:
+            schema: { type: string, format: binary }
+          audio/ogg:
+            schema: { type: string, format: binary }
+          audio/mp4:
+            schema: { type: string, format: binary }
+          audio/mpeg:
+            schema: { type: string, format: binary }
+          audio/wav:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: Shranjen posnetek (brez bajtov — te vrne samo pot za predvajanje)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteAudio" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Prepis na strežniku ni na voljo — manjka ključ v okolju ALI privolitev v nastavitvah
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "413":
+          description: Posnetek presega `NOTES_AUDIO_MAX_MB`
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "415":
+          description: Vrsta vsebine ni podprt zvok
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /notes/{noteId}/audio/{audioId}:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+      - $ref: "#/components/parameters/AudioId"
+    get:
+      tags: [audio]
+      operationId: getNoteAudio
+      summary: Predvajaj posnetek
+      description: |
+        Vrne bajte posnetka z `Cache-Control: private` — glas je osebni podatek in ne sme v
+        skupni predpomnilnik posrednika. Zahtevani obseg: `notes:read`.
+      responses:
+        "200":
+          description: Bajti posnetka
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [audio]
+      operationId: deleteNoteAudio
+      summary: Izbriši posnetek
+      description: "Besedilo beležke ostane. Zahtevani obseg: `notes:write`."
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "204": { description: Izbrisano }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /notes/{noteId}/audio/{audioId}/transcribe:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+      - $ref: "#/components/parameters/AudioId"
+    post:
+      tags: [audio]
+      operationId: transcribeNoteAudio
+      summary: Prepiši obstoječ posnetek na strežniku
+      description: |
+        Za posnetke, narejene brez prepisa, in za ponovni poskus po spodleteli storitvi. Ista
+        dvojna privolitev kot pri nalaganju. Zahtevani obseg: `notes:write`.
+
+        Spodletel prepis vrne `200` s `transcriptStatus: failed` in razlogom — ne napake
+        zahteve: posnetek je nespremenjen in odjemalec potrebuje prav ta podatek.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Posnetek z novim stanjem prepisa
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoteAudio" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Prepis na strežniku ni na voljo
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloakov dostopni žeton, posredovan naprej — enako kot 001–006.
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Avtentikacija za avtomatizacijo — enako kot 001–006, razširjeno z obsegi 007.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Ponovljen klic z isto vrednostjo vrne prvotni rezultat — enaka semantika kot 001–006.
+      schema:
+        type: string
+        maxLength: 200
+    NoteId:
+      name: noteId
+      in: path
+      required: true
+      schema: { type: string }
+    AudioId:
+      name: audioId
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: Neveljavna zahteva
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Manjkajoča ali neveljavna avtentikacija
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: Ne obstaja (tudi za tuje beležke — nikoli 403)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 — enaka oblika kot 001–006.
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+      required: [title, status]
+
+    NoteWrite:
+      type: object
+      description: Vsa polja so neobvezna; navedejo se samo tista, ki se spremenijo.
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: Brez njega se uporabi prva neprazna vrstica vsebine.
+        body:
+          type: string
+          maxLength: 100000
+        tags:
+          type: array
+          maxItems: 20
+          items: { type: string, maxLength: 40 }
+          description: Normalizirajo se na male črke, brez podvojitev.
+        pinned:
+          type: boolean
+      additionalProperties: false
+
+    Note:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        body: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        pinned: { type: boolean }
+        audio:
+          type: array
+          items: { $ref: "#/components/schemas/NoteAudio" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, title, body, tags, pinned, audio, createdAt, updatedAt]
+
+    NoteListItem:
+      type: object
+      description: |
+        Zapis v seznamu. Posnetkov ne vsebuje, samo njihovo število — sami posnetki se
+        preberejo šele ob odprtju beležke.
+      properties:
+        id: { type: string }
+        title: { type: string }
+        body: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        pinned: { type: boolean }
+        audioCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, title, body, tags, pinned, audioCount, createdAt, updatedAt]
+
+    NoteList:
+      type: object
+      properties:
+        notes:
+          type: array
+          items: { $ref: "#/components/schemas/NoteListItem" }
+        total: { type: integer, minimum: 0 }
+        tags:
+          type: array
+          items: { type: string }
+          description: Vse oznake tega uporabnika, urejene po abecedi.
+      required: [notes, total, tags]
+
+    NoteAudio:
+      type: object
+      properties:
+        id: { type: string }
+        mimeType: { type: string }
+        byteSize: { type: integer, minimum: 0 }
+        durationMs:
+          type: [integer, "null"]
+          description: Kot ga je izmeril brskalnik; `null`, kadar ga ni sporočil.
+        transcript: { type: [string, "null"] }
+        transcriptSource:
+          type: [string, "null"]
+          enum: [browser, server, null]
+        transcriptStatus:
+          type: string
+          enum: [none, done, failed]
+        transcriptError: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+      required: [id, mimeType, byteSize, durationMs, transcript, transcriptSource, transcriptStatus, createdAt]
+
+    NotesCapabilities:
+      type: object
+      properties:
+        serverTranscription:
+          type: object
+          properties:
+            configured:
+              type: boolean
+              description: Ali sta naslov in ključ storitve nastavljena v okolju strežnika.
+            enabled:
+              type: boolean
+              description: Ali je uporabnik pošiljanje posnetkov ven dovolil v nastavitvah.
+            available:
+              type: boolean
+              description: Oboje hkrati — šele to pomeni, da je prepis mogoč.
+            reason:
+              type: [string, "null"]
+              enum: [not-configured, not-enabled, null]
+            detail:
+              type: [string, "null"]
+              description: Besedilo za uporabnika, kaj mora kdo narediti.
+          required: [configured, enabled, available, reason, detail]
+        audioMaxBytes:
+          type: integer
+          description: Zgornja meja za en posnetek (`NOTES_AUDIO_MAX_MB`).
+      required: [serverTranscription, audioMaxBytes]
+
+    SettingsNotesExtension:
+      type: object
+      description: |
+        RAZŠIRITEV objekta `Settings` iz 001 (glej 003 za enak vzorec z
+        `cameraDataSaverEnabled`). Ne podvaja poti `/settings`, samo dokumentira polje, ki ga
+        007 doda v isti odgovor in isti `PUT`.
+      properties:
+        notes:
+          type: object
+          properties:
+            serverTranscription:
+              type: boolean
+              default: false
+              description: |
+                Privolitev, da zvočni posnetek zapusti strežnik in gre k zunanji storitvi za
+                prepis. Privzeto izklopljena in NEODVISNA od tega, ali je ključ nastavljen v
+                okolju: ključ je dovoljenje namestitve, to stikalo pa privolitev osebe,
+                katere glas je na posnetku.
+          required: [serverTranscription]

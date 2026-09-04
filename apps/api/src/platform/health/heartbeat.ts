@@ -25,7 +25,12 @@ export function getHeartbeatStatus(): {
   };
 }
 
-async function pingOnce(env: Pick<Env, 'HEALTHCHECK_PING_URL' | 'HEALTHCHECK_PING_TIMEOUT_MS'>, logger: Logger) {
+/**
+ * En sam odhodni ping. Izvožena (002, research.md §8 "Integracijska podrobnost"): tik
+ * schedulerja jo pokliče po vsakem svojem ciklu namesto da bi čakal na ločen 60-sekundni
+ * `setInterval`. Javno vedenje `startHeartbeat`/`getHeartbeatStatus` se s tem ne spremeni.
+ */
+export async function pingOnce(env: Pick<Env, 'HEALTHCHECK_PING_URL' | 'HEALTHCHECK_PING_TIMEOUT_MS'>, logger: Logger) {
   if (!env.HEALTHCHECK_PING_URL) {
     lastResult = 'skipped';
     return;

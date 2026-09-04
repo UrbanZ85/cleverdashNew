@@ -5,6 +5,8 @@ import { startTestDb, stopTestDb, clearTestDb } from '../setup/mongo-memory.js';
 import { setTestEnv } from '../setup/test-env.js';
 import { TAB_REGISTRY, type TabDefinition } from '../../src/platform/tabs/registry.js';
 import { resolveTabs } from '../../src/platform/tabs/resolver.js';
+import { fakeKeycloakForTests } from '../setup/keycloak-global.js';
+import { loginAsTestUser } from '../setup/login-as-test-user.js';
 
 // SC-005, člen I: dodajanje zavihka je dodajanje enega vnosa v registru (plus ena nova
 // mapa, ki tukaj ni relevantna, ker navidezen zavihek nima lastnega modula). Ta test
@@ -22,15 +24,10 @@ afterEach(() => {
   return clearTestDb();
 });
 
+// 004: nadomesti prejšnjo prijavo z e-pošto/geslom — glej tests/setup/login-as-test-user.ts.
 async function loginAndUnlock(app: import('express').Express) {
-  const login = await request(app)
-    .post('/api/v1/auth/login')
-    .send({ email: 'admin@example.com', password: 'zacetno-geslo-12', platform: 'android' });
-  await request(app)
-    .post('/api/v1/auth/password')
-    .set('Authorization', `Bearer ${login.body.accessToken}`)
-    .send({ currentPassword: 'zacetno-geslo-12', newPassword: 'novo-mocno-geslo-123' });
-  return login.body.accessToken as string;
+  const { accessToken } = await loginAsTestUser(app, fakeKeycloakForTests, { roles: ['cleverdash-admin'] });
+  return accessToken;
 }
 
 const FAKE_TAB: TabDefinition = {
@@ -44,11 +41,11 @@ const FAKE_TAB: TabDefinition = {
 
 describe('nov zavihek zahteva samo en vnos v registru (SC-005)', () => {
   it('resolveTabs() ga vidi takoj, brez sprememb resolverja', async () => {
-    expect((await resolveTabs([])).map((t) => t.id)).not.toContain(FAKE_TAB.id);
+    expect((await resolveTabs([], null)).map((t) => t.id)).not.toContain(FAKE_TAB.id);
     TAB_REGISTRY.push(FAKE_TAB);
-    expect((await resolveTabs([])).map((t) => t.id)).toContain(FAKE_TAB.id);
+    expect((await resolveTabs([], null)).map((t) => t.id)).toContain(FAKE_TAB.id);
     TAB_REGISTRY.pop();
-    expect((await resolveTabs([])).map((t) => t.id)).not.toContain(FAKE_TAB.id);
+    expect((await resolveTabs([], null)).map((t) => t.id)).not.toContain(FAKE_TAB.id);
   });
 
   it('GET /tabs ga vrne takoj po dodajanju, brez sprememb usmerjevalnika', async () => {

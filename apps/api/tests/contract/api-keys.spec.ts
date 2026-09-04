@@ -5,6 +5,8 @@ import { createApp } from '../../src/main.js';
 import { ApiKeyModel } from '../../src/platform/apikeys/model.js';
 import { startTestDb, stopTestDb, clearTestDb } from '../setup/mongo-memory.js';
 import { setTestEnv } from '../setup/test-env.js';
+import { fakeKeycloakForTests as fakeKeycloak } from '../setup/keycloak-global.js';
+import { loginAsTestUser } from '../setup/login-as-test-user.js';
 
 // Pogodbeni test proti specs/001-app-shell-dashboard/contracts/openapi.yaml: /api-keys.
 // Avtentikacija poteka prek X-API-Key z obsegom "admin" (člen III) — sistem je
@@ -82,5 +84,37 @@ describe('/api-keys pogodba', () => {
     await expect(
       ApiKeyModel.create({ label: 'brez-obsegov', keyHash: 'x', keyPrefix: 'cd_xxxxx', scopes: [] }),
     ).rejects.toThrow(/obsegov/);
+  });
+});
+
+// T057, FR-013: `admin` obseg mora enako varovati /api-keys, ko izhaja iz Keycloakove
+// preslikave vlog (role-mapping.ts), ne iz stare bootstrap logike (ki je odstranjena).
+describe('/api-keys pogodba — admin obseg iz Keycloaka (US3, FR-013)', () => {
+  it('uporabnik z administratorsko Keycloak vlogo lahko upravlja API ključe', async () => {
+    const { app } = await createApp();
+    const { accessToken } = await loginAsTestUser(app, fakeKeycloak, {
+      sub: 'kc-sub-apikeys-admin',
+      email: 'apikeys-admin@example.com',
+      roles: ['cleverdash-admin'],
+    });
+
+    const res = await request(app)
+      .post('/api/v1/api-keys')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ label: 'n8n', scopes: ['dashboard:read'] });
+    expect(res.status).toBe(201);
+    expect(res.body.secret).toMatch(/^cd_/);
+  });
+
+  it('navaden uporabnik (brez administratorske Keycloak vloge) NIMA dostopa do API ključev', async () => {
+    const { app } = await createApp();
+    const { accessToken } = await loginAsTestUser(app, fakeKeycloak, {
+      sub: 'kc-sub-apikeys-plain',
+      email: 'apikeys-plain@example.com',
+      roles: ['cleverdash-user'],
+    });
+
+    const res = await request(app).get('/api/v1/api-keys').set('Authorization', `Bearer ${accessToken}`);
+    expect(res.status).toBe(403);
   });
 });

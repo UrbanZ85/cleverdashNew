@@ -18,10 +18,14 @@
     "@capacitor/android": "^7.0.0",
     "@capacitor/app": "^7.0.0",
     "@capacitor/core": "^7.0.0",
+    "@capacitor/network": "^7.0.0",
     "@capacitor/preferences": "^7.0.0",
     "@capacitor/push-notifications": "^7.0.0",
     "@ionic/angular": "^8.0.0",
-    "rxjs": "^7.8.1"
+    "hls.js": "^1.5.17",
+    "ionicons": "^8.1.0",
+    "rxjs": "^7.8.1",
+    "zone.js": "~0.15.1"
   },
   "devDependencies": {
     "@angular/build": "^20.0.0",

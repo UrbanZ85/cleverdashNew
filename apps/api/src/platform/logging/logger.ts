@@ -12,3 +12,17 @@ export function createLogger(env: Pick<Env, 'LOG_LEVEL'>): Logger {
     base: { service: 'cleverdash-api' },
   });
 }
+
+let cached: Logger | undefined;
+
+/** 002: routerji modula `time-tracking` potrebujejo logger zunaj `createApp()` (npr. za
+ * `PuppeteerClockPortal`), a ne sme vsak klic ustvariti novega pino primerka. */
+export function getLogger(env: Pick<Env, 'LOG_LEVEL'>): Logger {
+  if (!cached) cached = createLogger(env);
+  return cached;
+}
+
+/** Samo za teste. */
+export function resetLoggerForTests(): void {
+  cached = undefined;
+}

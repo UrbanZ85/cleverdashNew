@@ -1,11 +1,17 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import request from 'supertest';
 import { createApp } from '../../src/main.js';
 import { startTestDb, stopTestDb, clearTestDb } from '../setup/mongo-memory.js';
 import { setTestEnv } from '../setup/test-env.js';
+import { fakeKeycloakForTests } from '../setup/keycloak-global.js';
+import { loginAsTestUser } from '../setup/login-as-test-user.js';
 
-// FR-017: vsaka naprava ima svojo družino sej; odjava na eni ne odjavi druge.
-const CREDS = { email: 'admin@example.com', password: 'zacetno-geslo-12' };
+// FR-017: vsaka naprava ima svojo sejo (KeycloakSession); odjava na eni ne odjavi druge.
+//
+// 004: prejšnji drugi test tega dokumenta ("zloraba žetona ene naprave ne prekliče druge
+// družine") je testiral CleverDashevo LASTNO zaznavo ponovne uporabe obnovitvenega žetona
+// (`RefreshTokenModel`, `used`/`replacedBy` veriga) — ta mehanizem je odstranjen, ker
+// rotacijo obnovitvenega žetona zdaj izvaja Keycloak sam (research.md §2); CleverDash nima
+// več lastne logike, ki bi jo bilo tu smiselno testirati.
 
 beforeAll(async () => {
   setTestEnv();
@@ -15,48 +21,27 @@ afterAll(stopTestDb);
 afterEach(clearTestDb);
 
 describe('več naprav iste osebe', () => {
-  it('odjava na telefonu ne odjavi brskalnika', async () => {
+  it('odjava na eni napravi ne odjavi druge (ločeni KeycloakSession)', async () => {
     const { app } = await createApp();
 
-    const phone = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ ...CREDS, platform: 'android', deviceLabel: 'Pixel 7' });
-    const laptop = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ ...CREDS, platform: 'android', deviceLabel: 'Chrome' });
+    const phone = await loginAsTestUser(app, fakeKeycloakForTests, {
+      sub: 'kc-sub-multi-device',
+      email: 'multi-device@example.com',
+      name: 'Test naprav',
+      roles: ['cleverdash-user'],
+    });
+    const laptop = await loginAsTestUser(app, fakeKeycloakForTests, {
+      sub: 'kc-sub-multi-device',
+      email: 'multi-device@example.com',
+      name: 'Test naprav',
+      roles: ['cleverdash-user'],
+    });
 
-    await request(app)
-      .post('/api/v1/auth/logout')
-      .set('Authorization', `Bearer ${phone.body.accessToken}`)
-      .expect(204);
+    await phone.agent.post('/api/v1/auth/logout').set('Authorization', `Bearer ${phone.accessToken}`).expect(200);
 
-    // Laptop je izdan kot "android" platform samo zato, da dobimo refreshToken v telesu za
-    // ta test brez ravnanja s piškotki — družina je ločena od telefona ne glede na to.
-    const stillWorks = await request(app)
-      .post('/api/v1/auth/refresh')
-      .send({ refreshToken: laptop.body.refreshToken });
+    // Prijava telefona je ločena seja (ločen piškotek/agent) od prijave prenosnika — odjava
+    // ene ne sme vplivati na drugo.
+    const stillWorks = await laptop.agent.post('/api/v1/auth/refresh').send();
     expect(stillWorks.status).toBe(200);
-  });
-
-  it('zloraba žetona ene naprave ne prekliče druge družine', async () => {
-    const { app } = await createApp();
-    const a = await request(app).post('/api/v1/auth/login').send({ ...CREDS, platform: 'android' });
-    const b = await request(app).post('/api/v1/auth/login').send({ ...CREDS, platform: 'android' });
-
-    const rotatedA = await request(app)
-      .post('/api/v1/auth/refresh')
-      .send({ refreshToken: a.body.refreshToken });
-    // Ponovna uporaba prvotnega A-žetona -> prekliče samo A.
-    await request(app).post('/api/v1/auth/refresh').send({ refreshToken: a.body.refreshToken });
-
-    const bStillWorks = await request(app)
-      .post('/api/v1/auth/refresh')
-      .send({ refreshToken: b.body.refreshToken });
-    expect(bStillWorks.status).toBe(200);
-
-    const aNowBlocked = await request(app)
-      .post('/api/v1/auth/refresh')
-      .send({ refreshToken: rotatedA.body.refreshToken });
-    expect(aNowBlocked.status).toBe(401);
   });
 });

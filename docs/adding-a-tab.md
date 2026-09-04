@@ -49,10 +49,22 @@ uveljavlja korak za korakom. Predloga za kopiranje je v `templates/tab-module/`.
    },
    ```
 
+5. **Če ima modul lastne obsege (scopes), jih dodaj osnovni vlogi.**
+
+   `apps/api/src/platform/keycloak/role-mapping.ts`, `BASE_USER_SCOPES` — brez tega zavihek
+   dela samo uporabniku z vlogo `cleverdash-admin` (ta ima `admin`, torej vse), navaden
+   uporabnik pa dobi `403`. Nizi so tam prepisani, ne uvoženi iz modula (člen I).
+
+6. **Če ikona iz registra še ni registrirana, jo dodaj.**
+
+   `apps/web/src/app/core/icons/register-icons.ts` in seznam v
+   `apps/web/tests/unit/icons.spec.ts`. Neregistrirana ikona se izriše kot prazen prostor;
+   ta test je edina mreža pod tem, ker ime ikone pride s strežnika.
+
 ## Kaj se NE sme spremeniti
 
-Nič drugega. Če popravljaš datoteko zunaj novega modula in teh dveh vpisov (register +
-usmerjanje), je nekaj narobe zasnovano — preveri, ali modul poskuša uvoziti iz drugega
+Nič drugega. Če popravljaš datoteko zunaj novega modula in vpisov iz korakov 2–6, je nekaj
+narobe zasnovano — preveri, ali modul poskuša uvoziti iz drugega
 modula namesto iz `platform/`, `domain/`, `core/` ali `shared/`. Lint pravilo v
 `eslint.config.js` tak uvoz zavrne kot napako, ne kot opozorilo.
 

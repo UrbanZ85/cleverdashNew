@@ -1,5 +1,5 @@
 import { Component, ErrorHandler, inject, signal } from '@angular/core';
-import { IonCard, IonCardContent } from '@ionic/angular/standalone';
+import { TileCardComponent } from '../../shared/layout/tile-card.component.js';
 
 // FR-026: izpad ene ploščice ne sme vplivati na druge. Angular nima vgrajene "error
 // boundary" komponente (za razliko od nekaterih drugih ogrodij) — enakovreden učinek
@@ -17,15 +17,22 @@ class TileErrorHandler implements ErrorHandler {
 @Component({
   selector: 'app-tile-host',
   standalone: true,
-  imports: [IonCard, IonCardContent],
+  imports: [TileCardComponent],
   providers: [{ provide: ErrorHandler, useFactory: () => new TileErrorHandler() }],
   template: `
     @if (handler.broken()) {
-      <ion-card>
-        <ion-card-content>Ta ploščica trenutno ne deluje. Ostale ploščice delujejo naprej.</ion-card-content>
-      </ion-card>
+      <app-tile-card title="Ploščica ne deluje" icon="alert-circle-outline">
+        <p class="cd-muted">Ta ploščica trenutno ne deluje. Ostale ploščice delujejo naprej.</p>
+      </app-tile-card>
     } @else {
       <ng-content></ng-content>
+    }
+  `,
+  styles: `
+    /* Gostitelj mora zapolniti celico v mreži, sicer se ploščica ob napaki skrči. */
+    :host {
+      display: block;
+      height: 100%;
     }
   `,
 })

@@ -6,3 +6,65 @@
 @import '@ionic/angular/css/float-elements.css';
 @import '@ionic/angular/css/text-alignment.css';
 @import '@ionic/angular/css/display.css';
+
+// Temna paleta pod razredom `ion-palette-dark`. Ta uvoz je MANJKAL: `theme.service.ts` je
+// razred že preklaplja, a brez tega CSS-a se ni zgodilo nič — temna tema je bila mrtva koda.
+// Različica `.class` (in ne `.system`) je pravilna, ker preferenco hrani strežnik
+// (`Settings.theme`), sistemsko nastavitev pa storitev razreši sama prek `matchMedia`.
+@import '@ionic/angular/css/palettes/dark.class.css';
+
+// Naši oblikovni žetoni PO Ionicovih paletah — vrstni red je pomemben, ker prepišemo
+// del Ionicovih privzetkov (`--ion-color-primary`, `--ion-background-color` ...).
+@import './theme/variables.scss';
+
+// ─── Skupni pomožni razredi ───
+// Namenoma jih je malo. Postavitev znotraj komponente sodi v njen `styles:` blok; tukaj so
+// samo vzorci, ki se ponovijo na več kot dveh mestih.
+
+.cd-section-title {
+  margin: var(--cd-space-5) 0 var(--cd-space-2);
+  font-size: var(--cd-font-size-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ion-text-color);
+}
+
+.cd-section-hint {
+  margin: 0 0 var(--cd-space-3);
+  font-size: var(--cd-font-size-sm);
+  line-height: 1.5;
+  color: var(--cd-text-muted);
+}
+
+.cd-muted {
+  color: var(--cd-text-muted);
+}
+
+// Skeleton med nalaganjem. `prefers-reduced-motion` ustavi utripanje — brez tega je
+// animirano ozadje na celotni mreži ploščic moteče.
+.cd-skeleton {
+  border-radius: var(--cd-radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--cd-surface-sunken) 25%,
+    var(--cd-divider) 37%,
+    var(--cd-surface-sunken) 63%
+  );
+  background-size: 400% 100%;
+  animation: cd-shimmer 1.4s ease infinite;
+}
+
+@keyframes cd-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cd-skeleton {
+    animation: none;
+  }
+}

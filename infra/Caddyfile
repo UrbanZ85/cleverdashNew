@@ -14,5 +14,16 @@
 		file_server
 	}
 
-	encode gzip
+	# 009: stiskaj SAMO stisljive vrste vsebine. Brez tega ujemanja bi Caddy poskusil stisniti
+	# tudi 500 MB posnetek ali arhiv, ki je že stisnjen — poraba procesorja brez učinka. Hkrati
+	# se s tem na prenosu ohrani `Content-Length`, od katerega sta odvisna prikaz napredka pri
+	# prejemniku in nadaljevanje prekinjenega prenosa (`Range`).
+	encode gzip {
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type image/svg+xml*
+		}
+	}
 }
