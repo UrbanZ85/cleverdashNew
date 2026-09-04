@@ -8,7 +8,13 @@ RUN npm ci
 COPY tsconfig.base.json ./
 COPY apps/api apps/api
 COPY packages/contracts packages/contracts
-RUN npm run build --workspace apps/api
+# `build:image`, ne `build`: razlika je `tsc --noCheck` (prevedi, ne preverjaj tipov).
+# Merjeno na tem projektu: polno preverjanje potrebuje nad 3 GB in ~130 s, `--noCheck`
+# 640 MB in ~22 s. Na VPS-u, ki poleg tega poganja še druge sklade, je prvo pomenilo
+# `exit code: 137` (jedro ubije tsc). Tipe preverja CI pred zlivanjem (npm run typecheck,
+# .github/workflows/ci.yml, vrata 1) — slika se gradi iz kode, ki je ta vrata že prestala,
+# zato je ponovno preverjanje ob gradnji podvojeno delo, ne varovalka.
+RUN npm run build:image --workspace apps/api
 
 FROM node:22-slim
 ENV NODE_ENV=production

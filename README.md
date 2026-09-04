@@ -157,6 +157,15 @@ compose-u na oba načina, ki ju potrebuje (`--env-file` za vrednosti v sami comp
 nastaviš z `CLEVERDASH_ENV_FILE=/pot/do/.env`. Vsi nadaljnji ukazi gredo skozi isto
 ovojnico — `./scripts/vps-compose.sh logs -f api`, `... down`.
 
+Na šibkem gostitelju gradi sliki **eno za drugo**. `up --build` ju sicer gradi vzporedno in
+dve hkratni Node gradnji sta na VPS-u z drugimi skladi zanesljiv `exit code: 137`:
+
+```bash
+./scripts/vps-compose.sh build api
+./scripts/vps-compose.sh build web
+./scripts/vps-compose.sh up -d
+```
+
 Iz čiste kopije do delujočega sistema: pod 3 minute, samo Docker in izpolnjena datoteka z
 okoljem (FR-040, SC-007 — izmerjeno v [`docs/acceptance-001.md`](docs/acceptance-001.md)).
 Podroben postopek, kontrolni seznam po funkcionalnih zahtevah in reševanje težav je v

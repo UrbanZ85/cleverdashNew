@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "build:image": "tsc -p tsconfig.build.json --noCheck && node scripts/copy-assets.mjs",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
