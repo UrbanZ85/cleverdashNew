@@ -1,3 +1,22 @@
+# Produkcijska kompozicija (VPS). Datoteka z okoljem NI v repozitoriju (člen IV): živi ob
+# njem, privzeto `../envs/.env.cleverdashNew` gledano iz korena repozitorija — mapa `envs/`
+# je torej sestra korena. Poti spodaj so relativne na TO mapo (`infra/`), zato je v njih ena
+# raven več.
+#
+# Compose isto datoteko potrebuje na DVA načina in oba morata biti nastavljena:
+#   `env_file:`   → vrednosti dobijo PROCESI v vsebnikih (api, caddy)
+#   `--env-file`  → vrednosti, ki jih compose vstavi v to YAML datoteko samo
+#                   (${MONGO_ROOT_PASSWORD}, ${FCM_KEY_FILE}, ${CADDY_HTTP_PORT} ...)
+# Ker je nanju lahko pozabiti in je izpad drugega tih, `docker compose` na produkciji ne
+# kliči neposredno, ampak prek `scripts/vps-compose.sh`, ki nastavi oba.
+name: cleverdash
+
+# Ena sama navedba poti do datoteke z okoljem za vse storitve. `ENV_FILE` nastavi
+# scripts/vps-compose.sh (absolutna pot, zato je vseeno, iz katere mape kličeš); privzetek
+# velja, kadar kdo požene `docker compose` na roko iz te mape.
+x-env-file: &env-file
+  - ${ENV_FILE:-../../envs/.env.cleverdashNew}
+
 services:
   mongo:
     image: mongo:7
@@ -20,7 +39,7 @@ services:
       context: ..
       dockerfile: infra/api.Dockerfile
     restart: unless-stopped
-    env_file: ../.env
+    env_file: *env-file
     environment:
       TZ: Europe/Ljubljana
       # Pot do brskalnika je lastnost SLIKE, ne operaterjevega računalnika. `env_file` povozi
@@ -38,7 +57,9 @@ services:
     init: true
     mem_limit: 1500m
     volumes:
-      - ${FCM_KEY_FILE}:/run/secrets/fcm_key:ro
+      # `:?` namesto golega ${FCM_KEY_FILE}: prazna vrednost je sicer sintaktična napaka
+      # compose datoteke ("empty section between colons"), ki ne pove, česa manjka.
+      - ${FCM_KEY_FILE:?FCM_KEY_FILE manjka — pot do datoteke s ključem FCM na GOSTITELJU}:/run/secrets/fcm_key:ro
       - screenshots:/app/data/screenshots
       # 009: vsebina deljenih datotek NI v bazi (500 MB presega dokument Monga), ampak tu.
       # Brez tega nosilca naložene datoteke izginejo ob prvi posodobitvi slike — modul bi
@@ -68,7 +89,7 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
-    env_file: ../.env
+    env_file: *env-file
     ports:
       # Nastavljivo prek .env za lokalno preverjanje, kadar je 80/443 na gostitelju že
       # zaseden (glej quickstart.md §2) — v produkciji nastavljeni privzetki zadoščajo.

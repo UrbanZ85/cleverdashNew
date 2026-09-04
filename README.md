@@ -142,16 +142,24 @@ izvor, brez CORS-a (člen II ustave). Caddy usmeri `/api/*` na backend, vse osta
 ## Hiter zagon (Docker)
 
 ```bash
-cp .env.example .env
-# izpolni .env — obvezne vrednosti so v specs/001-app-shell-dashboard/quickstart.md §3;
-# prijava zahteva tudi obstoječ organizacijski Keycloak (KEYCLOAK_ISSUER_URL/CLIENT_ID/
-# CLIENT_SECRET, SESSION_COOKIE_SECRET) — glej specs/004-keycloak-sso-multiuser/quickstart.md §3
-docker compose -f infra/docker-compose.yml up -d --build
+# Datoteka z okoljem NI v repozitoriju (člen IV): živi ob njem, kot sestra korena.
+mkdir -p ../envs && cp .env.example ../envs/.env.cleverdashNew
+# izpolni ../envs/.env.cleverdashNew — obvezne vrednosti so v
+# specs/001-app-shell-dashboard/quickstart.md §3; prijava zahteva tudi obstoječ
+# organizacijski Keycloak (KEYCLOAK_ISSUER_URL/CLIENT_ID/CLIENT_SECRET,
+# SESSION_COOKIE_SECRET) — glej specs/004-keycloak-sso-multiuser/quickstart.md §3
+./scripts/vps-compose.sh up -d --build
 ```
 
-Iz čiste kopije do delujočega sistema: pod 3 minute, samo Docker in izpolnjen `.env`
-(FR-040, SC-007 — izmerjeno v [`docs/acceptance-001.md`](docs/acceptance-001.md)). Podroben
-postopek, kontrolni seznam po funkcionalnih zahtevah in reševanje težav je v
+`vps-compose.sh` je tanka ovojnica okoli `docker compose`: isto datoteko z okoljem poda
+compose-u na oba načina, ki ju potrebuje (`--env-file` za vrednosti v sami compose datoteki,
+`env_file:` za procesa v vsebnikih), zato je ne kliči neposredno. Drugo pot do datoteke
+nastaviš z `CLEVERDASH_ENV_FILE=/pot/do/.env`. Vsi nadaljnji ukazi gredo skozi isto
+ovojnico — `./scripts/vps-compose.sh logs -f api`, `... down`.
+
+Iz čiste kopije do delujočega sistema: pod 3 minute, samo Docker in izpolnjena datoteka z
+okoljem (FR-040, SC-007 — izmerjeno v [`docs/acceptance-001.md`](docs/acceptance-001.md)).
+Podroben postopek, kontrolni seznam po funkcionalnih zahtevah in reševanje težav je v
 [`specs/001-app-shell-dashboard/quickstart.md`](specs/001-app-shell-dashboard/quickstart.md).
 
 ## Razvojni način

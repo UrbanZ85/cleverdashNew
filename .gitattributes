@@ -1,0 +1,5 @@
+# Repozitorij se ureja na Windowsu, produkcija pa teče na Linuxu (VPS). Brez tega bi git
+# lupinskim skriptam ob checkoutu na Windowsu vsilil CRLF, ta pa na strežniku pomeni
+# "/usr/bin/env: 'bash\r': No such file or directory" — okvara, ki je iz vsebine skripte ni
+# videti. Namenoma NI `* text=auto`: to bi ponovno normaliziralo ves obstoječi repozitorij.
+*.sh text eol=lf
