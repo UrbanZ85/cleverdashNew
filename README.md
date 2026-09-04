@@ -230,6 +230,49 @@ Med obiskovalcem in API-jem je tako natanko en proxy, kar se ujema z
 `app.set('trust proxy', 1)` v [`apps/api/src/main.ts`](apps/api/src/main.ts) — od tega je
 odvisno, da omejevanje ugibanja gesel pri deljenju datotek loči obiskovalce med sabo.
 
+### Keycloak na produkcijskem VPS-u
+
+Prijava gre prek Keycloaka, ki na VPS-u že teče za `kc.planego.eu` (004). CleverDash v njem
+potrebuje **svoj realm** `cleverdash`, v njem zaupanja vrednega (confidential) odjemalca
+`cleverdash-api` in vlogi `cleverdash-admin` / `cleverdash-user`. Lasten realm zato, ker so v
+njem uporabniki in vloge te aplikacije — njihovo urejanje ne sme imeti nobenega učinka na
+planego v istem Keycloaku.
+
+Konfiguracija je verzionirana kot **idempotentna skripta**
+[`scripts/keycloak-prod-setup.sh`](scripts/keycloak-prod-setup.sh), iz istega razloga kot
+Caddyjev blok: `redirect_uri`, PKCE in imeni vlog so pogodba s kodo
+([`modules/auth/router.ts`](apps/api/src/modules/auth/router.ts),
+[`platform/keycloak/role-mapping.ts`](apps/api/src/platform/keycloak/role-mapping.ts)) in
+naklikani v admin konzoli bi bili edini nezapisani del namestitve. Ponovni zagon popravi odmik
+(npr. po zamenjavi domene), ne podvoji ničesar.
+
+```bash
+# geslo skrbnika Keycloaka in geslo prvega uporabnika; brez njiju skripta vpraša (vnos skrit)
+KC_ADMIN_PASSWORD=... CLEVERDASH_USER_PASSWORD=... ./scripts/keycloak-prod-setup.sh
+```
+
+Skripta na koncu izpiše blok `KEYCLOAK_*` s skrivnostjo odjemalca za
+`../envs/.env.cleverdashNew`. **Skrivnost ostane samo tam** (člen IV) — v repozitorij ne gre
+niti kot primer. Prvi uporabnik dobi vlogo `cleverdash-admin`, ker ob prvi prijavi
+administratorja steče prevzem obstoječih enouporabniških podatkov
+([`legacy-userless-migration.service.ts`](apps/api/src/platform/migration/legacy-userless-migration.service.ts)).
+
+Kar je vredno vedeti, preden se to spreminja:
+
+- **Naslov mora biti dobesedno enak na obeh straneh.** Iz `PUBLIC_BASE_URL` api sestavi
+  `redirect_uri` in `post_logout_redirect_uri`, Keycloak pa ju primerja z zapisanima brez
+  vsakršne strpnosti (razlikuje tudi poševnico na koncu). Neujemanje se ne pokaže v
+  CleverDashu, ampak kot Keycloakova stran »Invalid parameter: redirect_uri«, torej še
+  preden uporabnik vidi aplikacijo. Zato je v odjemalcu točno ena pot in nikjer `*`.
+- **Vlogi morata biti realm vlogi, ne vlogi odjemalca.** Api ju bere iz `realm_access.roles`;
+  vloga odjemalca pristane v `resource_access`, kjer je koda ne vidi — oseba se uspešno
+  prijavi pri Keycloaku in jo CleverDash vseeno zavrne z »nimaš dostopa«.
+- **Seja živi 30 dni** (`ssoSessionIdleTimeout`/`ssoSessionMaxLifespan`), da jutranji obisk in
+  zagon Android aplikacije nista vsakič nova prijava z geslom. Varnostno to ni popuščanje:
+  vsaka zahteva gre skozi introspekcijo pri Keycloaku, ki je fail-CLOSED, zato odvzem vloge
+  ali seje učinkuje v `KEYCLOAK_INTROSPECTION_CACHE_SECONDS` (5 s) — ne šele ob izteku seje.
+  Krajše je ena vrstica, zapisana v komentarju skripte.
+
 ## Razvojni način
 
 ```bash

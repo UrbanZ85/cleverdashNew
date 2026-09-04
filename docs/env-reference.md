@@ -111,6 +111,14 @@ Keycloakov lasten (relay), ne lokalno podpisan. Spodnja tabela je trenutno velja
 | `KEYCLOAK_USER_ROLE` | `cleverdash-user` | brez te ALI admin vloge/skupine je oseba zavrnjena — sam Keycloak račun ne zadošča (FR-007/FR-008) |
 | `KEYCLOAK_INTROSPECTION_CACHE_SECONDS` | `5` | kratek TTL za živo preverjanje seje (FR-006/FR-007) — razrešitev napetosti s členom VIII, glej specs/004-keycloak-sso-multiuser/research.md §4 |
 
+Prve štiri vrednosti za produkcijo ne izpolnjuj na roko: realm, odjemalca in vlogi na
+Keycloaku za `kc.planego.eu` postavi `scripts/keycloak-prod-setup.sh` in jih na koncu izpiše
+(skripta je idempotentna, ponovni zagon popravi odmik). Utemeljitev vsake nastavitve
+odjemalca je v komentarjih te skripte, povzetek pa v README → »Keycloak na produkcijskem
+VPS-u«. `PUBLIC_BASE_URL` mora biti pri tem **dobesedno** enak tistemu, s katerim je bil
+odjemalec ustvarjen — iz njega api sestavi `redirect_uri`, ki ga Keycloak primerja brez
+strpnosti (šteje tudi poševnica na koncu).
+
 ### Brskalnik
 
 Vse novo. Stari sistem je te vrednosti imel trdo zapisane v `working-hours.ts`.
