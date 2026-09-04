@@ -171,28 +171,36 @@ okoljem (FR-040, SC-007 — izmerjeno v [`docs/acceptance-001.md`](docs/acceptan
 Podroben postopek, kontrolni seznam po funkcionalnih zahtevah in reševanje težav je v
 [`specs/001-app-shell-dashboard/quickstart.md`](specs/001-app-shell-dashboard/quickstart.md).
 
-### Za skupnim Caddyjem (produkcijski VPS)
+### Skupni Caddy na produkcijskem VPS-u
 
-Na produkcijskem VPS-u vrata 80/443 že drži skupni Caddy (`/opt/caddy`), ki streže tudi
-`kc.planego.eu` in `planego-*`. Ta sklad zato **ne objavlja vrat**, ampak se s storitvijo
-`caddy` pridruži zunanjemu omrežju `web`, kjer ga skupni Caddy doseže po imenu vsebnika.
-V njegov Caddyfile gre en sam blok:
+Ta sklad **nima svojega Caddyja**. Na VPS-u vrata 80/443 že drži skupni Caddy
+(`/opt/caddy/Caddyfile`, vsebnik `caddy`), ki streže tudi `kc.planego.eu` in `planego-*`,
+in ta prevzame tudi CleverDash: `/api/*` proxa na vsebnik `cleverdash-api-1`, SPA pa streže
+iz datotek, ki jih tja odloži storitev `web`.
 
-```caddyfile
-cleverdash.zuusi.com {
-	encode zstd gzip
-	reverse_proxy cleverdash-caddy-1:80
-}
+Blok, ki mora biti v njegovem Caddyfilu, je verzioniran v
+[`infra/cleverdash.caddyfile`](infra/cleverdash.caddyfile) — prilepi ga in osveži:
+
+```bash
+docker exec caddy caddy reload --config /etc/caddy/Caddyfile
 ```
 
-Nato `docker exec <ime-skupnega-caddyja> caddy reload --config /etc/caddy/Caddyfile`.
-TLS naredi skupni Caddy; ta sklad posluša samo na `:80` znotraj omrežja, ker je
-`CADDY_SITE_ADDRESS` prazen. Notranji Caddy pravi naslov obiskovalca prepusti naprej
-nedotaknjen (`header_up X-Forwarded-For` v [`infra/Caddyfile`](infra/Caddyfile)) — brez
-tega bi ga zavrgel in `trust proxy` v API-ju bi vsem pripisal isti IP.
+Dve stvari, ki ju je vredno razumeti, preden se to spreminja:
 
-Če postavljaš brez proxyja pred sabo, dodaj `-f infra/docker-compose.standalone.yml`
-(vrne vrata 80/443) in nastavi `CADDY_SITE_ADDRESS` na isto vrednost kot `PUBLIC_BASE_URL`.
+- **Zakaj build pristane v Caddyjevem nosilcu.** Skupni Caddy ima montirano samo
+  `/opt/caddy/Caddyfile` (posamezno datoteko) ter nosilca `caddy_caddy_data` in
+  `caddy_caddy_config`. Novega nosilca z datotekami SPA-ja mu ni mogoče dodati brez tega, da
+  vsebnik postavimo na novo — s čimer bi za nekaj časa padla tudi `kc.planego.eu` in
+  planego. Zato storitev `web` piše v `caddy_caddy_data`, ki ga Caddy že ima na `/data`, v
+  podmapo `cleverdash-www/`. Certifikati živijo pod `/data/caddy/` in se jih to ne dotakne.
+- **Zakaj v bloku ni `encode zstd gzip`,** kot ga imajo ostali bloki. Stiskanje je omejeno
+  na stisljive vrste vsebine; blanketno stiskanje bi porabljalo procesor na že stisnjenih
+  500 MB datotekah in izgubilo `Content-Length`, brez katerega prejemnik ne vidi napredka in
+  ne more nadaljevati prekinjenega prenosa.
+
+Med obiskovalcem in API-jem je tako natanko en proxy, kar se ujema z
+`app.set('trust proxy', 1)` v [`apps/api/src/main.ts`](apps/api/src/main.ts) — od tega je
+odvisno, da omejevanje ugibanja gesel pri deljenju datotek loči obiskovalce med sabo.
 
 ## Razvojni način
 

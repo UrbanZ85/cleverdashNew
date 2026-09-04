@@ -40,6 +40,12 @@ services:
       dockerfile: infra/api.Dockerfile
     restart: unless-stopped
     env_file: *env-file
+    # `web` je omrežje skupnega Caddyja (/opt/caddy). Brez njega ga ta ne more doseči po
+    # imenu `cleverdash-api-1`. `default` je treba navesti izrecno: takoj ko storitev
+    # našteje omrežja, se privzetemu ne pridruži več sama, Mongo pa je na njem.
+    networks:
+      - default
+      - web
     environment:
       TZ: Europe/Ljubljana
       # Pot do brskalnika je lastnost SLIKE, ne operaterjevega računalnika. `env_file` povozi
@@ -77,9 +83,16 @@ services:
       timeout: 5s
       retries: 5
 
-  # Ni dolgo živečega "web" strežnika: Caddy sam streže statični build (glej Caddyfile,
-  # `root * /srv/www`). Ta storitev samo zgradi Angular SPA in kopira izhod v deljen
-  # volumen, nato se izteče — `restart: "no"` je namerno.
+  # Ni dolgo živečega "web" strežnika: statični build streže skupni Caddy (/opt/caddy).
+  # Ta storitev samo zgradi Angular SPA, kopira izhod in se izteče — `restart: "no"` je
+  # namerno.
+  #
+  # Zakaj piše v Caddyjev nosilec `caddy_caddy_data`: skupni Caddy ima iz tega sklada
+  # montirano SAMO to (in /config), Caddyfile pa kot posamezno datoteko. Nov nosilec bi
+  # mu lahko dodali le tako, da vsebnik postavimo na novo, s čimer bi za nekaj časa padla
+  # tudi kc.planego.eu in planego-*. Pisanje v obstoječi nosilec je zato edina pot, ki se
+  # njegovega vsebnika ne dotakne. Zapisujemo izključno v podmapo `cleverdash-www/`;
+  # Caddyjevi certifikati živijo pod `/data/caddy/` in se jih to ne dotakne.
   web:
     build:
       context: ..
@@ -88,34 +101,7 @@ services:
     environment:
       TZ: Europe/Ljubljana
     volumes:
-      - web-dist:/out
-
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    env_file: *env-file
-    # Brez `ports:`. Na tem VPS-u 80/443 že drži skupni Caddy iz /opt/caddy (pred njim sta
-    # kc.planego.eu in planego-*), zato ta Caddy ni izpostavljen gostitelju — skupni ga
-    # doseže po zunanjem omrežju `web` pod imenom `cleverdash-caddy-1`. Za samostojno
-    # postavitev, ki sama drži 80/443, dodaj še `-f infra/docker-compose.standalone.yml`.
-    networks:
-      - default
-      - web
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - web-dist:/srv/www:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      api:
-        condition: service_started
-      web:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "caddy", "version"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+      - caddy_caddy_data:/out
 
 networks:
   # Skupno omrežje, na katerem že živijo planego-* in skupni Caddy. Ustvarjeno je zunaj
@@ -128,6 +114,8 @@ volumes:
   mongo-data:
   screenshots:
   shared-files:
-  web-dist:
-  caddy-data:
-  caddy-config:
+  # Nosilec SKUPNEGA Caddyja (projekt `caddy`, glej `docker volume ls`), ki ga ta že ima
+  # montiran na /data. Sem `web` odloži build; skupni Caddy ga vidi kot
+  # /data/cleverdash-www. `external`, ker ni naš — ob `down -v` ga ne smemo pobrisati.
+  caddy_caddy_data:
+    external: true

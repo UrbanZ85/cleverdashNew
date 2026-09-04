@@ -1,0 +1,46 @@
+# Blok za Caddyfile SKUPNEGA Caddyja na produkcijskem VPS-u (/opt/caddy/Caddyfile).
+#
+# Ta datoteka nikamor ni montirana — je vir resnice za to, kar mora biti prilepljeno v
+# konfiguracijo skupnega Caddyja. Obstaja zato, da spodnja pravila ostanejo verzionirana
+# skupaj s kodo, od katere so odvisna (Angularjev router, način stiskanja pri deljenju
+# datotek). Po vsaki spremembi tega bloka na strežniku:
+#
+#   nano /opt/caddy/Caddyfile
+#   docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# Člen II ustave: enotni izvor. `/api/*` gre na Node, vse ostalo na SPA build s fallbackom
+# na index.html. Druge poddomene za API ni in je ne sme biti.
+#
+# Namenoma BREZ `header_up X-Forwarded-For`: med obiskovalcem in API-jem je natanko en
+# proxy, kar se ujema z `app.set('trust proxy', 1)` v apps/api/src/main.ts. Caddy sam vpiše
+# pravi naslov obiskovalca, od katerega je odvisno omejevanje ugibanja gesel pri deljenju
+# datotek (modules/file-sharing/services/throttle.service.ts). Če bi kdaj pred ta Caddy
+# postavil še enega, to preveri znova — takrat naslov obiskovalca izgine.
+cleverdash.zuusi.com {
+	handle /api/* {
+		reverse_proxy cleverdash-api-1:3000
+	}
+
+	handle {
+		# Sem storitev `web` iz infra/docker-compose.yml odloži Angularjev build. Pot je
+		# znotraj Caddyjevega nosilca `caddy_caddy_data`, ki je v tem vsebniku montiran
+		# na /data — zato je vidna brez kakršne koli spremembe vsebnika.
+		root * /data/cleverdash-www
+		try_files {path} /index.html
+		file_server
+	}
+
+	# 009: stiskaj SAMO stisljive vrste vsebine. Brez tega ujemanja bi Caddy poskusil stisniti
+	# tudi 500 MB posnetek ali arhiv, ki je že stisnjen — poraba procesorja brez učinka. Hkrati
+	# se s tem na prenosu ohrani `Content-Length`, od katerega sta odvisna prikaz napredka pri
+	# prejemniku in nadaljevanje prekinjenega prenosa (`Range`). Zato tu NE sme biti golega
+	# `encode zstd gzip`, kakršnega imajo ostali bloki v /opt/caddy/Caddyfile.
+	encode gzip {
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type image/svg+xml*
+		}
+	}
+}

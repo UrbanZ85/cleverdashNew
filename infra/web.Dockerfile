@@ -11,7 +11,9 @@ COPY packages/contracts packages/contracts
 RUN npm run build --workspace apps/web
 
 # Ni dolgo živečega strežnika (glej docker-compose.yml) — samo skopira build v /out in
-# se izteče. Caddy streže datoteke neposredno iz deljenega volumna.
+# se izteče. Datoteke streže SKUPNI Caddy (/opt/caddy) neposredno iz nosilca, ki je tam
+# montiran na /data; naša podmapa je zato /data/cleverdash-www. Podmapa, ne koren /out:
+# nosilec je Caddyjev in poleg tega hrani njegove certifikate pod /data/caddy/.
 #
 # POMEMBNO: Angular 20-ov builder `@angular/build:application` postavi statične datoteke
 # v PODMAPO `browser/` znotraj outputPath (`www/browser/index.html`, ne `www/index.html`),
@@ -20,4 +22,4 @@ RUN npm run build --workspace apps/web
 # mestu ni, in `/` bi bil prazen, vsaka druga pot pa 404.
 FROM busybox:stable
 COPY --from=build /repo/apps/web/www/browser /src
-CMD ["sh", "-c", "cp -r /src/. /out/ && echo 'Web build kopiran v /out'"]
+CMD ["sh", "-c", "rm -rf /out/cleverdash-www && mkdir -p /out/cleverdash-www && cp -r /src/. /out/cleverdash-www/ && echo 'Web build kopiran v /out/cleverdash-www'"]

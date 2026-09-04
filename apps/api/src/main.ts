@@ -51,7 +51,7 @@ export async function createApp() {
 
   await connectMongo(env, logger);
 
-  // `cors()` se namenoma NE namesti — člen II. Enotni izvor uveljavlja Caddy (infra/Caddyfile).
+  // `cors()` se namenoma NE namesti — člen II. Enotni izvor uveljavlja skupni Caddy (infra/cleverdash.caddyfile).
 
   // Vrstni red je pomemben: najprej /health (brez avtentikacije), nato oba vratarja
   // (API ključ, dostopni žeton — Keycloakov relay, preverjen v živo pri Keycloaku, glej
