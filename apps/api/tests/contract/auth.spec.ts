@@ -5,6 +5,7 @@ import { startTestDb, stopTestDb, clearTestDb } from '../setup/mongo-memory.js';
 import { setTestEnv } from '../setup/test-env.js';
 import { fakeKeycloakForTests as fakeKeycloak } from '../setup/keycloak-global.js';
 import { loginAsTestUser } from '../setup/login-as-test-user.js';
+import { KeycloakSessionModel } from '../../src/modules/auth/models/keycloak-session.model.js';
 
 // Pogodbeni test proti /auth/* iz contracts/openapi.yaml (004) — nadomesti prejšnji tok z
 // e-pošto/geslom v celoti. Keycloak sam je ponarejen (research.md §3), tok skozi kodo je pravi.
@@ -105,6 +106,56 @@ describe('POST /auth/refresh', () => {
     const res = await request(app).post('/api/v1/auth/refresh').send();
     expect(res.status).toBe(401);
   });
+
+  it('ko Keycloak obnovo ZAVRNE, se seja prekliče in piškotek pobriše', async () => {
+    // Prej je ta primer vrnil samo 401, sejo pustil `active` in piškotek v brskalniku — mrtva
+    // seja je ostala in vsak naslednji zagon strani je ponovil isti obsojen klic proti
+    // Keycloaku. To je bila polovica vzroka za neskončno zanko obnova/odjava.
+    const { app } = await createApp();
+    const { agent } = await loginAsTestUser(app, fakeKeycloak, {
+      sub: 'kc-sub-refresh-rejected',
+      email: 'refresh-rejected@example.com',
+      name: 'Zavrnjena obnova',
+      roles: ['cleverdash-user'],
+    });
+
+    fakeKeycloak.invalidateRefreshTokens();
+    const rejected = await agent.post('/api/v1/auth/refresh').send();
+    expect(rejected.status).toBe(401);
+    // Piškotek je pobrisan (`Max-Age=0` / pretekel `Expires`) — brskalnik ga ne bo več pošiljal.
+    expect(String(rejected.headers['set-cookie'])).toMatch(/cd_session=/);
+
+    // In seja je v bazi res preklicana: naslednja obnova pade že na seji, brez klica Keycloaka.
+    const session = await KeycloakSessionModel.findOne({});
+    expect(session?.state).toBe('revoked');
+  });
+
+  it('ko Keycloaka NI mogoče doseči, vrne 503 in seje NE prekliče', async () => {
+    // Nasprotni izid od zavrnitve, in prej je bil isti: 401 je pomenil, da vsak kratek izpad
+    // Keycloaka odjavi vse prijavljene. Odjemalec (auth.service.ts) 401/403 bere kot "seje ni
+    // več", vse drugo pa kot "poskusi znova" — zato mora biti tu 5xx.
+    const { app } = await createApp();
+    const { agent } = await loginAsTestUser(app, fakeKeycloak, {
+      sub: 'kc-sub-refresh-outage',
+      email: 'refresh-outage@example.com',
+      name: 'Izpad Keycloaka',
+      roles: ['cleverdash-user'],
+    });
+
+    fakeKeycloak.setTokenEndpointFailure(503);
+    try {
+      const res = await agent.post('/api/v1/auth/refresh').send();
+      expect(res.status).toBe(503);
+    } finally {
+      fakeKeycloak.setTokenEndpointFailure(null);
+    }
+
+    const session = await KeycloakSessionModel.findOne({});
+    expect(session?.state).toBe('active');
+    // Po vrnitvi Keycloaka seja živi naprej — brez nove prijave.
+    const recovered = await agent.post('/api/v1/auth/refresh').send();
+    expect(recovered.status).toBe(200);
+  });
 });
 
 describe('POST /auth/logout', () => {
@@ -126,7 +177,28 @@ describe('POST /auth/logout', () => {
     expect(refreshAfterLogout.status).toBe(401);
   });
 
-  it('brez avtentikacije vrne 401', async () => {
+  it('uspe tudi BREZ dostopnega žetona, samo s sejnim piškotkom', async () => {
+    // Bistvo popravka. Odjava je potrebna natanko takrat, ko žetona ni več — s
+    // `requireScopes()` na tej poti pa je bila takrat nemogoča (401 "Zahtevana je
+    // avtentikacija."), in ker `/auth/logout` ni bil izvzet iz prestreznika na odjemalcu, je
+    // tisti 401 sprožil novo obnovo in novo odjavo — v neskončnost.
+    const { app } = await createApp();
+    const { agent } = await loginAsTestUser(app, fakeKeycloak, {
+      sub: 'kc-sub-logout-no-token',
+      email: 'logout-no-token@example.com',
+      name: 'Odjava brez žetona',
+      roles: ['cleverdash-user'],
+    });
+
+    const res = await agent.post('/api/v1/auth/logout').send(); // brez glave Authorization
+    expect(res.status).toBe(200);
+    expect(res.body.endSessionUrl).toContain('/protocol/openid-connect/logout');
+
+    const session = await KeycloakSessionModel.findOne({});
+    expect(session?.state).toBe('revoked');
+  });
+
+  it('brez seje (piškotka) vrne 401', async () => {
     const { app } = await createApp();
     const res = await request(app).post('/api/v1/auth/logout');
     expect(res.status).toBe(401);

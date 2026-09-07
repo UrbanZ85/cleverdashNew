@@ -37,6 +37,9 @@ export class AuthService {
 
   private refreshPromise: Promise<RefreshOutcome> | null = null;
   private stopProactive?: () => void;
+  /** Zapora proti ponovnemu vstopu v `logout()` — glej opombo tam. Se namenoma NIKOLI ne
+   * sprošča: odjava je enkraten, končen dogodek, ki se izteče v odhod s strani. */
+  private loggingOut = false;
 
   /** Preusmeri BRSKALNIK (ne XHR) na Keycloakovo prijavo (GET /auth/login). Klic se nikoli
    * ne vrne — stran se zapusti. */
@@ -116,12 +119,29 @@ export class AuthService {
    * brez tega bi naslednji obisk dobil tiho ponovno prijavo prek še vedno veljavne Keycloak
    * seje. Klic se (ob uspehu) nikoli ne vrne — stran se zapusti. */
   async logout(): Promise<void> {
+    // Ob izteku seje 401 dobi VEČ sočasnih zahtev (na nadzorni plošči več ploščic hkrati) in
+    // vsaka od njih je nato posebej klicala `logout()`. Obnovo si klicatelji delijo
+    // (`refreshSession`), odjave pa niso — ven je torej šlo toliko odjav, kolikor je bilo
+    // zahtev v zraku. Prva zmaga, ostale odpadejo.
+    if (this.loggingOut) return;
+    this.loggingOut = true;
+
     let endSessionUrl: string | null = null;
     try {
       const res = await firstValueFrom(
         this.http.post<LogoutResponse>(apiUrl('/auth/logout'), {}, { withCredentials: true }),
       );
       endSessionUrl = res.endSessionUrl;
+    } catch {
+      // Neuspel klic NE sme ustaviti odjave. Prej tu ni bilo `catch`: izjema iz
+      // `firstValueFrom` je šla skozi `finally` naprej, vrstica s preusmeritvijo se nikoli ni
+      // izvedla — in brskalnik je ostal na strani z zbrisanim žetonom, torej v stanju, v
+      // katerem vsaka nadaljnja zahteva sproži novo obnovo in novo odjavo. To je bil drugi
+      // od dveh pogojev za zanko, opisano v auth.interceptor.ts.
+      //
+      // Kam gremo brez `endSessionUrl`: na `/auth/login`. Odjava pri Keycloaku takrat ni
+      // zagotovljena, a je lokalna seja že počiščena in oseba pristane na prijavi — kar je
+      // edino uporabno mesto, ki ga tu še lahko dosežemo.
     } finally {
       this.stopProactive?.();
       this.stopProactive = undefined;

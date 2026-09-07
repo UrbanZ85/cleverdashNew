@@ -26,6 +26,17 @@ describe('auth.interceptor — izjema za javne poti (009)', () => {
     expect(list).toContain('/auth/login');
   });
 
+  it('`/auth/logout` je izvzet — sicer je zanka odjava→401→obnova→odjava neizogibna', () => {
+    // Do odjave pride natanko takrat, ko je seja že mrtva. Brez te izjeme je 401 z odjave
+    // padel v `catchError`, sprožil obnovo, ta je vrnila `session-invalid`, to je sprožilo
+    // novo odjavo — približno trideset zahtev na sekundo na odprt zavihek, dokler ga ni
+    // nekdo zaprl. Odjava se avtenticira s sejnim piškotkom, zato glave `Authorization`
+    // (drugi učinek te izjeme) na tej poti tudi ne potrebuje.
+    const source = readFileSync(INTERCEPTOR, 'utf8');
+    const list = /const AUTH_EXEMPT = \[([^\]]*)\]/s.exec(source)?.[1] ?? '';
+    expect(list).toContain('/auth/logout');
+  });
+
   it('izjema velja tudi za obravnavo 401 — javna pot ne sme sprožiti odjave', () => {
     // 401 z javne poti pomeni "manjka dovolilnica", ne "seja je potekla".
     const source = readFileSync(INTERCEPTOR, 'utf8');

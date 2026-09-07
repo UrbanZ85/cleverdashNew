@@ -16,7 +16,7 @@ import {
 import { KeycloakSessionModel } from './models/keycloak-session.model.js';
 import { requireScopes } from '../../platform/auth/scopes.js';
 import { auditLogin, auditLoginFailed, auditLogout } from './auth.audit.js';
-import { unauthorized, notFound } from '../../platform/errors/problem.js';
+import { unauthorized, notFound, serviceUnavailable } from '../../platform/errors/problem.js';
 import { loadEnv } from '../../platform/config/env.js';
 import { UserModel } from './models/user.model.js';
 
@@ -30,6 +30,20 @@ export const authRouter = Router();
 const SESSION_COOKIE = 'cd_session';
 const SESSION_COOKIE_PATH = '/api/v1/auth';
 const OIDC_FLOW_COOKIE = 'cd_oidc_flow';
+
+/**
+ * Loči "Keycloak je obnovo ZAVRNIL" od "Keycloaka ni bilo mogoče doseči". Samo prvo pomeni,
+ * da seje ni več, in samo ob prvem se sme seja preklicati (`/auth/refresh` spodaj).
+ *
+ * Zavrnitev je odgovor iz Keycloaka s telesom OAuth napake in stanjem 4xx — v praksi
+ * `invalid_grant` / "Token is not active". Vse drugo (zavrnjena povezava, časovna omejitev,
+ * 5xx, nepričakovan izjemek v naši kodi) je ŠTETO ZA DOSEGLJIVOST in ne za veljavnost: v dvomu
+ * seja OSTANE. Napačna smer te presoje je bila draga — vsak kratek izpad Keycloaka je prej
+ * odjavil vse prijavljene.
+ */
+function isRefreshRejected(err: unknown): boolean {
+  return err instanceof client.ResponseBodyError && err.status >= 400 && err.status < 500;
+}
 
 interface OidcFlowPayload {
   codeVerifier: string;
@@ -298,10 +312,27 @@ authRouter.post('/auth/refresh', async (req, res, next) => {
     try {
       tokens = await client.refreshTokenGrant(config, currentRefreshToken);
     } catch (err) {
-      // FR-005/FR-007: Keycloak je zavrnil/nedosegljiv — seja ni več veljavna, brez padca
-      // nazaj na staro stanje.
-      req.log.warn({ err, sessionId }, 'Obnovitev seje pri Keycloaku ni uspela');
-      next(unauthorized('Obnovitev seje ni uspela.'));
+      // FR-005/FR-007. Prej sta bili tu DVE zelo različni napaki ena sama, in oba izida sta
+      // bila napačna:
+      //
+      //  1. Keycloak obnovo ZAVRNE (`invalid_grant`: obnovitveni žeton je potekel, bil
+      //     preklican ali porabljen). Seje res ni več — ampak stara koda je vrnila samo 401 in
+      //     sejo pustila `active` v bazi, piškotek pa v brskalniku. Mrtva seja je zato ostala
+      //     in vsaka osvežitev strani je znova sprožila isti obsojen klic proti Keycloaku.
+      //     Zdaj se seja prekliče in piškotek pobriše TU, ob prvi zavrnitvi.
+      //  2. Keycloak NI DOSEGLJIV (omrežje, ponoven zagon, 5xx). To o veljavnosti seje ne
+      //     pove nič — 401 je pomenil, da je vsaka minuta izpada Keycloaka uporabnika odjavila
+      //     in vrgla na prijavo. Zdaj gre ven 503: odjemalec (auth.service.ts
+      //     `performRefresh`) 401/403 bere kot "seje ni več", vse drugo pa kot "poskusi znova".
+      if (isRefreshRejected(err)) {
+        req.log.warn({ err, sessionId }, 'Keycloak je zavrnil obnovitev seje — seja se preklicuje');
+        await revokeSession(sessionId);
+        res.clearCookie(SESSION_COOKIE, { path: SESSION_COOKIE_PATH });
+        next(unauthorized('Obnovitev seje ni uspela.'));
+        return;
+      }
+      req.log.warn({ err, sessionId }, 'Keycloaka ni bilo mogoče doseči za obnovitev seje');
+      next(serviceUnavailable('Ponudnika prijave trenutno ni mogoče doseči. Poskusi znova.'));
       return;
     }
 
@@ -318,16 +349,38 @@ authRouter.post('/auth/refresh', async (req, res, next) => {
   }
 });
 
-authRouter.post('/auth/logout', requireScopes(), async (req, res, next) => {
+// Odjava se avtenticira s SEJNIM PIŠKOTKOM in ne z dostopnim žetonom — tu je prej stal
+// `requireScopes()`, kar je pomenilo, da odjava ne more uspeti natanko v edinem trenutku, ko
+// jo odjemalec potrebuje: ko žetona ni več. `performRefresh` (auth.service.ts) ga ob izidu
+// `session-invalid` pobriše, PREDEN pokliče `logout()`, zato je vsak takšen poskus dobil
+// 401 "Zahtevana je avtentikacija.". Ker `/auth/logout` takrat tudi ni bil izvzet iz
+// prestreznika (auth.interceptor.ts, `AUTH_EXEMPT`), je tisti 401 sprožil novo obnovo, ta
+// novo odjavo, in tako naprej — neskončna zanka, ki je API-ju pošiljala približno trideset
+// zahtev na sekundo na odprt zavihek, dokler ga ni nekdo zaprl.
+//
+// Piškotek je za to pot povsem zadostna dovolilnica: `readSessionCookieValue` preveri podpis,
+// in edino, kar klicatelj s tem doseže, je preklic LASTNE seje.
+authRouter.post('/auth/logout', async (req, res, next) => {
   try {
     const env = loadEnv();
     const cookieValue = req.cookies?.[SESSION_COOKIE] as string | undefined;
     const sessionId = readSessionCookieValue(env, cookieValue);
-
-    if (sessionId) {
-      await revokeSession(sessionId);
-      auditLogout(req.log, { userId: req.auth!.subjectId, sessionId });
+    if (!sessionId) {
+      // Brez seje ni česa odjaviti. 401 ostaja (pogodba iz contracts/openapi.yaml), a je za
+      // odjemalca zdaj slepa ulica in ne sprožilec: `logout()` se ob napaki vseeno preusmeri
+      // na Keycloakovo enotno odjavo.
+      next(unauthorized('Seja manjka ali je neveljavna.'));
+      return;
     }
+
+    // Uporabnik za dnevnik pride iz SEJE, ne iz `req.auth` — ta je ob potekelem žetonu prazen,
+    // torej prav v primeru, ki mu je odjava namenjena.
+    const session = await getActiveSession(sessionId);
+    await revokeSession(sessionId);
+    auditLogout(req.log, {
+      userId: req.auth?.subjectId ?? (session ? String(session.userId) : null),
+      sessionId,
+    });
     res.clearCookie(SESSION_COOKIE, { path: SESSION_COOKIE_PATH });
 
     const config = await getKeycloakConfig(env);

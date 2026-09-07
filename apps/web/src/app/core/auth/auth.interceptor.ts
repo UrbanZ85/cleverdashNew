@@ -20,7 +20,19 @@ import { needsRefreshNow } from './token-lifetime.js';
 //
 // Izjema je tudi za `catchError` spodaj: 401 z javne poti pomeni "manjka dovolilnica" in ne
 // "seja je potekla", zato ne sme sprožiti tihe obnove žetona ne odjave.
-const AUTH_EXEMPT = ['/auth/login', '/auth/refresh', '/api/v1/share/'];
+//
+// `/auth/logout` je na seznamu iz OBEH razlogov, in njegova odsotnost je bila prava okvara:
+//
+//  1. Glave `Authorization` tam ni treba — odjava se avtenticira s sejnim piškotkom
+//     (modules/auth/router.ts). Potekel žeton v glavi bi jo `accessTokenGuard` celo zavrnil,
+//     še preden bi zahteva dosegla usmerjevalnik.
+//  2. Njena 401 NE sme sprožiti obnove. Do odjave namreč pride natanko takrat, ko je seja že
+//     mrtva: 401 z odjave je torej šel v `catchError` -> obnova -> `session-invalid` ->
+//     `logout()` -> nova 401 -> ... Zanka se je vrtela približno desetkrat na sekundo,
+//     dokler je bil zavihek odprt, in je bila v dnevniku strežnika videti kot neskončen niz
+//     "Zahtevana je avtentikacija." na `/api/v1/auth/logout`, prepleten z "Obnovitev seje ni
+//     uspela." na `/api/v1/auth/refresh`.
+const AUTH_EXEMPT = ['/auth/login', '/auth/refresh', '/auth/logout', '/api/v1/share/'];
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // OBE odvisnosti se morata vzeti TUKAJ, v telesu interceptorja. Angular postavi

@@ -120,8 +120,23 @@ paths:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
           description: |
-            Seja neveljavna, iztekla ali preklicana pri Keycloaku (FR-005/FR-006) — vključno
-            s primerom, ko je Keycloak med preverjanjem nedosegljiv (FR-007).
+            Seja neveljavna, iztekla ali PRI KEYCLOAKU ZAVRNJENA (FR-005/FR-006): odgovor
+            `invalid_grant` na obnovitveni žeton. V tem primeru strežnik sejo tudi PREKLIČE in
+            pobriše sejni piškotek — brez tega mrtva seja ostane v bazi in vsak naslednji zagon
+            strani ponovi isti obsojen klic proti Keycloaku.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: |
+            Keycloak je NEDOSEGLJIV (omrežje, ponoven zagon, 5xx). Dostop je zavrnjen — nov
+            dostopni žeton se ne izda, in `accessTokenGuard` med izpadom zavrne tudi vse druge
+            poti, zato je FR-007 izpolnjen. Seja pa se NE prekliče: nedosegljiv Keycloak o
+            veljavnosti seje ne pove ničesar. Ločitev od 401 je namenjena odjemalcu
+            (`RefreshOutcome` v web/core/auth/auth.service.ts): 401/403 bere kot "seje ni več"
+            in se odjavi, vse drugo pa kot "počakaj in poskusi znova". Dokler je bil tudi ta
+            primer 401, je vsak kratkotrajen izpad Keycloaka vse prijavljene vrgel na prijavo.
           content:
             application/problem+json:
               schema:
@@ -136,6 +151,14 @@ paths:
         (RP-Initiated Logout, research.md §10) — SPA MORA brskalnik preusmeriti nanj, da se
         dejansko konča tudi Keycloakova seja (FR-004); brez tega naslednji obisk dobi tiho
         ponovno prijavo prek še vedno veljavne Keycloak seje.
+
+        Dovolilnica za to pot je SEJNI PIŠKOTEK in ne dostopni žeton (zato `security: []`).
+        Razlog je nujen: odjava je potrebna natanko takrat, ko žetona ni več — odjemalec ga ob
+        neveljavni seji pobriše, PREDEN pokliče to pot. Dokler je bil tu zahtevan `bearerAuth`,
+        odjava v tem, edinem pomembnem primeru ni mogla uspeti, in njena 401 je pri odjemalcu
+        sprožila novo obnovo in novo odjavo — neskončno zanko. Piškotek je zadostna
+        dovolilnica, ker je podpisan in ker klicatelj s tem prekliče izključno LASTNO sejo.
+      security: []
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
@@ -150,6 +173,15 @@ paths:
                   endSessionUrl:
                     type: string
                     format: uri
+        '401':
+          description: |
+            Sejnega piškotka ni ali je neveljaven — ni česa odjaviti. Za odjemalca je to slepa
+            ulica in ne sprožilec: `logout()` se ob napaki vseeno preusmeri na Keycloakovo
+            enotno odjavo (oziroma na prijavo).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
 
   /auth/me:
     get:

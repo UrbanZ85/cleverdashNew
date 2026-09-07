@@ -44,6 +44,15 @@ export interface FakeKeycloak {
    * skrbnika, ki v Keycloaku doda/odvzame vlogo MED aktivno sejo. Naslednja introspekcija
    * ISTEGA žetona (brez nove prijave) mora odražati novo stanje (FR-011/FR-012). */
   setRolesForSub(sub: string, roles: string[]): void;
+  /** Pozabi vse izdane obnovitvene žetone — naslednja obnova dobi `400 invalid_grant`, kar je
+   * natanko to, kar pravi Keycloak odgovori s "Token is not active" (potekla ali odstranjena
+   * seja na njegovi strani). Ločeno od `close()`: to je ZAVRNITEV, ne nedosegljivost, in
+   * `/auth/refresh` mora izida obravnavati NASPROTNO. */
+  invalidateRefreshTokens(): void;
+  /** Prisili endpoint `/token` v odgovor z danim stanjem in telesom, ki NI OAuth napaka —
+   * simulira Keycloaka, ki se ponovno zaganja ali je začasno v okvari. `null` povrne
+   * normalno obnašanje. */
+  setTokenEndpointFailure(status: number | null): void;
   close(): Promise<void>;
 }
 
@@ -67,6 +76,7 @@ export async function startFakeKeycloak(): Promise<FakeKeycloak> {
   // accessToken -> identiteta (za introspekcijo/userinfo); refreshToken -> identiteta.
   const accessTokens = new Map<string, TestIdentity>();
   const refreshTokens = new Map<string, IssuedRefreshToken>();
+  let tokenEndpointFailure: number | null = null;
 
   app.get('/realms/test/.well-known/openid-configuration', (_req, res) => {
     res.json({
@@ -105,6 +115,12 @@ export async function startFakeKeycloak(): Promise<FakeKeycloak> {
   });
 
   app.post('/realms/test/protocol/openid-connect/token', (req, res) => {
+    if (tokenEndpointFailure !== null) {
+      // Namenoma NE telo OAuth napake: tako odgovori strežnik, ki je v okvari, in ravno po
+      // tej razliki `/auth/refresh` loči nedosegljivost od zavrnitve.
+      res.status(tokenEndpointFailure).type('text/html').send('<h1>Service Unavailable</h1>');
+      return;
+    }
     const body = req.body as Record<string, string | undefined>;
     if (body.grant_type === 'authorization_code') {
       const code = body.code;
@@ -176,6 +192,12 @@ export async function startFakeKeycloak(): Promise<FakeKeycloak> {
       for (const identity of accessTokens.values()) {
         if (identity.sub === sub) identity.roles = roles;
       }
+    },
+    invalidateRefreshTokens() {
+      refreshTokens.clear();
+    },
+    setTokenEndpointFailure(status: number | null) {
+      tokenEndpointFailure = status;
     },
     close() {
       return new Promise((resolve, reject) => {
