@@ -8,6 +8,10 @@
  * kot ločeno polje `expired` (specs/009-file-sharing/data-model.md). */
 export type ShareState = 'uploading' | 'ready' | 'revoked' | 'broken';
 
+/** 009b: ali je datoteko naložil lastnik sam (`owner`) ali je prispela prek sprejemnega
+ * predala (`inbox`). Strežnik to IZPELJE iz `inboxId`. */
+export type FileOrigin = 'owner' | 'inbox';
+
 export interface SharedFile {
   id: string;
   displayName: string;
@@ -22,6 +26,11 @@ export interface SharedFile {
   failedAttempts: number;
   lockedUntil: string | null;
   createdAt: string;
+  origin: FileOrigin;
+  /** Predal, po katerem je datoteka prišla. Ostane tudi, ko predala ni več (FR-094). */
+  inboxId: string | null;
+  /** Kar je o sebi napisal pošiljatelj — NAVEDBA, ne ugotovljena istovetnost. */
+  senderName: string | null;
 }
 
 export interface Quota {
@@ -127,4 +136,185 @@ export function describeQuota(quota: Quota): string {
 export function quotaRatio(quota: Quota): number {
   if (quota.limitBytes <= 0) return 1;
   return Math.min(1, Math.max(0, quota.usedBytes / quota.limitBytes));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//  009b — SPREJEMNI PREDALI (obrnjena smer: naslov in koda, po katerih nam nekdo odda datoteko)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+/** Shranjeni stanji predala. "Poteklo" NI med njima — strežnik ga izpelje in pošlje kot
+ * `expired`, enako kot pri datoteki. */
+export type InboxState = 'open' | 'closed';
+
+export interface FileInbox {
+  id: string;
+  label: string;
+  note: string;
+  state: InboxState;
+  expired: boolean;
+  /** IZPELJANO na strežniku: odprt IN rok še ni minil. Prostor v tem ni upoštevan. */
+  openForUpload: boolean;
+  dropUrl: string | null;
+  expiresAt: string | null;
+  maxFiles: number;
+  maxTotalBytes: number;
+  receivedFiles: number;
+  receivedBytes: number;
+  lastReceivedAt: string | null;
+  remainingFiles: number;
+  remainingBytes: number;
+  failedAttempts: number;
+  lockedUntil: string | null;
+  createdAt: string;
+}
+
+/** Stropi NAMESTITVE (ne predala): iz njih sestavimo izbire, da vmesnik ne ponudi vrednosti,
+ * ki jo bo strežnik zavrnil. */
+export interface InboxLimits {
+  maxFiles: number;
+  maxTotalBytes: number;
+  maxFileBytes: number;
+}
+
+export interface InboxesResponse {
+  inboxes: FileInbox[];
+  limits: InboxLimits;
+}
+
+/** Odgovor, ki EDINI vsebuje kodo v čistopisu — ob nastanku predala in ob izdaji nove kode. */
+export interface CreatedInbox {
+  inbox: FileInbox;
+  dropUrl: string;
+  code: string;
+}
+
+export interface CreateInboxInput {
+  label: string;
+  note?: string;
+  expiresInDays?: ExpiryChoice;
+  maxFiles?: number;
+  maxTotalMb?: number;
+}
+
+/** Kar sme videti nekdo, ki ima zgolj naslov predala. Oznake NI (FR-084). */
+export interface DropInfo {
+  maxFileBytes: number;
+  expiresAt: string | null;
+}
+
+/** Kar pošiljatelj dobi po pravilno vpisani kodi. `ticket` živi samo v pomnilniku zavihka:
+ * v piškotek ne gre, ker bi ga brskalnik pripenjal sam tudi zahtevam s tujih strani (FR-091). */
+export interface DropSession {
+  label: string;
+  note: string;
+  ticket: string;
+  ticketExpiresAt: string;
+  maxFileBytes: number;
+  remainingFiles: number;
+  remainingBytes: number;
+}
+
+/** Prvi korak oddaje: prostor je rezerviran in `byteSize` je od zdaj zavezujoč (FR-089). */
+export interface DeclaredUpload {
+  id: string;
+  uploadUrl: string;
+  byteSize: number;
+}
+
+export interface DropReceipt {
+  fileName: string;
+  byteSize: number;
+  remainingFiles: number;
+  remainingBytes: number;
+}
+
+/** Ali je datoteka PRIŠLA k nam (prek predala) ali smo jo naložili sami. */
+export function isReceived(file: Pick<SharedFile, 'origin'>): boolean {
+  return file.origin === 'inbox';
+}
+
+/**
+ * Od kod je datoteka, za vrstico na seznamu.
+ *
+ * Navedba pošiljatelja je NJEGOV vnos in ne ugotovljena istovetnost, zato je predstavljena kot
+ * navedba ("oddal: Janez") in ne kot dejstvo o osebi.
+ */
+export function describeSource(file: Pick<SharedFile, 'origin' | 'senderName'>): string | null {
+  if (file.origin !== 'inbox') return null;
+  return file.senderName ? `Prejeto — oddal: ${file.senderName}` : 'Prejeto prek povezave za oddajo';
+}
+
+/**
+ * Kaj o predalu piše na seznamu.
+ *
+ * Vrstni red pogojev ni poljuben, po istem pravilu kot `describeState`: lastnikovo dejanje
+ * (zaprtje) je pomembnejše od posledice časa (potek), oboje pa od tega, da je predal poln —
+ * polnega je mogoče spraviti v rabo z brisanjem, zaprtega ne.
+ */
+export function describeInboxState(inbox: Pick<FileInbox, 'state' | 'expired' | 'remainingFiles' | 'remainingBytes'>): string {
+  if (inbox.state === 'closed') return 'Zaprt';
+  if (inbox.expired) return 'Poteklo';
+  if (inbox.remainingFiles === 0 || inbox.remainingBytes === 0) return 'Poln';
+  return 'Sprejema';
+}
+
+/** Ali predal še sprejema — stanje, rok IN prostor. `openForUpload` s strežnika prostora ne
+ * upošteva, ker je to druga vrsta meje; za gumb v vmesniku šteje oboje. */
+export function acceptsUploads(
+  inbox: Pick<FileInbox, 'openForUpload' | 'remainingFiles' | 'remainingBytes'>,
+): boolean {
+  return inbox.openForUpload && inbox.remainingFiles > 0 && inbox.remainingBytes > 0;
+}
+
+export function describeInboxCapacity(inbox: Pick<FileInbox, 'receivedFiles' | 'maxFiles' | 'receivedBytes' | 'maxTotalBytes'>): string {
+  return `${inbox.receivedFiles} od ${inbox.maxFiles} datotek · ${formatBytes(inbox.receivedBytes)} od ${formatBytes(inbox.maxTotalBytes)}`;
+}
+
+/** Koliko sme pošiljatelj še oddati — besedilo za javno stran. */
+export function describeDropCapacity(session: Pick<DropSession, 'remainingFiles' | 'remainingBytes'>): string {
+  if (session.remainingFiles === 0 || session.remainingBytes === 0) return 'Predal je poln.';
+  const datotek = session.remainingFiles === 1 ? '1 datoteko' : `${session.remainingFiles} datotek`;
+  return `Oddaš lahko še ${datotek}, skupaj do ${formatBytes(session.remainingBytes)}.`;
+}
+
+/**
+ * Kdaj je predal nazadnje kaj prejel.
+ *
+ * `sl-SI` in izrecna cona `Europe/Ljubljana`, ne Angularjev `DatePipe` — enak dogovor kot v
+ * `todos.model.ts` in `time-tracking-section.component.ts`, in člen V.4: čas je vedno ljubljanski
+ * in nikoli ne prepuščen coni naprave.
+ */
+export function describeReceivedAt(iso: string | null): string {
+  if (!iso) return 'Še nič oddanega.';
+  const moment = new Date(iso).toLocaleString('sl-SI', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'Europe/Ljubljana',
+  });
+  return `Zadnja oddaja: ${moment}`;
+}
+
+/** Ali je smiselno opozoriti lastnika, da nekdo ugiba kodo (FR-090). Isto pravilo kot pri
+ * povezavi za prevzem — zato ista oblika vprašanja, le drug zapis. */
+export function inboxHasGuessingWarning(
+  inbox: Pick<FileInbox, 'failedAttempts' | 'lockedUntil'>,
+  now = new Date(),
+): boolean {
+  if (inbox.failedAttempts > 0) return true;
+  return inbox.lockedUntil !== null && new Date(inbox.lockedUntil).getTime() > now.getTime();
+}
+
+/** Izbire za "največ datotek", omejene s stropom namestitve. Vrednosti nad stropom se ne
+ * ponudijo — izbira, ki jo bo strežnik zavrnil, ni izbira. Strop je vedno med izbirami, tudi
+ * kadar ni v predlogah. */
+export function fileCountChoices(limits: Pick<InboxLimits, 'maxFiles'>): number[] {
+  const presets = [1, 3, 5, 10, 25].filter((n) => n <= limits.maxFiles);
+  return presets.includes(limits.maxFiles) ? presets : [...presets, limits.maxFiles].sort((a, b) => a - b);
+}
+
+/** Isto za "skupaj največ", v MB. */
+export function totalMbChoices(limits: Pick<InboxLimits, 'maxTotalBytes'>): number[] {
+  const ceilingMb = Math.floor(limits.maxTotalBytes / (1024 * 1024));
+  const presets = [50, 100, 500, 1000, 2000].filter((n) => n <= ceilingMb);
+  return presets.includes(ceilingMb) ? presets : [...presets, ceilingMb].sort((a, b) => a - b);
 }

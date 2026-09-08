@@ -16,6 +16,7 @@ import { CalendarOverrideModel } from '../../src/modules/time-tracking/models/ca
 import { AbsencePeriodModel } from '../../src/modules/time-tracking/models/absence-period.model.js';
 import { RemoteSessionModel } from '../../src/modules/time-tracking/models/remote-session.model.js';
 import { TodoListModel } from '../../src/modules/todos/models/todo-list.model.js';
+import { FileInboxModel } from '../../src/modules/file-sharing/models/file-inbox.model.js';
 
 // 004, data-model.md "Načelo lastništva zapisov": OBRNJENO iz 001/003 (glej git zgodovino
 // te datoteke) — sistem je zdaj večuporabniški. Ta test preveri OBE strani nove razmejitve
@@ -35,6 +36,10 @@ describe('data-model.md "Načelo lastništva zapisov": userId na osebnih podatki
     ['CalendarOverride', CalendarOverrideModel],
     ['AbsencePeriod', AbsencePeriodModel],
     ['RemoteSession', RemoteSessionModel],
+    // 009b: sprejemni predal je oseben zapis kot vsak drug — po njem oddaja nekdo BREZ računa,
+    // kar lastništva ne razrahlja: `{ _id, userId }` ostane pogoj vsakega lastnikovega dostopa,
+    // pošiljatelj pa pride do predala samo prek žetona in kode na javni poti.
+    ['FileInbox', FileInboxModel],
   ] as const;
 
   it.each(personal)('%s NOSI userId', (_name, model) => {

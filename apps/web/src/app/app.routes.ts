@@ -114,6 +114,15 @@ export const APP_ROUTES: Routes = [
     loadComponent: () =>
       import('./features/file-sharing/download/file-download.page.js').then((m) => m.FileDownloadPage),
   },
+  // 009b: druga javna pot in prva, po kateri obiskovalec brez računa NEKAJ NAPIŠE na naš disk.
+  // Zanjo velja vse, kar je zapisano pri `d/:token` zgoraj — brez `authGuard`, brez `tabGuard`,
+  // pred lovilcem `**` — pot pa je druga (`/u/` proti `/d/`) namenoma: to sta dva različna
+  // zaslona z dvema različnima nevarnostma, in nihče, ki bere naslov v pogovoru ali v dnevniku,
+  // ne sme biti v dvomu, katera smer je bila v igri.
+  {
+    path: 'u/:token',
+    loadComponent: () => import('./features/file-sharing/upload/file-drop.page.js').then((m) => m.FileDropPage),
+  },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
   { path: '**', redirectTo: 'dashboard' },
 ];

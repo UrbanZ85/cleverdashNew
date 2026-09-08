@@ -17,13 +17,16 @@ import {
 import { PageHeaderComponent } from '../../shared/layout/page-header.component.js';
 import { FileSharingApi } from './file-sharing.api.js';
 import { ShareCreatedComponent } from './share-created.component.js';
+import { InboxListComponent } from './inboxes/inbox-list.component.js';
 import {
   EXPIRY_OPTIONS,
   describeExpiry,
   describeQuota,
+  describeSource,
   describeState,
   formatBytes,
   hasGuessingWarning,
+  isReceived,
   isShareable,
   quotaRatio,
   type ExpiryChoice,
@@ -34,14 +37,21 @@ import {
 
 // Zavihek "Deljenje datotek" (platform/tabs/registry.ts, id `file-sharing`, PRIVZETO IZKLOPLJEN).
 //
-// Ta stran je za LASTNIKA. Prejemnik je nekje drugje in nima računa: njegova stran je
-// `download/file-download.page.ts` na poti `/d/:token`, zunaj `authGuard` in zunaj menija.
+// Ta stran je za LASTNIKA in nosi OBE smeri:
+//
+//  - kar POŠLJEM ven: naložim datoteko, dobim povezavo in geslo (009);
+//  - kar PRIDE K MENI: sprejemni predali, `inboxes/inbox-list.component.ts` (009b).
+//
+// Človek na drugi strani je v obeh primerih nekje drugje in nima računa. Njegovi strani sta
+// `download/file-download.page.ts` (`/d/:token`) in `upload/file-drop.page.ts` (`/u/:token`),
+// obe zunaj `authGuard` in zunaj menija.
 @Component({
   selector: 'app-file-sharing-page',
   standalone: true,
   imports: [
     PageHeaderComponent,
     ShareCreatedComponent,
+    InboxListComponent,
     IonContent,
     IonList,
     IonItem,
@@ -129,6 +139,12 @@ import {
                 <ion-label>
                   <h2>{{ file.displayName }}</h2>
                   <p>{{ formatBytes(file.byteSize) }} · {{ describeState(file) }} · {{ describeExpiry(file.expiresAt) }}</p>
+                  @if (describeSource(file); as source) {
+                    <!-- 009b: prejeta datoteka je od trenutka prejema navadna lastnikova
+                         datoteka, a mora biti razvidno, da je ni naložil sam — in kdo trdi, da
+                         jo je oddal. -->
+                    <p><ion-text color="primary">{{ source }}</ion-text></p>
+                  }
                   <p>
                     Prenosov: {{ file.downloadCount }}
                     @if (hasGuessingWarning(file)) {
@@ -140,8 +156,12 @@ import {
                   </p>
                 </ion-label>
 
-                @if (isShareable(file)) {
+                @if (isShareable(file) && file.shareUrl) {
                   <ion-badge slot="end" color="success">na voljo</ion-badge>
+                } @else if (isShareable(file) && isReceived(file)) {
+                  <!-- Prejeta datoteka NIMA povezave, dokler je lastnik izrecno ne izda
+                       (FR-093); oznaka "na voljo" bi trdila, da jo že kdo lahko prevzame. -->
+                  <ion-badge slot="end" color="primary">prejeto</ion-badge>
                 } @else if (file.state === 'broken') {
                   <ion-badge slot="end" color="danger">pokvarjeno</ion-badge>
                 } @else {
@@ -155,13 +175,21 @@ import {
                   <ion-button size="small" fill="clear" color="warning" (click)="revoke(file)">Prekliči</ion-button>
                 }
                 @if (file.state !== 'broken') {
-                  <ion-button size="small" fill="clear" (click)="newPassword(file)">Novo geslo</ion-button>
+                  <ion-button size="small" fill="clear" (click)="newPassword(file)">
+                    @if (file.shareUrl) {
+                      Novo geslo
+                    } @else {
+                      Deli naprej
+                    }
+                  </ion-button>
                 }
                 <ion-button size="small" fill="clear" color="danger" (click)="remove(file)">Izbriši</ion-button>
               </div>
             }
           </ion-list>
         }
+
+        <app-inbox-list (changed)="reloadFiles()"></app-inbox-list>
       </div>
     </ion-content>
   `,
@@ -217,6 +245,8 @@ export class FileSharingPage implements OnInit {
   protected readonly quotaRatio = quotaRatio;
   protected readonly isShareable = isShareable;
   protected readonly hasGuessingWarning = hasGuessingWarning;
+  protected readonly isReceived = isReceived;
+  protected readonly describeSource = describeSource;
 
   ngOnInit(): void {
     void this.reload();
@@ -226,6 +256,11 @@ export class FileSharingPage implements OnInit {
     const count = this.files().length;
     if (count === 0) return 'nič deljenega';
     return count === 1 ? '1 datoteka' : `${count} datotek`;
+  }
+
+  /** Razdelek s predali pove, da se je nekaj spremenilo (prejeta ali izbrisana datoteka). */
+  protected reloadFiles(): void {
+    void this.reload();
   }
 
   private async reload(): Promise<void> {
@@ -287,16 +322,20 @@ export class FileSharingPage implements OnInit {
   }
 
   protected async newPassword(file: SharedFile): Promise<void> {
+    // Prejeta datoteka povezave doslej ni imela (FR-093): tam ni česa razveljaviti in vmesnik
+    // tega ne sme trditi. Zato je to za njo PRVA izdaja, ne "novo geslo".
+    const first = file.shareUrl === null;
     const alert = await this.alerts.create({
-      header: 'Izdaj novo geslo?',
+      header: first ? 'Deli to datoteko naprej?' : 'Izdaj novo geslo?',
       // FR-015: nastane tudi NOV naslov. Uporabnik, ki tega ne bi vedel, bi prejemniku poslal
       // samo geslo in se čudil, zakaj povezava ne dela.
-      message:
-        'Nastalo bo novo geslo IN nova povezava. Stara povezava bo nehala delati — prejemniku bo treba poslati oboje znova.',
+      message: first
+        ? 'Nastala bo povezava IN geslo. Datoteka bo dosegljiva vsakomur, ki dobi oboje.'
+        : 'Nastalo bo novo geslo IN nova povezava. Stara povezava bo nehala delati — prejemniku bo treba poslati oboje znova.',
       buttons: [
         { text: 'Ne', role: 'cancel' },
         {
-          text: 'Izdaj novo',
+          text: first ? 'Ustvari povezavo' : 'Izdaj novo',
           handler: () => {
             void this.api.regeneratePassword(file.id).then(async (result) => {
               this.created.set(result);

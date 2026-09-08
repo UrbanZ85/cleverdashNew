@@ -26,6 +26,7 @@ import { camerasRouter, cameraGroupsRouter } from './modules/cameras/router.js';
 import { timesheetRouter } from './modules/timesheet/router.js';
 import { notesRouter } from './modules/notes/router.js';
 import { fileSharingRouter } from './modules/file-sharing/router.js';
+import { fileInboxesRouter } from './modules/file-sharing/inboxes.router.js';
 import { fileSharingPublicRouter } from './modules/file-sharing/public.router.js';
 import { ensureDirs as ensureFileShareDirs } from './modules/file-sharing/services/blob-storage.service.js';
 import { startFileShareCleanup } from './modules/file-sharing/services/cleanup.service.js';
@@ -75,11 +76,15 @@ export async function createApp() {
   apiV1Router.use(timesheetRouter);
   apiV1Router.use(notesRouter);
   apiV1Router.use(fileSharingRouter);
-  // 009: JAVNE poti `/share/*` — edine v tem zaledju brez `requireScopes`. Vpete so kot vsak
-  // drug modul, ne pred vratarji: `apiKeyGuard` in `accessTokenGuard` zahteve BREZ poverilnic
-  // ne zavrneta (samo nastavita `req.auth`, če glava obstaja), zavrne šele `requireScopes`.
-  // Javna pot je torej pot, ki ga NE pokliče (research.md §2) — s tem pa še vedno teče skozi
-  // korelacijo, idempotentnost in obravnavo napak, kar bi `app.use` pred vratarji preskočil.
+  // 009b: sprejemni predali lastnika (`/inboxes*`) — obrnjena smer deljenja. Lastnikov, torej
+  // za `requireScopes` enak vsakemu drugemu modulu; javna polovica je spodaj.
+  apiV1Router.use(fileInboxesRouter);
+  // 009: JAVNE poti `/share/*` in (009b) `/drop/*` — edine v tem zaledju brez `requireScopes`.
+  // Vpete so kot vsak drug modul, ne pred vratarji: `apiKeyGuard` in `accessTokenGuard` zahteve
+  // BREZ poverilnic ne zavrneta (samo nastavita `req.auth`, če glava obstaja), zavrne šele
+  // `requireScopes`. Javna pot je torej pot, ki ga NE pokliče (research.md §2) — s tem pa še
+  // vedno teče skozi korelacijo, idempotentnost in obravnavo napak, kar bi `app.use` pred
+  // vratarji preskočil.
   apiV1Router.use(fileSharingPublicRouter);
   apiV1Router.use(todosRouter);
   // 010: imenik uporabnikov je SKUPNA zmogljivost, ne del modula opravil — izbira osebe ni

@@ -187,7 +187,7 @@ describe('Dohitevanje in idempotentnost (FR-044, člen V.2)', () => {
     expect(prvi.expired).toBe(3);
 
     const drugi = await runFileShareCleanup();
-    expect(drugi).toEqual({ expired: 0, stalledUploads: 0, orphanBlobs: 0, brokenMarked: 0 });
+    expect(drugi).toEqual({ expired: 0, stalledUploads: 0, orphanBlobs: 0, brokenMarked: 0, expiredInboxes: 0 });
     expect(await SharedFileModel.countDocuments({})).toBe(0);
   });
 });

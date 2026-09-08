@@ -26,6 +26,16 @@ describe('auth.interceptor — izjema za javne poti (009)', () => {
     expect(list).toContain('/auth/login');
   });
 
+  it('009b: `/api/v1/drop/` je prav tako izvzet — javna stran `/u/:token`', () => {
+    // Ista dva razloga kot pri `/share/`, in tretji: dovolilnica za oddajo potuje v glavi
+    // `X-Drop-Ticket`, strežnik pa `req.auth` na teh poteh sploh ne bere. Glava `Authorization`
+    // tam ne bi bila samo nepotrebna — potekel žeton bi javno stran podrl, preden bi zahteva
+    // dosegla usmerjevalnik.
+    const source = readFileSync(INTERCEPTOR, 'utf8');
+    const list = /const AUTH_EXEMPT = \[([^\]]*)\]/s.exec(source)?.[1] ?? '';
+    expect(list).toContain('/api/v1/drop/');
+  });
+
   it('`/auth/logout` je izvzet — sicer je zanka odjava→401→obnova→odjava neizogibna', () => {
     // Do odjave pride natanko takrat, ko je seja že mrtva. Brez te izjeme je 401 z odjave
     // padel v `catchError`, sprožil obnovo, ta je vrnila `session-invalid`, to je sprožilo
@@ -56,6 +66,26 @@ describe('app.routes — javna stran je zunaj varovanj (009)', () => {
   it('stoji PRED lovilcem `**`, sicer bi jo prestregla preusmeritev na nadzorno ploščo', () => {
     const source = readFileSync(ROUTES, 'utf8');
     expect(source.indexOf("path: 'd/:token'")).toBeLessThan(source.indexOf("path: '**'"));
+  });
+
+  it('009b: pot `u/:token` (oddaja) prav tako nima varovanj in stoji pred `**`', () => {
+    // Ta stran je prva, po kateri obiskovalec brez računa NEKAJ NAPIŠE na naš disk. `authGuard`
+    // bi ga poslal na Keycloak, `tabGuard` pa preverja ujemanje z registrom zavihkov, kjer te
+    // poti ni in ne sme biti.
+    const source = readFileSync(ROUTES, 'utf8');
+    const block = /path: 'u\/:token',([\s\S]*?)\},/.exec(source)?.[1] ?? '';
+    expect(block).not.toBe('');
+    expect(block).not.toContain('authGuard');
+    expect(block).not.toContain('tabGuard');
+    expect(source.indexOf("path: 'u/:token'")).toBeLessThan(source.indexOf("path: '**'"));
+  });
+
+  it('009b: obe javni poti sta LOČENI — `/d/` za prevzem, `/u/` za oddajo', () => {
+    // Dva različna zaslona z dvema različnima nevarnostma. Ena skupna pot bi pomenila, da iz
+    // naslova v pogovoru ali v dnevniku ni razvidno, katera smer je bila v igri.
+    const source = readFileSync(ROUTES, 'utf8');
+    expect(source).toContain("path: 'd/:token'");
+    expect(source).toContain("path: 'u/:token'");
   });
 
   it('zavihek `file-sharing` pa OBE varovanji ima', () => {

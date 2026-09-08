@@ -13,6 +13,10 @@ import { randomBytes } from 'node:crypto';
 const TOKEN_BYTES = 16;
 export const SHARE_TOKEN_LENGTH = 22;
 
+const GRANT_BYTES = 32;
+/** 32 bajtov v base64url. */
+const GRANT_LENGTH = 43;
+
 export function generateShareToken(): string {
   return randomBytes(TOKEN_BYTES).toString('base64url');
 }
@@ -23,7 +27,26 @@ export function isShareTokenShaped(value: unknown): boolean {
 
 /** Dovolilnica za prevzem — 32 bajtov, ker potuje v piškotku in ne v naslovu (research.md §8). */
 export function generateGrant(): string {
-  return randomBytes(32).toString('base64url');
+  return randomBytes(GRANT_BYTES).toString('base64url');
+}
+
+/**
+ * Ali je vrednost SPLOH videti kot dovolilnica.
+ *
+ * Nastalo iz najdbe varnostnega pregleda 009b, ki pa je zadevala 009: `cookie-parser` na vsak
+ * piškotek uporabi `JSONCookies`, zato vrednost, ki se začne z `j:`, v `req.cookies` NI niz,
+ * ampak razčlenjen objekt. `cd_share=j:{"$ne":null}` je tako prišel v pogoj poizvedbe kot
+ * OPERATOR, Mongoose pa ga je ubogal: pogoj se je prevedel v "katera koli živa dovolilnica za to
+ * datoteko". Kdor je imel naslov, je vsebino dobil brez gesla, brez enega samega poskusa ugibanja
+ * — dokler je bila v obtoku ena zakonita odklenitev.
+ *
+ * Zato oblika PRED poizvedbo, ne za njo, in enako kot `isTicketShaped` za oddajo. Globalni
+ * `mongoose.set('sanitizeFilter', true)` bi bil videti kot krajša pot, a bi zahteval
+ * `mongoose.trusted()` pri vsakem legitimnem `$gt`/`$ne`/`$in` v vsem zaledju — torej desetine
+ * mest, kjer je pozabljen ovoj tiha okvara poizvedbe.
+ */
+export function isGrantShaped(value: unknown): value is string {
+  return typeof value === 'string' && new RegExp(`^[A-Za-z0-9_-]{${GRANT_LENGTH}}$`).test(value);
 }
 
 /**
@@ -34,4 +57,16 @@ export function generateGrant(): string {
  */
 export function buildShareUrl(publicBaseUrl: string, token: string): string {
   return `${publicBaseUrl.replace(/\/+$/, '')}/d/${token}`;
+}
+
+/**
+ * Javni naslov SPREJEMNEGA PREDALA (009b, FR-081), kakršnega lastnik pošlje pošiljatelju.
+ *
+ * Isti žeton kot pri deljenju (`generateShareToken`) in isti razlog: 128 bitov naključja, nič
+ * izpeljanega iz zapisa. Različna je samo pot — `/u/` (upload) proti `/d/` (download) — ker sta
+ * to dva različna zaslona z dvema različnima nevarnostma, in nihče, ki bere dnevnik ali naslov v
+ * pogovoru, ne sme biti v dvomu, katera smer je bila v igri.
+ */
+export function buildDropUrl(publicBaseUrl: string, token: string): string {
+  return `${publicBaseUrl.replace(/\/+$/, '')}/u/${token}`;
 }

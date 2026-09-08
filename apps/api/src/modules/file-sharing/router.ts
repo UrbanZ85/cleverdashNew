@@ -1,15 +1,16 @@
-import { Router, type Request } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
 import { Types } from 'mongoose';
 import { loadEnv } from '../../platform/config/env.js';
 import { requireScopes } from '../../platform/auth/scopes.js';
-import { resolveAutomationOwnerUserId } from '../../platform/auth/automation-owner.js';
 import { badRequest, notFound, ProblemError, serviceUnavailable } from '../../platform/errors/problem.js';
 import { FILE_SHARE_SCOPES } from './scopes.js';
+import { resolveOwnerUserId } from './owner.js';
 import { SharedFileModel } from './models/shared-file.model.js';
 import { FileShareGrantModel } from './models/file-share-grant.model.js';
 import { sanitizeFileName } from './domain/file-name.js';
 import { checkQuota, bytesToMb } from './domain/quota.js';
+import { availableBytesFor, fitsAfterReserving, usedBytesFor } from './services/quota.service.js';
 import { checkDeclared } from './domain/size-guard.js';
 import { generatePassword, formatForDisplay, hashPassword } from './domain/share-password.js';
 import { buildShareUrl, generateShareToken } from './domain/share-token.js';
@@ -44,6 +45,8 @@ const createFileSchema = z.object({
 
 interface SharedFileLean {
   _id: unknown;
+  inboxId: unknown;
+  senderName: string | null;
   displayName: string;
   mimeType: string;
   byteSize: number;
@@ -75,6 +78,11 @@ function toFileResponse(doc: SharedFileLean, now = new Date()) {
     failedAttempts: doc.failedAttempts,
     lockedUntil: doc.lockedUntil ?? null,
     createdAt: doc.createdAt,
+    // 009b: od kod je zapis. `origin` je IZPELJAN iz `inboxId` in ne shranjen — dve polji, ki
+    // trdita isto, se prej ali slej razideta (isto pravilo kot `expired` zgoraj).
+    origin: doc.inboxId ? 'inbox' : 'owner',
+    inboxId: doc.inboxId ? String(doc.inboxId) : null,
+    senderName: doc.senderName ?? null,
   };
 }
 
@@ -85,21 +93,6 @@ function requireObjectId(value: string): string {
   return value;
 }
 
-/** Isti pomočnik kot v `modules/timesheet/router.ts`: API ključ ni vezan na uporabnika, zato je
- * treba ugotoviti, v čigavem imenu deluje avtomatizacija (platform/auth/automation-owner.ts).
- * Brez tega bi `userId` na zapisu postal identifikator ključa in datoteka ne bi pripadala
- * nikomur. */
-async function resolveOwnerUserId(req: Request): Promise<string> {
-  if (req.auth!.subjectType === 'user') return req.auth!.subjectId;
-  const ownerId = await resolveAutomationOwnerUserId();
-  if (!ownerId) {
-    throw notFound(
-      'Avtomatizacija ne more ugotoviti, na katerega uporabnika se nanaša — ni podedovanih podatkov niti natanko enega uporabnika.',
-    );
-  }
-  return ownerId;
-}
-
 /** Datoteka TEGA uporabnika ali 404 — nikoli 403: obstoj tuje datoteke ni podatek (FR-053). */
 async function findOwnFile(fileId: string, userId: string) {
   const file = await SharedFileModel.findOne({ _id: requireObjectId(fileId), userId });
@@ -107,20 +100,10 @@ async function findOwnFile(fileId: string, userId: string) {
   return file;
 }
 
-/** Zasedeno se VEDNO sešteje z agregacijo, nikoli iz števca na uporabniku — števec bi se ob
- * prvi pozabljeni poti tiho razsinhroniziral (domain/quota.ts).
- *
- * `upTo` omeji seštevek na zapise, ki so nastali PRED danim (in nanj samega) — podlaga za
- * razsodbo med vzporednima napovedma, glej `reserveQuota`. */
-async function usedBytesFor(userId: string, upTo?: unknown): Promise<number> {
-  const match: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
-  if (upTo !== undefined) match._id = { $lte: upTo };
-  const [row] = await SharedFileModel.aggregate<{ total: number }>([
-    { $match: match },
-    { $group: { _id: null, total: { $sum: '$byteSize' } } },
-  ]);
-  return row?.total ?? 0;
-}
+// `usedBytesFor` in razsodba med vzporednima napovedma sta od 009b v
+// `services/quota.service.ts`: isto kvoto uveljavlja tudi javna pot za oddajo v sprejemni predal,
+// in dve izvedbi iste razsodbe — od katerih ena teče brez prijave — sta natanko tam, kjer si
+// razhajanja ne moremo privoščiti.
 
 function quotaExceeded(availableBytes: number): ProblemError {
   return new ProblemError(
@@ -196,14 +179,11 @@ fileSharingRouter.post('/files', requireScopes(FILE_SHARE_SCOPES.write), async (
       expiresAt: computeExpiresAt(input.expiresInDays, new Date(), env.FILE_SHARE_DEFAULT_EXPIRY_DAYS),
     });
 
-    // Dve VZPOREDNI napovedi bi obe prebrali kvoto, preden bi katera od njiju pisala, in obe bi
-    // šli skozi. Zato po zapisu še enkrat — a seštejemo samo zapise, ki so nastali PRED tem
-    // (in tega). S tem je razsodnik `_id`, ki je enolično urejen: pri dveh napovedih uspe
-    // natanko tista, ki je bila prva, druga pa se pobriše. Brez tega bi bila potrebna
-    // transakcija ali števec na uporabniku — oboje dražje od ene poizvedbe.
-    if ((await usedBytesFor(userId, file._id)) > limitBytes) {
+    // Razsodba med dvema VZPOREDNIMA napovedma — glej `fitsAfterReserving`
+    // (services/quota.service.ts).
+    if (!(await fitsAfterReserving(userId, file._id, limitBytes))) {
       await SharedFileModel.deleteOne({ _id: file._id });
-      throw quotaExceeded(Math.max(0, limitBytes - (await usedBytesFor(userId))));
+      throw quotaExceeded(await availableBytesFor(userId, limitBytes));
     }
 
     res.status(201).json({
@@ -294,7 +274,7 @@ fileSharingRouter.put('/files/:fileId/content', requireScopes(FILE_SHARE_SCOPES.
     if (withActualSize > env.FILE_SHARE_QUOTA_MB * MB) {
       await removeBlob(file.storageId);
       await SharedFileModel.deleteOne({ _id: file._id });
-      throw quotaExceeded(Math.max(0, env.FILE_SHARE_QUOTA_MB * MB - (await usedBytesFor(userId))));
+      throw quotaExceeded(await availableBytesFor(userId, env.FILE_SHARE_QUOTA_MB * MB));
     }
 
     // Šele tu, ko je vsebina cela, nastaneta povezava in geslo — geslo za datoteko, ki še ni
@@ -338,6 +318,11 @@ fileSharingRouter.get('/files/:fileId/content', requireScopes(FILE_SHARE_SCOPES.
     // Naložena datoteka je osebni podatek — nikoli v skupni predpomnilnik posrednika (isti
     // vzorec kot posnetki beležk, člen II: pred tem endpointom je Caddy na istem izvoru).
     res.setHeader('Cache-Control', 'private, no-store');
+    // 009b: vsebina zdaj lahko pride od TUJCA (sprejemni predal), zato tudi `nosniff`. Prenos je
+    // že `attachment` in se v brskalniku ne izriše, a ugibanje vrste vsebine je edina pot, po
+    // kateri bi datoteka, ki jo je oddal nekdo drug, lahko postala nekaj drugega kot datoteka —
+    // in ta namestitev streže aplikacijo z ISTEGA izvora (člen II).
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     // Lastnikov lastni prenos se NE šteje med prevzeme — števec meri, kolikokrat je datoteko
     // dobil prejemnik (FR-027, FR-028).
     res.download(absoluteBlobPath(file.storageId), file.displayName);
@@ -376,6 +361,11 @@ fileSharingRouter.post('/files/:fileId/password', requireScopes(FILE_SHARE_SCOPE
 
     // NOV žeton in NOVO geslo (research.md §12): namen je odvzeti dostop tistemu, ki ima staro.
     // Če bi naslov ostal isti, bi mu polovica ključa ostala v rokah.
+    //
+    // Ta pot `Idempotency-Key` NE upošteva (platform/idempotency/middleware.ts, EXEMPT_PATTERNS):
+    // odgovor vsebuje geslo v čistopisu, shranjen odgovor pa je zapis v bazi. Najdba varnostnega
+    // pregleda 009b — dokler je bila pot vključena, je bilo geslo 24 ur berljivo v zbirki
+    // `idempotencyKeys`, čeprav modul o sebi trdi, da ga hrani samo kot `scrypt` povzetek.
     const password = generatePassword();
     file.set({
       state: 'ready',

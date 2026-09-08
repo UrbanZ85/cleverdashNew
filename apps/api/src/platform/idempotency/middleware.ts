@@ -18,12 +18,43 @@ const EXEMPT_PATHS = new Set(['/auth/login', '/auth/refresh']);
 //
 // Drugi razlog je javnost teh poti: `Idempotency-Key` je zapis v bazo, ki ga sproži zahteva
 // BREZ poverilnic. Neomejeno pisanje v `IdempotencyKey` z javne poti je pot do polnjenja zbirke.
-const EXEMPT_PREFIXES = ['/share/'];
+//
+// 009b: `/drop/` je tu iz OBEH razlogov. `POST /drop/{token}/unlock` izda dovolilnico za oddajo
+// (isti primer kot zgoraj), poti pod njim pa so javne — in shranjen odgovor na `POST
+// /drop/{token}/files` bi ponovil identifikator rezervacije, ki je bila medtem že porabljena ali
+// pobrisana. Pri binarnem telesu (`PUT .../content`) glava tako ali tako odpade, ker primerjava
+// teles ni mogoča (glej varovalko za `content-type` spodaj).
+const EXEMPT_PREFIXES = ['/share/', '/drop/'];
+
+// 009b, najdba varnostnega pregleda: izjema člena III ne velja samo za poti, ki izdajo ŽETON,
+// ampak za vsako, ki izda SKRIVNOST. Shranjeni odgovor je namreč zapis v bazi, in odgovori teh
+// treh poti so edina mesta v celi pogodbi, kjer se geslo za prevzem oz. koda za oddajo pojavita v
+// čistopisu (FR-011, FR-082). Brez izjeme bi ju `responseBody` hranil 24 ur v berljivi obliki —
+// natanko tisto, kar modul o sebi trdi, da ne počne, saj je v njegovih zbirkah samo `scrypt`
+// povzetek.
+//
+// Drugi razlog je isti kot pri rotaciji žetonov: shranjen odgovor bi po zamenjavi kode vrnil
+// STARO kodo in bi bila zamenjava videti opravljena, čeprav ni bila.
+//
+// Vzorci in ne predpone, ker je v sredini poti spremenljiv identifikator.
+const EXEMPT_PATTERNS = [/^\/inboxes\/[^/]+\/code$/, /^\/files\/[^/]+\/password$/];
+const EXEMPT_SECRET_PATHS = new Set(['/inboxes']);
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 function isExempt(path: string): boolean {
-  return EXEMPT_PATHS.has(path) || EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
+  return (
+    EXEMPT_PATHS.has(path) ||
+    EXEMPT_SECRET_PATHS.has(path) ||
+    EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix)) ||
+    EXEMPT_PATTERNS.some((pattern) => pattern.test(path))
+  );
+}
+
+/** Klicatelj, na katerega je ključ vezan. `null`, kadar zahteva ni avtenticirana. */
+function subjectOf(req: Request): string | null {
+  if (!req.auth) return null;
+  return `${req.auth.subjectType}:${req.auth.subjectId}`;
 }
 
 function hashBody(body: unknown): string {
@@ -41,6 +72,16 @@ export function idempotencyMiddleware() {
     }
     const key = req.header('Idempotency-Key');
     if (!key) {
+      next();
+      return;
+    }
+
+    // Brez poverilnic ni ne shranjevanja ne ponovitve. Vsaka mutacijska pot, ki pride do sem, je
+    // za prijavljenega (javne poti so izvzete zgoraj), zato bo takšna zahteva tako ali tako
+    // zavrnjena s 401 — shranjen odgovor pa ne sme biti dosegljiv nekomu, ki pozna samo vrednost
+    // ključa.
+    const subject = subjectOf(req);
+    if (!subject) {
       next();
       return;
     }
@@ -66,7 +107,10 @@ export function idempotencyMiddleware() {
     const existing = await IdempotencyKeyModel.findOne({ key, endpoint }).lean();
 
     if (existing) {
-      if (existing.requestHash !== requestHash) {
+      // Neujemanje klicatelja se obravnava ENAKO kot neujemanje telesa in z istim besedilom: kdor
+      // ključ ponovi, ne sme izvedeti, ali je bil uporabljen z drugačnim telesom ali od nekoga
+      // drugega.
+      if (existing.requestHash !== requestHash || existing.subject !== subject) {
         next(
           new ProblemError(
             422,
@@ -85,6 +129,7 @@ export function idempotencyMiddleware() {
       IdempotencyKeyModel.create({
         key,
         endpoint,
+        subject,
         requestHash,
         statusCode: res.statusCode,
         responseBody: body,

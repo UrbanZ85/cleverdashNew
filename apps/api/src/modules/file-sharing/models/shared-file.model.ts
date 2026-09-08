@@ -34,6 +34,32 @@ const sharedFileSchema = new Schema(
      * ugiba (FR-033), in to v odgovoru API-ja, ne le v dnevniku, ki ga nihče ne bere. */
     failedAttempts: { type: Number, required: true, default: 0 },
     lockedUntil: { type: Date, default: null },
+    // ── 009b: od kod je zapis ───────────────────────────────────────────────────────────
+    //
+    // `null` pomeni, da je datoteko naložil LASTNIK sam. Neprazen `inboxId` pomeni, da jo je
+    // prek sprejemnega predala oddal nekdo brez računa (FR-092).
+    //
+    // Zapis je od tega trenutka lastnikov in ni z ničemer drugačen: šteje v njegovo kvoto, na
+    // njegovem seznamu je in nima ne žetona ne gesla, dokler mu ju izrecno ne izda (FR-093).
+    // Referenca se NAMENOMA ne počisti, ko predal izgine — pove, kako je datoteka prišla, in ta
+    // dejstvo se z izbrisom predala ne spremeni (FR-094).
+    inboxId: { type: Schema.Types.ObjectId, ref: 'FileInbox', default: null },
+    /** Kar je o sebi napisal pošiljatelj. NAVEDBA, ne ugotovljena istovetnost — očiščena v
+     * domain/sender-name.ts, ker je to edini prosti vnos od nekoga brez računa. */
+    senderName: { type: String, default: null, maxlength: 80 },
+    /**
+     * Kdaj je vsebina za to napoved ZAČELA prihajati; `null`, dokler ni začela.
+     *
+     * Obstaja zaradi ene same nevarnosti: dve HKRATNI zahtevi za vsebino ISTE napovedi. Stanje
+     * `uploading` se prevesi šele na koncu, zato bi obe prestali preverjanje stanja, obe pisali
+     * v isto začasno datoteko in obe videli pričakovano število bajtov — na disku bi ostala
+     * prepletena vsebina, zapis pa bi bil videti uspešen. Natanko tiha napaka, ki jo prepoveduje
+     * člen VII.
+     *
+     * Polje je zato ZAPORA, ne podatek: prevzame ga `findOneAndUpdate` s pogojem `null`, in
+     * druga zahteva ne najde ničesar. Ena napoved, en poskus; ponoven poskus je nova napoved.
+     */
+    uploadClaimedAt: { type: Date, default: null },
   },
   { timestamps: true, versionKey: false },
 );
@@ -49,6 +75,10 @@ sharedFileSchema.index({ storageId: 1 }, { unique: true });
 // oboje in v pravem vrstnem redu (services/cleanup.service.ts, research.md §15).
 sharedFileSchema.index({ expiresAt: 1 });
 sharedFileSchema.index({ state: 1, updatedAt: 1 });
+// 009b: zasedenost predala se sešteje z agregacijo po `inboxId` (domain/inbox-capacity.ts) —
+// enako kot kvota po `userId` in iz istega razloga. Brez indeksa bi bilo to pregledovanje vseh
+// datotek namestitve ob VSAKI oddaji, torej na javni poti.
+sharedFileSchema.index({ inboxId: 1, createdAt: -1 });
 
 export type SharedFileDoc = InferSchemaType<typeof sharedFileSchema>;
 export const SharedFileModel = model('SharedFile', sharedFileSchema);

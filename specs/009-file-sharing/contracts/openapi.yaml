@@ -13,15 +13,44 @@ info:
 
     To je prva pogodba v tem projektu z JAVNIM delom.
 
-    - **`/files*` — lastnik.** Prijavljen uporabnik ali avtomatizacija z API ključem. Vsak
-      endpoint zahteva obseg; brez njega je `401`/`403`.
+    - **`/files*` in `/inboxes*` — lastnik.** Prijavljen uporabnik ali avtomatizacija z API
+      ključem. Vsak endpoint zahteva obseg; brez njega je `401`/`403`.
     - **`/share/{token}*` — prejemnik.** Nima računa in ga ne bo dobil. Nima nobenega obsega
       in ga ne potrebuje. Edini ključ je `token` v naslovu, edino dovoljenje je geslo.
+    - **`/drop/{token}*` — pošiljatelj (009b).** Prav tako brez računa. Ključa sta ista dva
+      (naslov in koda), samo smer je obrnjena: po teh poteh datoteka PRIDE k lastniku.
 
     Javnost ni implementacijska podrobnost: `security: []` pri teh poteh je normativen del
     pogodbe. Prav tako je normativno, da javne poti `req.auth` IGNORIRAJO — če lastnik odpre
     svojo povezavo prijavljen v istem brskalniku, se prevzem obnaša enako kot za tujca
     (FR-024).
+
+    ## Obrnjena smer: sprejemni predal (009b)
+
+    Prvotna 009 je imela "javno stran za NALAGANJE" med izrecno izključenimi stvarmi. 009b jo
+    doda, ker je bila zahtevana kot obrnjena polovica iste potrebe — *"da dam jaz url in kodo in
+    potem lahko nekdo uploda file"*. Vzorec je zato NAMENOMA enak: lastnik ustvari predal in dobi
+    naslov ter kodo, oboje pošlje pošiljatelju, in nobeno od obojega samo zase ne zadošča.
+
+    Ena stvar pa je bistveno drugačna in določa ves razdelek `/drop/*`: **te poti pišejo na
+    disk v imenu nekoga, ki ni prijavljen**. Iz tega sledi četvero, kar drugje v tej pogodbi ne
+    nastopa:
+
+    1. **Štiri meje pri vsaki oddaji** (FR-088), in vse štiri dvakrat — pred prenosom iz
+       napovedane velikosti in med njim iz dejanske: velikost ene datoteke, prostor predala
+       (meji izbere lastnik ob nastanku, FR-087), kvota lastnika, stanje in rok predala.
+    2. **Napovedana velikost je zavezujoča** (FR-089): `Content-Length` mora biti enak njej, in
+       prispeti mora natanko toliko. Ne "manj kot meja namestitve" — natanko toliko, kolikor je
+       bilo rezervirano.
+    3. **Dovolilnica ni piškotek, ampak glava `X-Drop-Ticket`** (FR-091). Piškotek bi brskalnik
+       pripel sam tudi zahtevi s tuje strani; glavo mora odjemalec pripeti izrecno, tuja stran
+       pa je brez CORS-a ne more.
+    4. **Predal je enosmeren** (FR-086): po javnih poteh ni mogoče ničesar prebrati, našteti ali
+       izbrisati. Edini bralec prejetih datotek je lastnik, prek `/files*`.
+
+    Prejeta datoteka je od trenutka prejema navadna lastnikova datoteka pod `/files` — z
+    `origin: inbox`, brez roka veljavnosti (FR-092) in brez žetona in gesla, dokler ju lastnik
+    izrecno ne izda (FR-093). Zaprtje ali izbris predala je NE odnese (FR-094).
 
     ## Avtentikacija (enako kot 001/002/003)
 
@@ -32,13 +61,26 @@ info:
     ## Idempotentnost — z izrecno izjemo (člen III)
 
     Mutacijski endpointi LASTNIKA (`POST /files`, `POST /files/{fileId}/revoke`,
-    `POST /files/{fileId}/password`, `DELETE /files/{fileId}`) sprejmejo `Idempotency-Key`.
+    `DELETE /files/{fileId}`, in v 009b `POST /inboxes/{inboxId}/close`,
+    `DELETE /inboxes/{inboxId}`) sprejmejo `Idempotency-Key`. Ključ je vezan na KLICATELJA:
+    ista vrednost od drugega uporabnika (ali brez poverilnic) shranjenega odgovora ne dobi.
 
     **Izjeme, zapisane tu in ne zamolčane:**
 
     - `POST /share/{token}/unlock` glave **NE sprejme**. Endpoint izdaja kratkotrajno
       dovolilnico — to je natanko primer iz izjeme člena III. Shranjen odgovor bi ponovil
       dovolilnico tudi po tem, ko je bila povezava preklicana.
+    - **`POST /files/{fileId}/password`, `POST /inboxes` in `POST /inboxes/{inboxId}/code` glave
+      prav tako NE sprejmejo.** Izjema člena III ne velja samo za pot, ki izda ŽETON, ampak za
+      vsako, ki izda SKRIVNOST: odgovori teh treh poti so edina mesta v tej pogodbi, kjer se
+      geslo oz. koda pojavita v čistopisu (FR-011, FR-082). Shranjen odgovor je zapis v bazi, in
+      hranil bi ju 24 ur v berljivi obliki — natanko tisto, česar ta modul o sebi trdi, da ne
+      počne. Drugi razlog je isti kot pri rotaciji žetonov: po zamenjavi kode bi shranjen odgovor
+      vrnil STARO, kar bi bilo videti kot opravljena zamenjava.
+    - **Nobena pot pod `/drop/*` glave ne sprejme** (FR-097). Poleg istega razloga kot zgoraj
+      (`unlock` izdaja dovolilnico) je tu še drugi: te poti so javne, `Idempotency-Key` pa je
+      zapis v bazo, ki ga sproži zahteva BREZ poverilnic — neomejeno pisanje v tisto zbirko z
+      javne poti je pot do njenega polnjenja.
     - `PUT /files/{fileId}/content` ima binarno telo. Glave ne upošteva, ker je primerjava
       teles pri binarni vsebini nemogoča (isti razlog kot pri `POST /notes/{id}/audio` v
       007) — dve različni datoteki z istim ključem bi bili videti kot ista zahteva.
@@ -61,6 +103,10 @@ tags:
     description: Lastnikove datoteke — seznam, nalaganje, preklic, brisanje, novo geslo
   - name: share
     description: JAVNE poti za prejemnika brez računa — naslov in geslo
+  - name: inboxes
+    description: 009b — lastnikovi sprejemni predali (naslov + koda, po kateri mu nekdo odda datoteko)
+  - name: drop
+    description: JAVNE poti za pošiljatelja brez računa — oddaja v predal (edine javne poti, ki PIŠEJO)
 
 security:
   - bearerAuth: []
@@ -378,9 +424,9 @@ paths:
 
         Preklicani datoteki to geslo tudi vrne v obtok: `revoked` → `ready`.
 
+        `Idempotency-Key` se pri tej poti NE upošteva — izdaja skrivnost (glej opis modula).
+
         Zahtevani obseg: `file-sharing:write`.
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: Novo geslo in nova povezava — prikazano enkrat.
@@ -400,6 +446,212 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+
+  # ─────────────────────────── lastnik: sprejemni predali (009b) ───────────────────────────
+
+  /inboxes:
+    get:
+      tags: [inboxes]
+      operationId: listFileInboxes
+      summary: Seznam mojih sprejemnih predalov
+      description: |
+        Predali prijavljenega uporabnika, najnovejši zgoraj, s tem, kar je vsak prejel, in s
+        preostalim prostorom. **Kode ni v nobenem od teh odgovorov** — je v odgovoru, ki jo je
+        ustvaril, in nikjer več (FR-082).
+
+        `limits` so STROPI NAMESTITVE, ne vrednosti predala: vmesnik iz njih sestavi izbire, da
+        ne ponudi meje, ki bo pri `POST /inboxes` zavrnjena.
+
+        Zahtevani obseg: `file-sharing:read`.
+      responses:
+        '200':
+          description: Predali in stropi namestitve
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inboxes, limits]
+                properties:
+                  inboxes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FileInbox'
+                  limits:
+                    $ref: '#/components/schemas/InboxLimits'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [inboxes]
+      operationId: createFileInbox
+      summary: Ustvari sprejemni predal (naslov + koda za oddajo)
+      description: |
+        Ustvari predal in vrne naslov ter kodo — **oboje pošlji pošiljatelju, sama povezava ne
+        odpre ničesar** (FR-081), enako kot pri deljenju.
+
+        `maxFiles` in `maxTotalMb` sta MEJI TEGA PREDALA in ju izbere lastnik (FR-087). Izpuščeni
+        pomenita strop namestitve; večja vrednost od stropa je `400` in ne tiho znižanje — lastnik,
+        ki bi mislil, da ima dvakrat več prostora, kot ga ima, bi to izvedel takrat, ko bi bila
+        oddaja zavrnjena nekomu drugemu.
+
+        Meji sta shranjeni NA PREDALU in se ne berejo iz okolja ob vsaki oddaji: sprememba
+        nastavitve namestitve ne sme za nazaj razširiti predala, ki ga je lastnik namenoma naredil
+        majhnega.
+
+        `Idempotency-Key` se pri tej poti NE upošteva — izdaja kodo (glej opis modula). Ponovljen
+        klic zato naredi DRUG predal; to je namerno, ker je shranjena koda slabša napaka od
+        odvečnega predala, ki je viden in ga je mogoče izbrisati.
+
+        Zahtevani obseg: `file-sharing:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInboxInput'
+      responses:
+        '201':
+          description: Predal je odprt. Odgovor vsebuje naslov in kodo — enkrat.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedInbox'
+        '400':
+          description: |
+            Oznaka je prazna, ali pa je izbrana meja večja od stropa namestitve
+            (`FILE_SHARE_INBOX_MAX_FILES`, `FILE_SHARE_INBOX_MAX_MB`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /inboxes/{inboxId}:
+    parameters:
+      - $ref: '#/components/parameters/InboxId'
+    get:
+      tags: [inboxes]
+      operationId: getFileInbox
+      summary: Podrobnosti enega predala
+      description: |
+        Vključuje `failedAttempts` in `lockedUntil` — lastnik MORA videti, da nekdo ugiba kodo, in
+        to v odgovoru API-ja, ne le v dnevniku, ki ga nihče ne bere (FR-090).
+
+        Zahtevani obseg: `file-sharing:read`.
+      responses:
+        '200':
+          description: Predal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileInbox'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+
+    delete:
+      tags: [inboxes]
+      operationId: deleteFileInbox
+      summary: Izbriši predal
+      description: |
+        Odstrani predal in vse njegove dovolilnice.
+
+        **Prejete datoteke OSTANEJO** (FR-094). Predal je bil pot, po kateri so prišle, in ne
+        njihov imetnik; od trenutka prejema so navadne lastnikove datoteke. Kdor jih hoče stran,
+        jih izbriše prek `DELETE /files/{fileId}`, kjer je odstranitev vsebine z diska izrecno
+        dejanje.
+
+        Zahtevani obseg: `file-sharing:write`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Izbrisano.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+
+  /inboxes/{inboxId}/close:
+    parameters:
+      - $ref: '#/components/parameters/InboxId'
+    post:
+      tags: [inboxes]
+      operationId: closeFileInbox
+      summary: Zapri predal
+      description: |
+        Postavi `state: closed` in izbriše VSE izdane dovolilnice. Učinkuje takoj: naslednja
+        oddaja ne gre skozi, tudi če je pošiljatelj kodo vpisal pred zaprtjem (FR-083).
+
+        Zaprtje ni brisanje in ne odnese ničesar, kar je predal že prejel.
+
+        Zahtevani obseg: `file-sharing:write`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Zaprto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileInbox'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
+        '409':
+          description: Predal je že zaprt.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /inboxes/{inboxId}/code:
+    parameters:
+      - $ref: '#/components/parameters/InboxId'
+    post:
+      tags: [inboxes]
+      operationId: regenerateInboxCode
+      summary: Izdaj novo kodo (in s tem nov naslov)
+      description: |
+        Ustvari NOVO kodo in NOV `token` ter razveljavi vse obstoječe dovolilnice. Stari naslov od
+        tega trenutka odgovarja enako kot neznan (FR-083).
+
+        Namen je odvzeti oddajo tistemu, ki ima staro kodo. Če bi naslov ostal isti, bi mu
+        polovica ključa ostala v rokah — zato se zamenja oboje in vmesnik to izrecno pove.
+
+        Zaprt ali potekel predal to tudi vrne v obtok (`closed` → `open`). Ločene operacije "odpri
+        znova" NI namenoma: ta bi stari kodi podaljšala življenje.
+
+        `Idempotency-Key` se pri tej poti NE upošteva — izdaja kodo (glej opis modula). Shranjen
+        odgovor bi po zamenjavi vrnil STARO kodo in bi bila zamenjava videti opravljena.
+
+        Zahtevani obseg: `file-sharing:write`.
+      responses:
+        '200':
+          description: Nova koda in nov naslov — prikazano enkrat.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedInbox'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFoundOrNotYours'
 
   # ─────────────────────────── javno (brez računa) ───────────────────────────
 
@@ -550,6 +802,289 @@ paths:
         '503':
           $ref: '#/components/responses/ContentMissing'
 
+  # ──────────────── javno, obrnjena smer: oddaja v predal (009b, brez računa) ────────────────
+  #
+  # Te tri poti PIŠEJO NA DISK v imenu nekoga, ki ni prijavljen in nikoli ne bo. Zato velja poleg
+  # vsega, kar velja za `/share/*`, še:
+  #
+  #  - dovolilnica NE potuje v piškotku, ampak v glavi `X-Drop-Ticket`, ki jo mora odjemalec
+  #    pripeti izrecno (FR-091). Piškotek bi brskalnik pripel sam in bi bila oddaja mogoča s tuje
+  #    strani, v imenu obiskovalca. Pri poti, ki piše na disk, je razlika med `SameSite` in
+  #    odsotnostjo ambientne poverilnice bistvena;
+  #  - predal je ENOSMEREN: po teh poteh ni mogoče ničesar prebrati, našteti ali izbrisati
+  #    (FR-086). Edini bralec prejetih datotek je lastnik, prek `/files*`.
+
+  /drop/{token}:
+    parameters:
+      - $ref: '#/components/parameters/ShareToken'
+    get:
+      tags: [drop]
+      operationId: getPublicDropInfo
+      summary: Kaj je za tem naslovom (brez prijave)
+      description: |
+        **Javna pot. Brez avtentikacije, brez obsegov.**
+
+        Vrne samo rok in dovoljeno velikost ene datoteke. **Oznake predala in navodila NE vrne** —
+        to pride šele po pravilno vpisani kodi (FR-084), po isti presoji kot ime datoteke pri
+        prevzemu: oznaka pogosto pove vsebino.
+
+        `maxFileBytes` je NASTAVITEV predala, ne njegov preostali prostor. Preostanek bi vsakomur,
+        ki ima naslov, dal števec dogajanja v predalu ("včeraj 900 MB, danes 400"); pravo,
+        trenutno vrednost dobi pošiljatelj po vpisu kode.
+
+        Neznan, potekel, zaprt in izbrisan predal dajo ENAK odgovor `404` z enakim besedilom
+        (FR-085) — in to je isto besedilo kot pri `/share/{token}`.
+      security: []
+      responses:
+        '200':
+          description: Predal sprejema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicDropInfo'
+        '404':
+          $ref: '#/components/responses/ShareUnavailable'
+
+  /drop/{token}/unlock:
+    parameters:
+      - $ref: '#/components/parameters/ShareToken'
+    post:
+      tags: [drop]
+      operationId: unlockDrop
+      summary: Vpiši kodo in odkleni oddajo
+      description: |
+        Ob pravilni kodi izda kratkotrajno dovolilnico (`FILE_SHARE_INBOX_TICKET_MINUTES`) in jo
+        vrne V TELESU. Odjemalec jo hrani v pomnilniku in jo pripenja kot `X-Drop-Ticket` —
+        piškotka tu namenoma NI (FR-091).
+
+        Veljavnost je bistveno daljša od dovolilnice za prevzem (`FILE_SHARE_GRANT_MINUTES`):
+        prevzem se sproži z navigacijo takoj, oddaja pa mora zdržati, dokler nekdo izbira datoteke
+        in jih pošilja po vrsti prek počasne povezave.
+
+        Šele ta odgovor razkrije oznako in navodilo ter PRAVI preostali prostor.
+
+        **Dušenje (FR-090).** Zgrešeni poskusi se štejejo po PREDALU in po IZVORNEM NASLOVU. Po
+        `FILE_SHARE_ATTEMPT_LIMIT` zgrešitvah v oknu so nadaljnji poskusi zavrnjeni s `429` za
+        `FILE_SHARE_LOCK_MINUTES` — tudi če je koda pravilna. Števec naslova je SKUPEN s
+        `/share/{token}/unlock`: napadalec, ki ugiba po obeh javnih površinah z istega naslova, je
+        en napadalec in mora zadeti isto mejo. Poskušena koda se ne zapiše nikamor (FR-032).
+
+        **`Idempotency-Key` se pri tej poti NE sprejme** — endpoint izdaja dovolilnico (izjema
+        člena III, glej opis modula).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnlockDropInput'
+      responses:
+        '200':
+          description: Odklenjeno. Šele tu se pojavita oznaka in navodilo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DropSession'
+        '400':
+          description: Telo nima kode ali je koda predolga.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: |
+            Koda ni pravilna. Odgovor ne pove, ali je bila blizu, in je enak za kodo, ki odklepa
+            DRUG predal. Število preostalih poskusov je navedeno zato, da zakonit pošiljatelj ve,
+            koliko jih ima, preden bo zaklenjen.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          $ref: '#/components/responses/ShareUnavailable'
+        '429':
+          description: |
+            Preveč zgrešenih poskusov (FR-090). Dokler traja zaklep, so zavrnjeni tudi pravilni
+            poskusi. `Retry-After` pove, kdaj je smiselno poskusiti znova.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /drop/{token}/files:
+    parameters:
+      - $ref: '#/components/parameters/ShareToken'
+    post:
+      tags: [drop]
+      operationId: declareDropUpload
+      summary: Napovej oddajo (prvi korak)
+      description: |
+        **Javna pot. Brez avtentikacije, brez obsegov** — a NE brez dovoljenja: zahteva mora
+        nositi `X-Drop-Ticket`.
+
+        Ustvari zapis v stanju `uploading`, ki prostor REZERVIRA, in preveri VSE ŠTIRI MEJE
+        (FR-088): velikost ene datoteke (`FILE_SHARE_MAX_MB`), prostor predala (`maxFiles`,
+        `maxTotalBytes`), kvoto lastnika (`FILE_SHARE_QUOTA_MB`) ter stanje in rok predala. Bajti
+        pridejo šele z `PUT /drop/{token}/files/{fileId}/content`.
+
+        **Zakaj dva koraka:** meje se morajo preveriti, PREDEN priteče 500 MB od nekoga, ki ni
+        prijavljen (research.md §3). Pošiljatelj dobi razumljivo zavrnitev, ne prekinjene povezave
+        sredi pošiljanja.
+
+        Število hkratnih NEDOKONČANIH oddaj na predal je omejeno (FR-096): brez tega bi bilo
+        nekaj visečih napovedi brez vsebine dovolj, da je predal za vse ostale poln, dokler ne
+        pride na vrsto pometač obtičalih nalaganj.
+
+        Prejeta datoteka je od tega trenutka lastnikova: BREZ roka veljavnosti (FR-092) in BREZ
+        žetona in gesla, ker prejeto ni samodejno deljeno naprej (FR-093).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DropTicket'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeclareUploadInput'
+      responses:
+        '201':
+          description: Prostor je rezerviran; vsebina se pričakuje na `uploadUrl`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeclaredUpload'
+        '400':
+          description: Ime je prazno po čiščenju, ali napovedana velikost ni pozitivno celo število.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Dovolilnice ni, je potekla, ali je bila razveljavljena (zaprtje, nova koda).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          $ref: '#/components/responses/ShareUnavailable'
+        '413':
+          description: Napovedana velikost presega `FILE_SHARE_MAX_MB`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: |
+            Na tem predalu visi že toliko nedokončanih oddaj, kolikor jih sme (FR-096).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '507':
+          description: |
+            Prostora ni: predal je poln (število datotek ali skupni bajti) ali pa je polna kvota
+            lastnika. Besedilo je namenoma BREZ lastnikovih številk — pošiljatelj mora izvedeti,
+            da datoteka ne gre skozi, ne pa koliko prostora ima lastnik in koliko ga je porabil.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /drop/{token}/files/{fileId}/content:
+    parameters:
+      - $ref: '#/components/parameters/ShareToken'
+      - $ref: '#/components/parameters/FileId'
+    put:
+      tags: [drop]
+      operationId: uploadDropContent
+      summary: Oddaj vsebino (drugi korak)
+      description: |
+        **Javna pot. Brez avtentikacije, brez obsegov** — a NE brez dovoljenja: zahteva mora
+        nositi `X-Drop-Ticket`, izdan pri `POST /drop/{token}/unlock`, in ta je vezan na TA predal.
+        Dovolilnica enega predala ne odpre drugega, tudi če sta oba istega lastnika.
+
+        Telo je surova vsebina datoteke, ne obrazec. Strežnik jo pretaka na disk in je nikoli ne
+        zbere v pomnilnik (research.md §4).
+
+        **`Content-Length` mora biti ENAK napovedani velikosti** (FR-089) — ne le manjši od meje
+        namestitve. Prostor je bil rezerviran zanjo in samo zanjo; pošiljatelj, ki napove 1 MB in
+        pošlje 400 MB, je s tem ustavljen na prvem kosu nad mejo. Isto velja za DEJANSKO prispelo
+        količino: manj bajtov od napovedanih je zavrnitev, ne tiho shranjena okrnjena datoteka.
+
+        **Vrsta telesa se preverja** (`415`): `application/json` bi požrl globalni razčlenjevalnik
+        in datoteka bi bila velikosti 0, `multipart/form-data` in
+        `application/x-www-form-urlencoded` pa bi na disk zapisala meje obrazca skupaj z vsebino —
+        datoteko, ki je videti uspešno oddana in je pokvarjena (člen VII). Odsotna glava je
+        dovoljena.
+
+        **Prekinjena oddaja ne pusti ničesar** (FR-096): delna vsebina se odstrani IN zapis se
+        pobriše, tako da se rezerviran prostor takoj sprosti.
+
+        Odgovor je potrdilo: kaj je prispelo in koliko prostora je še. Ničesar, kar ne bi bilo
+        znano že prej — oddaja ne sme postati način za branje predala.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DropTicket'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: Vsebina je cela, zapis je `ready` in datoteka je na lastnikovem seznamu.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DropReceipt'
+        '400':
+          description: |
+            Manjka `Content-Length`, vsebina je prazna, ali pa je prispelo manj, kot je bilo
+            napovedano.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Dovolilnice ni, je potekla, ali je bila razveljavljena.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: |
+            Predal ne velja (FR-085) — ali pa ta oddaja ne obstaja, ni od tega predala oz. je že
+            zaključena. Namenoma ISTI odgovor: pošiljatelj teh razlogov ne sme razlikovati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '413':
+          description: Vsebina je večja od napovedane velikosti — ugotovljeno iz `Content-Length` ali med pisanjem.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '415':
+          description: Telo je napovedano kot obrazec ali JSON. Pošlji surovo vsebino.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Oddaje ni bilo mogoče dokončati (napaka pisanja na disk). Zapis in delna vsebina sta odstranjena.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+
 components:
   securitySchemes:
     bearerAuth:
@@ -579,6 +1114,26 @@ components:
       description: |
         22 znakov `base64url` — 16 naključnih bajtov. NI izpeljan iz identifikatorja zapisa
         ne iz imena datoteke; iz ene povezave ni mogoče izpeljati druge (FR-014).
+    InboxId:
+      name: inboxId
+      in: path
+      required: true
+      schema:
+        type: string
+    DropTicket:
+      name: X-Drop-Ticket
+      in: header
+      required: true
+      schema:
+        type: string
+      description: |
+        Dovolilnica za oddajo iz `POST /drop/{token}/unlock` (009b, FR-091).
+
+        NAMENOMA glava in ne piškotek: piškotek bi brskalnik pripel sam, tudi zahtevi, ki jo je
+        sprožila tuja stran, in oddaja v imenu obiskovalca bi bila mogoča od zunaj. Glavo mora
+        odjemalec pripeti izrecno, tuja stran pa je brez CORS-a (člen II) ne more — preverjanje
+        pred zahtevo (preflight) ji ne uspe. Pri javni poti, ki PIŠE NA DISK, je to razlika med
+        ublaženim in odpravljenim tveganjem.
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -586,9 +1141,14 @@ components:
       schema:
         type: string
       description: |
-        Ponovljena zahteva z istim ključem, isto potjo in istim telesom vrne prvotni odgovor
-        (člen III). Ne velja za `PUT /files/{fileId}/content` (binarno telo) in za javne
-        poti `/share/*` (izdaja dovolilnice) — obe izjemi sta opisani pri tistih poteh.
+        Ponovljena zahteva z istim ključem, isto potjo, istim telesom IN istim klicateljem vrne
+        prvotni odgovor (člen III). Ista vrednost od drugega klicatelja ali brez poverilnic
+        shranjenega odgovora ne dobi.
+
+        Ne velja za `PUT /files/{fileId}/content` in `PUT /drop/{token}/files/{fileId}/content`
+        (binarno telo), za javne poti `/share/*` in `/drop/*` (izdaja dovolilnice) ter za poti,
+        ki izdajo skrivnost — `POST /files/{fileId}/password`, `POST /inboxes` in
+        `POST /inboxes/{inboxId}/code`. Vse izjeme so opisane pri tistih poteh in v opisu modula.
 
   responses:
     Unauthorized:
@@ -659,6 +1219,260 @@ components:
         **"Poteklo" NI stanje** — izpelje se iz `expiresAt < zdaj` (data-model.md). Shranjeno
         stanje bi se moralo vzdrževati z opravilom in bi se med potekom in zapisom razhajalo
         s časom.
+
+    InboxState:
+      type: string
+      enum: [open, closed]
+      description: |
+        SHRANJENO stanje predala. `open` = sprejema. `closed` = lastnik ga je zaprl.
+
+        Nabor je NAMENOMA drugačen od `SharedFileState`: `broken` je ugotovitev o razhajanju med
+        zapisom in vsebino na disku, predal pa vsebine nima — zanj tako stanje ne obstaja in ga ne
+        sme biti mogoče niti izraziti.
+
+        **"Poteklo" tudi tu NI stanje** — izpelje se iz `expiresAt < zdaj`.
+
+    InboxLimits:
+      type: object
+      description: |
+        STROPI NAMESTITVE za predale — ne meji posameznega predala. Vmesnik iz njih sestavi izbire,
+        da ne ponudi vrednosti, ki bo zavrnjena.
+      required: [maxFiles, maxTotalBytes, maxFileBytes]
+      properties:
+        maxFiles:
+          type: integer
+          description: '`FILE_SHARE_INBOX_MAX_FILES`.'
+        maxTotalBytes:
+          type: integer
+          description: '`FILE_SHARE_INBOX_MAX_MB` v bajtih.'
+        maxFileBytes:
+          type: integer
+          description: '`FILE_SHARE_MAX_MB` v bajtih — velja za vsako datoteko, tudi oddano.'
+
+    CreateInboxInput:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: |
+            Za koga oz. za kaj je predal. Vidno pošiljatelju šele PO vpisu kode (FR-084).
+        note:
+          type: string
+          maxLength: 500
+          description: Navodilo pošiljatelju ("pošlji obe strani"). Prav tako šele po kodi.
+        expiresInDays:
+          type: [integer, 'null']
+          enum: [1, 7, 30, null]
+          description: |
+            Do kdaj predal sprejema. Izpuščeno pomeni `FILE_SHARE_DEFAULT_EXPIRY_DAYS`; izrecni
+            `null` pomeni **brez roka** — veljavna izbira, ki je v vmesniku posebej označena.
+        maxFiles:
+          type: integer
+          minimum: 1
+          description: |
+            Največ datotek v ta predal. Izpuščeno pomeni strop namestitve; večje od stropa je
+            `400`.
+        maxTotalMb:
+          type: integer
+          minimum: 1
+          description: |
+            Največ skupaj v ta predal, v MB. Izpuščeno pomeni strop namestitve; večje od stropa je
+            `400`.
+
+            Iz te vrednosti izhaja tudi meja ENE oddane datoteke: nikoli več kot preostali prostor
+            predala, in nikoli več kot `FILE_SHARE_MAX_MB`.
+
+    CreatedInbox:
+      type: object
+      required: [inbox, dropUrl, code]
+      description: |
+        Edina dva odgovora v tej pogodbi, ki vsebujeta kodo v čistopisu, sta ta ob nastanku predala
+        in isti ob izdaji nove kode — nikoli več (FR-082). Izgubljene kode ni mogoče prebrati;
+        mogoče je le izdati novo, kar naredi tudi nov naslov.
+      properties:
+        inbox:
+          $ref: '#/components/schemas/FileInbox'
+        dropUrl:
+          type: string
+          description: '`{PUBLIC_BASE_URL}/u/{token}` — kar se pošlje pošiljatelju.'
+        code:
+          type: string
+          description: |
+            16 znakov iz abecede brez dvoumnih znakov, prikazanih v štirih četvorkah — ista
+            izvedba kot geslo za prevzem (research.md §7). V bazi je samo `scrypt` povzetek.
+
+    FileInbox:
+      type: object
+      required: [id, label, state, expired, openForUpload, maxFiles, maxTotalBytes, receivedFiles, receivedBytes, failedAttempts, createdAt]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        note:
+          type: string
+        state:
+          $ref: '#/components/schemas/InboxState'
+        expired:
+          type: boolean
+          description: 'IZPELJANO iz `expiresAt`, ne shranjeno.'
+        openForUpload:
+          type: boolean
+          description: |
+            IZPELJANO: `state === open` IN rok še ni minil. Prostor v tem ni upoštevan — polni
+            predal je še vedno odprt in ga izpraznitev vrne v rabo.
+        dropUrl:
+          type: [string, 'null']
+          description: |
+            Naslov za oddajo. Koda NI del odgovora — naslov sam brez nje ne odpre ničesar
+            (FR-081).
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: '`null` pomeni **brez roka**, ne "poteklo".'
+        maxFiles:
+          type: integer
+          description: Meja TEGA predala, kakor jo je izbral lastnik.
+        maxTotalBytes:
+          type: integer
+        receivedFiles:
+          type: integer
+          description: |
+            Koliko datotek je predal DEJANSKO prejel — brez nedokončanih oddaj. Sešteto z
+            agregacijo po `inboxId`, nikoli iz števca na predalu (isto pravilo kot pri kvoti).
+        receivedBytes:
+          type: integer
+        lastReceivedAt:
+          type: [string, 'null']
+          format: date-time
+        remainingFiles:
+          type: integer
+        remainingBytes:
+          type: integer
+        failedAttempts:
+          type: integer
+          description: |
+            Zgrešeni poskusi kode od zadnje uspešne odklenitve. Lastnik mora videti, da nekdo
+            ugiba (FR-090).
+        lockedUntil:
+          type: [string, 'null']
+          format: date-time
+          description: Dokler je v prihodnosti, so poskusi na tem predalu zavrnjeni.
+        createdAt:
+          type: string
+          format: date-time
+
+    PublicDropInfo:
+      type: object
+      required: [maxFileBytes]
+      description: |
+        Vse, kar sme izvedeti nekdo, ki ima zgolj naslov predala. **Brez oznake in brez navodila**
+        — to je podatek, ki ga varuje koda (FR-084).
+      properties:
+        maxFileBytes:
+          type: integer
+          description: |
+            Nastavitev predala (manjša od `FILE_SHARE_MAX_MB` in `maxTotalBytes`), NE preostali
+            prostor — ta bi bil števec dogajanja za vsakogar, ki ima naslov.
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+
+    UnlockDropInput:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          maxLength: 128
+          description: |
+            Koda, kot jo je pošiljatelj dobil. Pred primerjavo se normalizira enako kot geslo za
+            prevzem: presledki in vezaji iz prikaza se odstranijo, črke se pretvorijo v velike.
+
+    DropSession:
+      type: object
+      required: [label, ticket, ticketExpiresAt, maxFileBytes, remainingFiles, remainingBytes]
+      properties:
+        label:
+          type: string
+          description: Oznaka predala — prvič vidna šele tu.
+        note:
+          type: string
+          description: Navodilo lastnika pošiljatelju.
+        ticket:
+          type: string
+          description: |
+            Dovolilnica za oddajo. Odjemalec jo hrani v pomnilniku in jo pripenja kot
+            `X-Drop-Ticket`; v piškotek NE gre (FR-091).
+        ticketExpiresAt:
+          type: string
+          format: date-time
+        maxFileBytes:
+          type: integer
+          description: Zdaj PRAVA vrednost — manjša od meje namestitve in preostalega prostora predala.
+        remainingFiles:
+          type: integer
+        remainingBytes:
+          type: integer
+
+    DeclareUploadInput:
+      type: object
+      required: [fileName, byteSize]
+      properties:
+        fileName:
+          type: string
+          maxLength: 400
+          description: |
+            Ime, kot ga pozna pošiljatelj. Strežnik ga OČISTI (ločila poti, `..`, krmilni znaki,
+            dolžina) in shrani samo kot prikazno ime — nikoli kot pot (FR-007). Ime, od katerega po
+            čiščenju ne ostane nič, postane `datoteka`.
+        byteSize:
+          type: integer
+          minimum: 1
+          description: |
+            NAPOVEDANA velikost. Preveri se proti vsem štirim mejam, preden priteče prvi bajt, in
+            `Content-Length` drugega koraka MORA biti enak njej (FR-089).
+        mimeType:
+          type: string
+          description: 'Privzeto `application/octet-stream`. Vsebina se ne pregleduje (FR-054, FR-095).'
+        senderName:
+          type: string
+          maxLength: 200
+          description: |
+            Kar o sebi napiše pošiljatelj; neobvezno. Očisti se in skrajša na 80 znakov. To je
+            NAVEDBA, ne ugotovljena istovetnost — sistem je ne preverja in je vmesnik ne
+            predstavlja, kot bi jo.
+
+    DeclaredUpload:
+      type: object
+      required: [id, uploadUrl, byteSize]
+      properties:
+        id:
+          type: string
+        uploadUrl:
+          type: string
+          description: '`/api/v1/drop/{token}/files/{id}/content` — kam poslati vsebino.'
+        byteSize:
+          type: integer
+          description: Kolikšna MORA biti vsebina; vsaka druga vrednost `Content-Length` je zavrnjena.
+
+    DropReceipt:
+      type: object
+      required: [fileName, byteSize, remainingFiles, remainingBytes]
+      description: Potrdilo pošiljatelju. Ničesar o predalu, kar ne bi bilo znano že prej.
+      properties:
+        fileName:
+          type: string
+          description: Očiščeno ime, kakršno vidi lastnik.
+        byteSize:
+          type: integer
+        remainingFiles:
+          type: integer
+        remainingBytes:
+          type: integer
 
     Quota:
       type: object
@@ -776,6 +1590,22 @@ components:
         createdAt:
           type: string
           format: date-time
+        origin:
+          type: string
+          enum: [owner, inbox]
+          description: |
+            009b: `owner` = datoteko je naložil lastnik sam; `inbox` = prispela je prek sprejemnega
+            predala (FR-092). IZPELJANO iz `inboxId`, ne shranjeno posebej — dve polji, ki trdita
+            isto, se prej ali slej razideta.
+        inboxId:
+          type: [string, 'null']
+          description: |
+            Predal, po katerem je datoteka prišla. Ostane tudi, ko predala ni več (FR-094): pove,
+            kako je datoteka prišla, in to se z izbrisom predala ni spremenilo.
+        senderName:
+          type: [string, 'null']
+          description: |
+            Kar je o sebi napisal pošiljatelj. NAVEDBA, ne ugotovljena istovetnost.
 
     PublicShareInfo:
       type: object

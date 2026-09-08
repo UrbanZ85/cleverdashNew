@@ -3,9 +3,17 @@ import { HttpClient, HttpEventType, type HttpEvent } from '@angular/common/http'
 import { firstValueFrom, type Subscription } from 'rxjs';
 import { apiUrl } from '../../core/api/api-base.js';
 import type {
+  CreateInboxInput,
   CreatedFile,
+  CreatedInbox,
+  DeclaredUpload,
+  DropInfo,
+  DropReceipt,
+  DropSession,
   ExpiryChoice,
+  FileInbox,
   FilesListResponse,
+  InboxesResponse,
   PublicShareInfo,
   SharedFile,
   UnlockResult,
@@ -128,5 +136,110 @@ export class FileSharingApi {
     return firstValueFrom(
       this.http.post<UnlockResult>(apiUrl(`/share/${token}/unlock`), { password }, { withCredentials: true }),
     );
+  }
+
+  // ── 009b: sprejemni predali, lastnikova stran ─────────────────────────────────────────
+
+  listInboxes(): Promise<InboxesResponse> {
+    return firstValueFrom(this.http.get<InboxesResponse>(apiUrl('/inboxes'), { withCredentials: true }));
+  }
+
+  createInbox(input: CreateInboxInput): Promise<CreatedInbox> {
+    const body: Record<string, unknown> = { label: input.label };
+    if (input.note) body.note = input.note;
+    // `undefined` pomeni "uporabi privzetek namestitve", izrecni `null` pomeni BREZ ROKA —
+    // razlika, ki jo je treba ohraniti vse do strežnika (enako kot pri nalaganju).
+    if (input.expiresInDays !== undefined) body.expiresInDays = input.expiresInDays;
+    if (input.maxFiles !== undefined) body.maxFiles = input.maxFiles;
+    if (input.maxTotalMb !== undefined) body.maxTotalMb = input.maxTotalMb;
+    return firstValueFrom(this.http.post<CreatedInbox>(apiUrl('/inboxes'), body, { withCredentials: true }));
+  }
+
+  closeInbox(inboxId: string): Promise<FileInbox> {
+    return firstValueFrom(
+      this.http.post<FileInbox>(apiUrl(`/inboxes/${inboxId}/close`), {}, { withCredentials: true }),
+    );
+  }
+
+  regenerateInboxCode(inboxId: string): Promise<CreatedInbox> {
+    return firstValueFrom(
+      this.http.post<CreatedInbox>(apiUrl(`/inboxes/${inboxId}/code`), {}, { withCredentials: true }),
+    );
+  }
+
+  removeInbox(inboxId: string): Promise<void> {
+    return firstValueFrom(this.http.delete<void>(apiUrl(`/inboxes/${inboxId}`), { withCredentials: true }));
+  }
+
+  // ── 009b: javna stran za oddajo (brez prijave) ────────────────────────────────────────
+  //
+  // Te tri metode kliče `/u/:token`. `auth.interceptor.ts` na `/api/v1/drop/` ne pripenja glave
+  // `Authorization` — potekla seja v brskalniku ne sme pokvariti strani, ki s sejo nima zveze.
+  //
+  // `withCredentials` tu NI in ne sme biti: dovolilnica za oddajo ne potuje v piškotku, ampak v
+  // glavi `X-Drop-Ticket`, ki jo pripenjamo izrecno (FR-091). Piškotek bi brskalnik pošiljal sam
+  // tudi pri zahtevi, ki bi jo sprožila tuja stran — pri poti, ki piše na disk, je to razlika
+  // med ublaženim in odpravljenim tveganjem.
+
+  dropInfo(token: string): Promise<DropInfo> {
+    return firstValueFrom(this.http.get<DropInfo>(apiUrl(`/drop/${token}`)));
+  }
+
+  dropUnlock(token: string, code: string): Promise<DropSession> {
+    return firstValueFrom(this.http.post<DropSession>(apiUrl(`/drop/${token}/unlock`), { code }));
+  }
+
+  /**
+   * Oddaja je DVOSTOPENJSKA, iz istega razloga kot lastnikovo nalaganje (research.md §3): meje se
+   * preverijo, preden priteče prvi bajt. Pošiljatelj tako dobi razumljivo zavrnitev in ne
+   * prekinjene povezave sredi pošiljanja.
+   *
+   * Telo drugega koraka je `File`, ne `FormData`: XHR datoteko pretaka z diska in je ne naloži v
+   * pomnilnik brskalnika — enako, kot je strežnik ne zbere v `Buffer`.
+   */
+  async dropUpload(
+    token: string,
+    ticket: string,
+    file: File,
+    senderName: string | null,
+  ): Promise<DropReceipt> {
+    const body: Record<string, unknown> = { fileName: file.name, byteSize: file.size };
+    if (file.type) body.mimeType = file.type;
+    if (senderName) body.senderName = senderName;
+
+    const declared = await firstValueFrom(
+      this.http.post<DeclaredUpload>(apiUrl(`/drop/${token}/files`), body, {
+        headers: { 'X-Drop-Ticket': ticket },
+      }),
+    );
+
+    this.progress.set({ fileName: file.name, loaded: 0, total: file.size });
+
+    try {
+      return await new Promise<DropReceipt>((resolve, reject) => {
+        this.current = this.http
+          .put<DropReceipt>(apiUrl(`/drop/${token}/files/${declared.id}/content`), file, {
+            headers: {
+              'X-Drop-Ticket': ticket,
+              'Content-Type': file.type || 'application/octet-stream',
+            },
+            reportProgress: true,
+            observe: 'events',
+          })
+          .subscribe({
+            next: (event: HttpEvent<DropReceipt>) => {
+              if (event.type === HttpEventType.UploadProgress) {
+                this.progress.set({ fileName: file.name, loaded: event.loaded, total: event.total ?? file.size });
+              } else if (event.type === HttpEventType.Response && event.body) {
+                resolve(event.body);
+              }
+            },
+            error: (err: unknown) => reject(err),
+          });
+      });
+    } finally {
+      this.current = null;
+      this.progress.set(null);
+    }
   }
 }

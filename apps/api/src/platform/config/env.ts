@@ -173,6 +173,19 @@ const envSchema = z.object({
   FILE_SHARE_LOCK_MINUTES: z.coerce.number().int().positive().default(60),
   FILE_SHARE_CLEANUP_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),
   FILE_SHARE_UPLOAD_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(360),
+
+  // 009b (sprejemni predali — oddaja od zunaj). Te tri so ZGORNJE MEJE namestitve, ne
+  // vrednosti predala: koliko datotek in koliko skupaj sme lastnik dovoliti ENEMU predalu,
+  // izbere sam ob njegovem nastanku (FR-087) — tu je le strop, ki ga njegova izbira ne more
+  // prebiti. Brez stropa bi bila edina meja kvota lastnika, kar bi vsakemu, ki ima kodo,
+  // odprlo pot do vsega njegovega prostora.
+  //
+  // `FILE_SHARE_INBOX_TICKET_MINUTES` je bistveno daljši od `FILE_SHARE_GRANT_MINUTES` (10):
+  // dovolilnica za PRENOS se porabi ob navigaciji takoj, dovolilnica za ODDAJO pa mora
+  // zdržati, dokler nekdo izbira datoteke in jih pošilja po vrsti prek počasne povezave.
+  FILE_SHARE_INBOX_MAX_FILES: z.coerce.number().int().positive().default(10),
+  FILE_SHARE_INBOX_MAX_MB: z.coerce.number().int().positive().default(1000),
+  FILE_SHARE_INBOX_TICKET_MINUTES: z.coerce.number().int().positive().default(60),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -2,11 +2,15 @@ import { Component, input, output, signal } from '@angular/core';
 import { IonButton, IonIcon, IonNote, IonText } from '@ionic/angular/standalone';
 
 /**
- * Enkraten prikaz povezave IN gesla (FR-011).
+ * Enkraten prikaz povezave IN skrivnosti, ki gre z njo (FR-011, FR-082).
  *
- * Opozorilo, da gesla pozneje ne bo več mogoče videti, je VNAPREJ — ne potem, ko je okno že
- * zaprto. To je edina točka v vsem vmesniku, kjer je geslo v čistopisu; v bazi je samo scrypt
- * povzetek in nobenega drugega odgovora, ki bi ga vseboval.
+ * Opozorilo, da skrivnosti pozneje ne bo več mogoče videti, je VNAPREJ — ne potem, ko je okno že
+ * zaprto. To je edina točka v vsem vmesniku, kjer je v čistopisu; v bazi je samo scrypt povzetek
+ * in nobenega drugega odgovora, ki bi ga vseboval.
+ *
+ * 009b: ista komponenta streže OBEMA smerema — geslu za prevzem in kodi za oddajo. Napisi so
+ * zato vhodi z privzetkom deljenja. Dvojnik te komponente z drugimi napisi bi pomenil dve
+ * izvedbi opozorila "vidiš samo enkrat" in dve izvedbi kopiranja v odložišče, ki lahko spodleti.
  */
 @Component({
   selector: 'app-share-created',
@@ -17,22 +21,22 @@ import { IonButton, IonIcon, IonNote, IonText } from '@ionic/angular/standalone'
       <div class="warning">
         <ion-icon name="lock-closed-outline" aria-hidden="true"></ion-icon>
         <ion-text>
-          <strong>Geslo je prikazano samo enkrat.</strong>
-          Ko to okno zapreš, ga ne bo več mogoče prebrati — lahko pa zanj izdaš novega, kar
-          staro povezavo takoj razveljavi.
+          <strong>{{ warning() }}</strong>
+          Ko to okno zapreš, ne bo več mogoče prebrati — lahko pa izdaš novo, kar staro povezavo
+          takoj razveljavi.
         </ion-text>
       </div>
 
       <label class="field">
-        <span>Povezava</span>
+        <span>{{ linkLabel() }}</span>
         <output>{{ shareUrl() }}</output>
         <ion-button size="small" fill="outline" (click)="copy(shareUrl(), 'povezavo')">Kopiraj</ion-button>
       </label>
 
       <label class="field">
-        <span>Geslo</span>
+        <span>{{ secretLabel() }}</span>
         <output class="password">{{ password() }}</output>
-        <ion-button size="small" fill="outline" (click)="copy(password(), 'geslo')">Kopiraj</ion-button>
+        <ion-button size="small" fill="outline" (click)="copy(password(), secretNoun())">Kopiraj</ion-button>
       </label>
 
       @if (copied(); as what) {
@@ -42,10 +46,7 @@ import { IonButton, IonIcon, IonNote, IonText } from '@ionic/angular/standalone'
         <ion-note color="warning">Kopiranje ni uspelo — označi besedilo in ga kopiraj ročno.</ion-note>
       }
 
-      <ion-note>
-        Prejemniku pošlji <strong>oboje</strong>. Sama povezava ne odpre ničesar — in prav to je
-        namen. Priporočljivo je, da gesla ne pošlješ po isti poti kot povezavo.
-      </ion-note>
+      <ion-note>{{ hint() }}</ion-note>
 
       <ion-button expand="block" (click)="done.emit()">Zapri</ion-button>
     </div>
@@ -92,6 +93,17 @@ import { IonButton, IonIcon, IonNote, IonText } from '@ionic/angular/standalone'
 export class ShareCreatedComponent {
   readonly shareUrl = input.required<string>();
   readonly password = input.required<string>();
+  /** Napisi. Privzetki so za DELJENJE (009); sprejemni predal (009b) jih prepiše. */
+  readonly linkLabel = input('Povezava');
+  readonly secretLabel = input('Geslo');
+  /** Tožilnik za sporočilo "Kopirano: …" — slovenščina brez sklona zveni kot strojni prevod. */
+  readonly secretNoun = input('geslo');
+  /** Cel stavek in ne sestavljanje iz `secretLabel`: "Geslo je prikazano" proti "Koda je
+   * prikazana" se razlikuje v končnici, ki je ni mogoče izpeljati iz imena polja. */
+  readonly warning = input('Geslo je prikazano samo enkrat.');
+  readonly hint = input(
+    'Prejemniku pošlji oboje. Sama povezava ne odpre ničesar — in prav to je namen. Priporočljivo je, da gesla ne pošlješ po isti poti kot povezavo.',
+  );
   readonly done = output<void>();
 
   readonly copied = signal<string | null>(null);

@@ -162,6 +162,13 @@ describe('loadEnv', () => {
     expect(env.FILE_SHARE_LOCK_MINUTES).toBe(60);
     expect(env.FILE_SHARE_CLEANUP_INTERVAL_MINUTES).toBe(60);
     expect(env.FILE_SHARE_UPLOAD_TIMEOUT_MINUTES).toBe(360);
+    // 009b: stropi za sprejemne predale.
+    expect(env.FILE_SHARE_INBOX_MAX_FILES).toBe(10);
+    expect(env.FILE_SHARE_INBOX_MAX_MB).toBe(1000);
+    // Dovolilnica za ODDAJO je bistveno daljša od tiste za prevzem: prevzem se sproži z
+    // navigacijo takoj, oddaja pa mora zdržati, dokler nekdo izbira in pošilja datoteke.
+    expect(env.FILE_SHARE_INBOX_TICKET_MINUTES).toBe(60);
+    expect(env.FILE_SHARE_INBOX_TICKET_MINUTES).toBeGreaterThan(env.FILE_SHARE_GRANT_MINUTES);
   });
 
   it('009: vpisana vrednost prepiše privzetek', () => {
@@ -174,6 +181,13 @@ describe('loadEnv', () => {
     expect(() => loadEnv({ ...VALID, FILE_SHARE_MAX_MB: '0' })).toThrowError(/FILE_SHARE_MAX_MB/);
     resetEnvCacheForTests();
     expect(() => loadEnv({ ...VALID, FILE_SHARE_MAX_MB: '-1' })).toThrowError(/FILE_SHARE_MAX_MB/);
+  });
+
+  it('009b: meja predala 0 je zavrnjena — predal, ki ne sprejme ničesar, bi bil tiho pokvarjen', () => {
+    expect(() => loadEnv({ ...VALID, FILE_SHARE_INBOX_MAX_FILES: '0' })).toThrowError(
+      /FILE_SHARE_INBOX_MAX_FILES/,
+    );
+    expect(() => loadEnv({ ...VALID, FILE_SHARE_INBOX_MAX_MB: '-5' })).toThrowError(/FILE_SHARE_INBOX_MAX_MB/);
   });
 
   it('009: nešteviln FILE_SHARE_ATTEMPT_LIMIT da jasno napako, ne NaN (past SALT_ROUNDS)', () => {

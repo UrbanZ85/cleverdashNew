@@ -195,6 +195,9 @@ posodobitvi slike. Vse spodnje spremenljivke so **neobvezne** — privzetki so v
 | `FILE_SHARE_LOCK_MINUTES` | `60` | trajanje zaklepa; med njim je zavrnjeno tudi pravilno geslo |
 | `FILE_SHARE_CLEANUP_INTERVAL_MINUTES` | `60` | perioda pometača (teče tudi takoj ob zagonu) |
 | `FILE_SHARE_UPLOAD_TIMEOUT_MINUTES` | `360` | kdaj velja nedokončano nalaganje za obtičalo |
+| `FILE_SHARE_INBOX_MAX_FILES` | `10` | 009b: STROP za en sprejemni predal — koliko datotek sme lastnik največ dovoliti. Ni privzeta vrednost predala, ampak meja njegove izbire |
+| `FILE_SHARE_INBOX_MAX_MB` | `1000` | 009b: strop za skupno velikost enega predala. Brez teh dveh bi bila edina meja kvota lastnika, torej bi kdor koli s kodo lahko porabil ves njegov prostor |
+| `FILE_SHARE_INBOX_TICKET_MINUTES` | `60` | 009b: veljavnost dovolilnice za oddajo. Bistveno dlje od `FILE_SHARE_GRANT_MINUTES`: prevzem se sproži z navigacijo takoj, oddaja pa mora zdržati, dokler nekdo izbira datoteke in jih pošilja |
 
 ### Zunanji viri (001, dopolnjeno v 005)
 
@@ -370,6 +373,9 @@ FILE_SHARE_ATTEMPT_WINDOW_MINUTES=15
 FILE_SHARE_LOCK_MINUTES=60
 FILE_SHARE_CLEANUP_INTERVAL_MINUTES=60
 FILE_SHARE_UPLOAD_TIMEOUT_MINUTES=360
+FILE_SHARE_INBOX_MAX_FILES=10
+FILE_SHARE_INBOX_MAX_MB=1000
+FILE_SHARE_INBOX_TICKET_MINUTES=60
 ```
 
 ## 6. Sintaksa — past iz starega `.env`

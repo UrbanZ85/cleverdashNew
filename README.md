@@ -70,6 +70,22 @@ pojavi šele, ko si ga uporabnik vklopi v nastavitvah. Pogodba je v
 [`specs/009-file-sharing/contracts/openapi.yaml`](specs/009-file-sharing/contracts/openapi.yaml),
 uporaba iz n8n pa v [`docs/file-sharing-automation.md`](docs/file-sharing-automation.md).
 
+Isti zavihek zna od dopolnitve **009b** tudi **obrnjeno smer — sprejem datotek**. Uporabnik
+ustvari *povezavo za oddajo* in dobi naslov ter kodo; kdor ju prejme, na javni strani
+`/u/<žeton>` odda datoteko, prav tako **brez računa**. Prejeta datoteka je od tega trenutka
+navadna uporabnikova datoteka na istem seznamu — z oznako, da je prejeta, in z navedbo, kdo jo je
+oddal — brez roka veljavnosti in **brez povezave za prevzem, dokler je uporabnik izrecno ne
+izda**. Zaprtje ali izbris povezave prejetih datotek ne odnese.
+
+Ta pot je edina v aplikaciji, po kateri nekdo brez računa **piše na disk**, zato ima pod sabo
+štiri meje, ki se preverijo pri vsaki oddaji in vsako dvakrat (pred prenosom in med njim):
+velikost ene datoteke, prostor te povezave (koliko datotek in koliko skupaj — izbere uporabnik ob
+nastanku, navzgor pa ga omejuje nastavitev namestitve), kvota uporabnika ter stanje in rok
+povezave. Napovedana velikost je zavezujoča: kdor napove megabajt in pošlje pol gigabajta, je
+ustavljen med prenosom in za sabo ne pusti ničesar. Dovolilnica za oddajo **ni piškotek**, ampak
+glava, ki jo mora odjemalec pripeti izrecno — tuja stran tako oddaje v imenu obiskovalca ne more
+sprožiti. Vse to je zbrano v [`docs/SECURITY-FIRST.md`](docs/SECURITY-FIRST.md) §4c.
+
 Poleg naštetih funkcionalnosti je na nadzorni plošči vgrajena ploščica **Pot**: prikaže obe
 smeri — pot v službo in pot domov — vsako z vdelanim zemljevidom, **časom poti in zamudo
 zaradi prometa**; zgoraj je tista, ki ustreza času dneva (do 12:00 v službo, pozneje domov),

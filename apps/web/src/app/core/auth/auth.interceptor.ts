@@ -18,6 +18,11 @@ import { needsRefreshNow } from './token-lifetime.js';
 //  2. Če ima brskalnik POTEKEL žeton, ga vratar zavrne s 401, še preden zahteva doseže
 //     usmerjevalnik — javna stran bi se podrla zaradi seje, s katero nima nobene zveze.
 //
+// 009b: `/api/v1/drop/*` je ista zgodba v obrnjeni smeri — javna stran `/u/:token`, po kateri
+// nekdo brez računa odda datoteko. Dovolilnica zanjo potuje v glavi `X-Drop-Ticket` in ne v
+// piškotku, kar je tretji razlog za to izjemo: glava `Authorization` na tej poti ne bi bila samo
+// nepotrebna, ampak zavajajoča — strežnik `req.auth` tam sploh ne bere.
+//
 // Izjema je tudi za `catchError` spodaj: 401 z javne poti pomeni "manjka dovolilnica" in ne
 // "seja je potekla", zato ne sme sprožiti tihe obnove žetona ne odjave.
 //
@@ -32,7 +37,7 @@ import { needsRefreshNow } from './token-lifetime.js';
 //     dokler je bil zavihek odprt, in je bila v dnevniku strežnika videti kot neskončen niz
 //     "Zahtevana je avtentikacija." na `/api/v1/auth/logout`, prepleten z "Obnovitev seje ni
 //     uspela." na `/api/v1/auth/refresh`.
-const AUTH_EXEMPT = ['/auth/login', '/auth/refresh', '/auth/logout', '/api/v1/share/'];
+const AUTH_EXEMPT = ['/auth/login', '/auth/refresh', '/auth/logout', '/api/v1/share/', '/api/v1/drop/'];
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // OBE odvisnosti se morata vzeti TUKAJ, v telesu interceptorja. Angular postavi

@@ -7,7 +7,16 @@ import { startTestDb, stopTestDb, clearTestDb } from '../../setup/mongo-memory.j
 import { setTestEnv } from '../../setup/test-env.js';
 import { SharedFileModel } from '../../../src/modules/file-sharing/models/shared-file.model.js';
 import { FileShareGrantModel } from '../../../src/modules/file-sharing/models/file-share-grant.model.js';
-import { defaultTestUserId, loginAndUnlock, unlock, uploadFile } from './_helpers.js';
+import { FileInboxModel } from '../../../src/modules/file-sharing/models/file-inbox.model.js';
+import {
+  createInbox,
+  defaultTestUserId,
+  dropFile,
+  loginAndUnlock,
+  unlock,
+  unlockDrop,
+  uploadFile,
+} from './_helpers.js';
 
 // US6 (P5), člen III: kar se da narediti v UI, se MORA dati narediti tudi s HTTP klicem.
 // n8n je prvorazreden odjemalec, ne naknadna misel.
@@ -209,5 +218,143 @@ describe('Izjema člena III na javni poti (research.md §10)', () => {
       .set('Cookie', cookie)
       .expect(200);
     expect(Buffer.from(content.body).toString()).toBe('BBBBB');
+  });
+});
+
+describe('Sprejemni predali z API ključem (009b, FR-099)', () => {
+  it('cel tok deluje brez vmesnika: ustvari predal, dobi naslov in kodo, prejme datoteko', async () => {
+    await seedKey(['file-sharing:read', 'file-sharing:write']);
+    const { app } = await createApp();
+
+    const created = await request(app)
+      .post('/api/v1/inboxes')
+      .set('X-API-Key', SECRET)
+      .send({ label: 'Računi dobaviteljev', maxFiles: 3, maxTotalMb: 20 })
+      .expect(201);
+
+    expect(created.body.dropUrl).toContain('/u/');
+    expect(created.body.code).toMatch(/^[A-Z2-9]{4}-/);
+
+    // Predal pripada uporabniku, ne ključu — sicer bi bil brez lastnika.
+    const doc = await FileInboxModel.findById(created.body.inbox.id).lean();
+    expect(String(doc!.userId)).toBe(await defaultTestUserId());
+
+    // Oddaja je javna in ključa ne potrebuje; datoteka pripade istemu uporabniku.
+    const dropToken = String(created.body.dropUrl).split('/u/')[1]!;
+    const { ticket } = await unlockDrop(app, dropToken, created.body.code);
+    const { uploaded } = await dropFile(app, dropToken, ticket, Buffer.from('racun'), { fileName: 'racun.pdf' });
+    expect(uploaded!.status).toBe(201);
+
+    const list = await request(app).get('/api/v1/files').set('X-API-Key', SECRET).expect(200);
+    expect(list.body.files[0].origin).toBe('inbox');
+
+    const inboxes = await request(app).get('/api/v1/inboxes').set('X-API-Key', SECRET).expect(200);
+    expect(inboxes.body.inboxes[0].receivedFiles).toBe(1);
+  });
+
+  it('brez obsega za pisanje predala ni mogoče ustvariti', async () => {
+    await seedKey(['file-sharing:read']);
+    const { app } = await createApp();
+    await request(app).post('/api/v1/inboxes').set('X-API-Key', SECRET).send({ label: 'X' }).expect(403);
+  });
+
+  it('API ključ NE obide stropa mej predala (FR-063)', async () => {
+    await seedKey(['file-sharing:read', 'file-sharing:write']);
+    setTestEnv({ FILE_SHARE_INBOX_MAX_MB: '10' });
+    const { app } = await createApp();
+
+    await request(app)
+      .post('/api/v1/inboxes')
+      .set('X-API-Key', SECRET)
+      .send({ label: 'Prevelik', maxTotalMb: 5000 })
+      .expect(400);
+
+    delete process.env.FILE_SHARE_INBOX_MAX_MB;
+    setTestEnv();
+  });
+
+  it('zaprtje predala je idempotentno z istim ključem', async () => {
+    await seedKey(['file-sharing:read', 'file-sharing:write']);
+    const { app } = await createApp();
+    const created = await request(app)
+      .post('/api/v1/inboxes')
+      .set('X-API-Key', SECRET)
+      .send({ label: 'Za zaprtje' })
+      .expect(201);
+    const key = randomUUID();
+
+    const prvi = await request(app)
+      .post(`/api/v1/inboxes/${created.body.inbox.id}/close`)
+      .set('X-API-Key', SECRET)
+      .set('Idempotency-Key', key)
+      .expect(200);
+    // Brez shranjenega odgovora bi bil drugi klic 409 ("predal je že zaprt"); to je natanko
+    // primer, ki ga člen III z `Idempotency-Key` odpravlja.
+    const drugi = await request(app)
+      .post(`/api/v1/inboxes/${created.body.inbox.id}/close`)
+      .set('X-API-Key', SECRET)
+      .set('Idempotency-Key', key)
+      .expect(200);
+
+    expect(drugi.body.state).toBe(prvi.body.state);
+  });
+
+  it('Idempotency-Key je vezan na KLICATELJA — tuja in neavtenticirana ponovitev ne dobita odgovora', async () => {
+    // Ponovitev se zgodi v vmesniku PRED `requireScopes` (main.ts). Brez vezave na klicatelja je
+    // bil shranjeni odgovor dosegljiv vsakomur, ki je izvedel vrednost ključa — tudi povsem brez
+    // poverilnic. Najdba varnostnega pregleda 009b.
+    await seedKey(['file-sharing:read', 'file-sharing:write']);
+    const { app } = await createApp();
+    const token = await loginAndUnlock(app);
+    const inbox = await createInbox(app, token);
+    const key = randomUUID();
+
+    const prvi = await request(app)
+      .post(`/api/v1/inboxes/${inbox.id}/close`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('Idempotency-Key', key)
+      .expect(200);
+    expect(prvi.body.state).toBe('closed');
+
+    // Brez poverilnic: 401 od vratarja, nikoli shranjeni odgovor.
+    const brez = await request(app).post(`/api/v1/inboxes/${inbox.id}/close`).set('Idempotency-Key', key);
+    expect(brez.status).toBe(401);
+    expect(brez.body.state).toBeUndefined();
+
+    // Z drugimi poverilnicami (API ključ namesto uporabnika): 422, z istim besedilom kot ob
+    // neujemajočem telesu — ponavljalec ne sme izvedeti, kaj od obojega ne ustreza.
+    const tuj = await request(app)
+      .post(`/api/v1/inboxes/${inbox.id}/close`)
+      .set('X-API-Key', SECRET)
+      .set('Idempotency-Key', key);
+    expect(tuj.status).toBe(422);
+    expect(tuj.body.state).toBeUndefined();
+
+    // Isti klicatelj z istim ključem pa dobi svoj prvotni odgovor naprej.
+    const isti = await request(app)
+      .post(`/api/v1/inboxes/${inbox.id}/close`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('Idempotency-Key', key)
+      .expect(200);
+    expect(isti.body.state).toBe('closed');
+  });
+
+  it('javna pot za oddajo ne piše v zbirko idempotenčnih ključev (FR-097)', async () => {
+    const { app } = await createApp();
+    const token = await loginAndUnlock(app);
+    const inbox = await createInbox(app, token, { maxTotalMb: 5 });
+    const { ticket } = await unlockDrop(app, inbox.token, inbox.code);
+
+    const { IdempotencyKeyModel } = await import('../../../src/platform/idempotency/model.js');
+    const before = await IdempotencyKeyModel.countDocuments({});
+
+    await request(app)
+      .post(`/api/v1/drop/${inbox.token}/files`)
+      .set('X-Drop-Ticket', ticket)
+      .set('Idempotency-Key', randomUUID())
+      .send({ fileName: 'racun.pdf', byteSize: 5 })
+      .expect(201);
+
+    expect(await IdempotencyKeyModel.countDocuments({})).toBe(before);
   });
 });

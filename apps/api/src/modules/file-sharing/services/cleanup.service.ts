@@ -4,6 +4,8 @@ import { loadEnv, type Env } from '../../../platform/config/env.js';
 import type { Logger } from '../../../platform/logging/logger.js';
 import { SharedFileModel } from '../models/shared-file.model.js';
 import { FileShareGrantModel } from '../models/file-share-grant.model.js';
+import { FileInboxModel } from '../models/file-inbox.model.js';
+import { FileInboxTicketModel } from '../models/file-inbox-ticket.model.js';
 import { isPastRetention } from '../domain/share-lifecycle.js';
 import { blobDir, discardTemp, ensureDirs, removeBlob, statBlob, tempDir } from './blob-storage.service.js';
 
@@ -30,6 +32,8 @@ export interface CleanupReport {
   stalledUploads: number;
   orphanBlobs: number;
   brokenMarked: number;
+  /** 009b: potekli sprejemni predali — zapis in dovolilnice, NIKOLI prejete datoteke. */
+  expiredInboxes: number;
 }
 
 type CleanupEnv = Pick<Env, 'FILE_SHARE_RETENTION_DAYS' | 'FILE_SHARE_UPLOAD_TIMEOUT_MINUTES'>;
@@ -124,6 +128,38 @@ async function removeOrphanBlobs(now: Date): Promise<number> {
   return removed;
 }
 
+/**
+ * 5. Potekli sprejemni predali (009b): zapis predala IN njegove dovolilnice, po roku hrambe, ki
+ *    teče od poteka — enako pravilo kot pri poteklih povezavah zgoraj.
+ *
+ *    PREJETE DATOTEKE SE NE DOTAKNEMO (FR-094). Predal je bil pot, po kateri so prišle, in ne
+ *    njihov imetnik; od trenutka prejema so navadne lastnikove datoteke z lastnim rokom (in ta
+ *    je `null`, torej brez roka). Pometač, ki bi z potekom predala odnesel tudi vsebino, bi
+ *    lastniku pobrisal nekaj, česar ni delil on — natanko tisto, česar tu ne sme narediti.
+ *
+ *    Zaprt predal brez roka se NE pobriše: zaprtje je lastnikovo dejanje in ne rok, isto kot
+ *    preklicana povezava ostane na seznamu, dokler je lastnik ne izbriše.
+ *
+ *    Osirotelih dovolilnic tu ne iščemo: dovolilnica predala, ki ga ni, ne more ničesar
+ *    odobriti (`findOpenInbox` v public.router.ts najprej ne najde predala), TTL indeks pa jo
+ *    pospravi v njeni življenjski dobi. Iskanje bi bilo poizvedba ob vsakem tiku za stanje, ki
+ *    ni ne nevarno ne trajno.
+ */
+async function removeExpiredInboxes(env: CleanupEnv, now: Date): Promise<number> {
+  const candidates = await FileInboxModel.find({ expiresAt: { $ne: null, $lte: now } })
+    .select('_id expiresAt')
+    .lean<Array<{ _id: unknown; expiresAt: Date }>>();
+
+  let removed = 0;
+  for (const inbox of candidates) {
+    if (!isPastRetention(inbox.expiresAt, now, env.FILE_SHARE_RETENTION_DAYS)) continue;
+    await FileInboxTicketModel.deleteMany({ inboxId: inbox._id });
+    await FileInboxModel.deleteOne({ _id: inbox._id });
+    removed += 1;
+  }
+  return removed;
+}
+
 /** 4. Zapisi brez vsebine: označi kot pokvarjene, da jih lastnik VIDI (člen VII). */
 async function markBroken(): Promise<number> {
   const files = await SharedFileModel.find({ state: 'ready' })
@@ -147,6 +183,7 @@ export async function runFileShareCleanup(now = new Date(), env: CleanupEnv = lo
     stalledUploads: await removeStalledUploads(env, now),
     orphanBlobs: await removeOrphanBlobs(now),
     brokenMarked: await markBroken(),
+    expiredInboxes: await removeExpiredInboxes(env, now),
   };
 }
 
@@ -166,7 +203,12 @@ export function startFileShareCleanup(logger: Logger): void {
     try {
       await ensureDirs();
       const report = await runFileShareCleanup();
-      const total = report.expired + report.stalledUploads + report.orphanBlobs + report.brokenMarked;
+      const total =
+        report.expired +
+        report.stalledUploads +
+        report.orphanBlobs +
+        report.brokenMarked +
+        report.expiredInboxes;
       if (total > 0) logger.info({ event: 'fileShare.cleanup', ...report }, 'Pometač deljenih datotek');
     } catch (err) {
       // Tiho spodletel pometač bi pomenil disk, ki raste brez pojasnila (člen VII).

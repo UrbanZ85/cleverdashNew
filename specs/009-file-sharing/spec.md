@@ -374,3 +374,197 @@ kot bi jo naložil sam v vmesniku.
   in iztek roka veljavnosti, števec dušenja na meji časovnega okna, čiščenje imena datoteke,
   izračun kvote in prehodi stanj ob preklicu, poteku in brisanju. To MORA biti izrecno
   zapisano tudi v načrtu.
+
+---
+
+# Dopolnitev 009b: Sprejem datotek (obrnjena smer)
+
+**Datum**: 2026-09-08
+**Stanje**: Vgrajeno
+
+## Zakaj
+
+Zahteva je bila ena poved: *"bi lahko naredil pri deljenju še obratno opcijo. da dam jaz url in
+kodo in potem lahko nekdo uploda file"*, z izrecno zahtevo, naj bo narejeno tako, da *"ne more
+kar nekdo najti kakšno varnostno luknjo in uploda kar hoče"*.
+
+Prvotna 009 je javno stran za nalaganje imela med izrecno izključenimi stvarmi ("Javna stran za
+NALAGANJE — prejemnik ne more poslati datoteke nazaj"). Ta dopolnitev to odločitev obrne, ker gre
+za drugo polovico iste potrebe: če je datoteka prevelika za e-pošto, je prevelika v obe smeri.
+Kdor mi mora poslati skenirano pogodbo, ima isti problem, kot sem ga imel jaz, ko sem mu jo
+pošiljal — in ravno tako nima računa in ga ne bo dobil.
+
+Vzorec je zato NAMENOMA enak: dvoje vrat, naslov IN koda, in nobeno od obojega samo zase ne
+zadošča. Kar je drugače, je posledica ene same razlike: **te poti pišejo na disk v imenu nekoga,
+ki ni prijavljen**. Do 009b je bilo najhujše, kar je znal narediti kdor koli z naslovom, to, da
+je prebral, kar mu je bilo namenjeno.
+
+## User Scenarios & Testing
+
+### User Story 7 - Nekdo brez računa mi odda datoteko (Priority: P1)
+
+Ustvarim povezavo za oddajo in dobim naslov ter kodo. Pošljem ju nekomu; ta odpre povezavo, vpiše
+kodo, izbere datoteko in jo odda. Datoteka se pojavi na mojem seznamu.
+
+**Sprejemni scenariji**
+
+1. **Ko** ustvarim predal, **potem** dobim naslov in kodo, oboje pripravljeno za kopiranje, in
+   kodo vidim natanko enkrat.
+2. **Ko** pošiljatelj odpre povezavo in vpiše pravilno kodo, **potem** vidi, za kaj je predal, in
+   lahko odda datoteko; napredek oddaje vidi in jo lahko prekliče.
+3. **Ko** oddaja uspe, **potem** pošiljatelj dobi potrdilo, kaj je prispelo, jaz pa datoteko na
+   svojem seznamu z oznako, da je prejeta, in z navedbo, kdo jo je oddal.
+4. **Ko** je datoteka pri meni, **potem** je to navadna moja datoteka: prenesem jo, izbrišem, in
+   če se odločim, jo delim naprej — a šele, ko to izrecno storim.
+5. **Ko** predal zaprem ali izdam novo kodo, **potem** stara povezava takoj preneha delovati,
+   tudi za tistega, ki je kodo že vpisal.
+6. **Ko** predal izbrišem, **potem** prejete datoteke OSTANEJO.
+
+---
+
+### User Story 8 - Nekdo, ki povezavo najde, ne more ničesar (Priority: P1)
+
+Sam naslov ne odpre predala. Napačna koda ga ne odpre. Koda drugega predala ga ne odpre. Ugibanje
+z avtomatom se ustavi. In tudi tisti, ki kodo IMA, ne more oddati več, kot sem dovolil.
+
+**Sprejemni scenariji**
+
+1. **Ko** kdor koli odpre povezavo brez kode, **potem** vidi samo, da predal obstaja, dovoljeno
+   velikost in do kdaj velja — za kaj je predal, NE vidi in oddati ne more ničesar.
+2. **Ko** je predal neznan, potekel, zaprt ali izbrisan, **potem** je sporočilo v vseh štirih
+   primerih ENAKO — in enako kot pri povezavi za prevzem.
+3. **Ko** pošiljatelj s kodo poskusi oddati več datotek ali več bajtov, kot sem dovolil, **potem**
+   je zavrnjen s pojasnilom, ki ne razkrije, koliko prostora imam jaz.
+4. **Ko** napove velikost 1 MB in pošlje 400 MB, **potem** se oddaja prekine med prenosom in za
+   sabo ne pusti ničesar.
+5. **Ko** oddajo poskusi sprožiti tuja stran v imenu obiskovalca, **potem** ne uspe — dovolilnica
+   ni piškotek in je brskalnik ne pripne sam.
+6. **Ko** ima dovolilnico enega predala, **potem** z njo ne more pisati v drug predal niti v
+   datoteko, ki sem jo naložil sam.
+7. **Ko** oddaja uspe, **potem** pošiljatelj o predalu ne izve nič novega — niti kaj je v njem
+   oddal kdo drug.
+
+### Edge Cases
+
+- **Oddaja se prekine** (zaprt zavihek, izgubljeno omrežje, preklic) → zapisa ni, delna vsebina
+  se odstrani, rezerviran prostor se takoj sprosti.
+- **Pošiljatelj napove datoteko in vsebine nikoli ne pošlje** → rezervacija ne sme predala tiho
+  zapolniti: število hkratnih nedokončanih oddaj je omejeno, pometač pa viseče zapise pobere.
+- **Prispelo je manj bajtov od napovedanih** → zavrnitev, ne tiho shranjena okrnjena datoteka.
+- **Telo je napovedano kot obrazec ali JSON** → zavrnitev s pojasnilom; sicer bi se na disk
+  zapisale meje obrazca ali pa bi bila datoteka prazna, ker bi telo požrl razčlenjevalnik.
+- **Dva pošiljatelja oddajata hkrati** → meja predala ne sme biti presežena z nobenim vrstnim
+  redom prihoda.
+- **Lastnikova kvota se napolni med oddajo** → zavrnitev, ki pošiljatelju pove, naj obvesti
+  prejemnika, in ne razkrije lastnikovih številk.
+- **Lastnik zniža mejo predala pod že prejeto količino** → preostanek je 0, nikoli negativen.
+- **Lastnik odpre svoj predal, prijavljen v istem brskalniku** → koda je še vedno potrebna;
+  obstoj seje na oddajo ne vpliva v nobeno smer.
+- **Ime oddane datoteke vsebuje `../` ali krmilne znake** → očiščeno za prikaz, nikoli pot.
+- **Pošiljatelj se izmisli navedbo, kdo je** → to je NAVEDBA in vmesnik je ne predstavlja kot
+  ugotovljeno istovetnost.
+
+## Requirements
+
+### Functional Requirements
+
+#### Predal in koda
+
+- **FR-080**: Sprejemni predal ustvari IZKLJUČNO prijavljen uporabnik (ali avtomatizacija) z
+  obsegom za pisanje; neprijavljena zahteva za nastanek predala se zavrne.
+- **FR-081**: Oddaja zahteva OBOJE — naslov predala IN kodo. Nobeno od obojega samo zase ne
+  zadošča.
+- **FR-082**: Kodo generira SISTEM, prikazana je natanko enkrat, hrani pa se izključno v obliki,
+  iz katere je ni mogoče izračunati. Preverjanje ne sme izdati, koliko znakov se ujema.
+- **FR-083**: Lastnik lahko izda novo kodo. S tem nastane tudi NOV naslov, stari v celoti preneha
+  delovati in vse izdane dovolilnice se razveljavijo. Isto velja za zaprtje predala.
+- **FR-084**: Pred vpisom kode stran NE SME razkriti oznake predala, navodila ne lastnika. Pokaže
+  samo, da predal obstaja, dovoljeno velikost ene datoteke in rok. Dovoljena velikost je
+  NASTAVITEV predala in ne njegov preostali prostor — preostanek bi bil števec dogajanja za
+  vsakogar, ki ima naslov.
+- **FR-085**: Neznan, potekel, zaprt in izbrisan predal dajo ENAKO sporočilo, in to isto kot
+  neveljavna povezava za prevzem.
+- **FR-086**: Predal je ENOSMEREN: po javnih poteh ni mogoče ničesar prebrati, našteti, prenesti
+  ali izbrisati. Edini bralec prejetih datotek je lastnik.
+
+#### Meje
+
+- **FR-087**: Predal ima svoji meji, ki ju lastnik izbere ob nastanku: največje število datotek in
+  največ skupaj. Obe sta navzgor omejeni z nastavitvijo namestitve, presežek pa je zavrnitev in ne
+  tiho znižanje. Meji sta shranjeni na predalu, zato poznejša sprememba nastavitve namestitve
+  starega predala ne razširi.
+- **FR-088**: Vsaka oddaja se preveri proti ŠTIRIM mejam: velikost ene datoteke (nastavitev
+  namestitve), prostor predala, kvota lastnika ter stanje in rok predala. Prve tri se uveljavijo
+  DVAKRAT — pred prenosom iz napovedane velikosti in med prenosom iz dejanske.
+- **FR-089**: Napovedana velikost je ZAVEZUJOČA: napovedana dolžina telesa mora biti enaka njej in
+  prispeti mora natanko toliko. Manj ali več od napovedanega je zavrnitev, ne delna datoteka.
+- **FR-090**: Poskusi vpisa kode se dušijo — na predal IN na izvorni naslov. Po preseženi meji so
+  nadaljnji poskusi za določen čas zavrnjeni, tudi če je koda pravilna. Števec izvornega naslova je
+  SKUPEN s dušenjem pri prevzemu: napadalec, ki ugiba po obeh javnih površinah z istega naslova, je
+  en napadalec in mora zadeti isto mejo. Lastnik vidi, da nekdo ugiba, in koliko poskusov je bilo.
+- **FR-091**: Oddaja se NE avtenticira z ambientno poverilnico. Dovolilnico, ki jo izda vpis kode,
+  mora odjemalec pripeti IZRECNO (glava, ne piškotek) — tuja stran tako ne more sprožiti oddaje v
+  imenu obiskovalca.
+- **FR-096**: Nedokončana oddaja ne pusti ničesar: ne zapisa, ne delne vsebine, ne rezerviranega
+  prostora. Število hkratnih nedokončanih oddaj na predal je omejeno, ker rezervacija prostor
+  zaseda, še preden vsebina prispe.
+
+#### Prejeta datoteka
+
+- **FR-092**: Prejeta datoteka je od trenutka prejema LASTNIKOVA: šteje v njegovo kvoto, je na
+  njegovem seznamu z oznako, da je prejeta, in z navedbo pošiljatelja, ter NIMA roka veljavnosti —
+  sistem je ne izbriše sam.
+- **FR-093**: Prejeta datoteka NI samodejno deljena naprej: nima naslova za prevzem ne gesla,
+  dokler ju lastnik izrecno ne izda.
+- **FR-094**: Zaprtje, potek ali izbris predala NE odnese prejetih datotek. Predal je pot, po
+  kateri so prišle, in ne njihov imetnik.
+- **FR-095**: Oddana vsebina se ne pregleduje, ne indeksira in ne izvaja; prenese jo lahko samo
+  lastnik in vedno kot priloga.
+
+#### Pogodba in javna površina
+
+- **FR-097**: Javni endpointi predala NE sprejmejo `Idempotency-Key` — izdajajo dovolilnico
+  (izjema člena III) in so hkrati javni, neomejeno pisanje v zbirko ključev z zahtevo brez
+  poverilnic pa je pot do njenega polnjenja.
+- **FR-098**: Vse javne poti obeh smeri ostanejo v ENI datoteki, in test, ki seznam poti bere iz
+  POGODBE, preveri, da je vsaka lastnikova pot brez žetona 401 in vsaka javna dosegljiva. Nova
+  javna družina poti se ne more pritihotapiti tako, da bi jo test razumel kot pričakovano.
+- **FR-099**: Vsaka operacija predala je dosegljiva tudi s HTTP klicem z API ključem (člen III);
+  ključ ne obide nobene meje.
+
+### Key Entities
+
+- **Sprejemni predal** — lastnik, oznaka, navodilo, žeton naslova, nepovraten zapis kode, stanje
+  (odprt / zaprt), rok, meji (število datotek, skupni bajti), števec zgrešenih poskusov kode.
+  Zapis brez vsebine: kar prispe po njem, je deljena datoteka z referenco na predal.
+- **Dovolilnica za oddajo** — kratkotrajno dokazilo, da je bila za TA predal vpisana pravilna
+  koda. Ni prenosljiva na drug predal, poteče sama, razveljavita jo zaprtje in nova koda, in NE
+  potuje kot piškotek.
+
+## Out of Scope (009b)
+
+- Obveščanje lastnika ob vsaki prejeti datoteki (števec in seznam zadoščata; enaka odločitev kot
+  pri prevzemih v 009).
+- Nadaljevanje prekinjene ODDAJE (chunked/resumable) in oddaja več datotek hkrati.
+- Protivirusno preverjanje oddanih datotek (velja FR-054/FR-095).
+- Urejanje predala po nastanku (druga oznaka, drug rok, druge meje) — nadomešča ga nov predal;
+  edini dovoljeni poseg v obstoječi predal sta zaprtje in nova koda.
+- Omejevanje oddaje na določene vrste datotek.
+- Sporočilo pošiljatelja lastniku, ki bi bilo daljše od navedbe, kdo je.
+
+## Success Criteria (009b)
+
+- **SC-020**: Brez pravilne kode ni mogoče oddati ničesar v 100 % primerov iz testnega nabora:
+  sam naslov, napačna koda, koda drugega predala, potekel predal, zaprt predal, izbrisan predal.
+- **SC-021**: Nekdo, ki kodo IMA, ne more preseči nobene od štirih mej — niti z lažjo o velikosti,
+  niti z vzporednimi oddajami, niti z visečimi napovedmi brez vsebine.
+- **SC-022**: Nobena zavrnitev oddaje ne pusti za sabo zapisa, delne vsebine ali rezerviranega
+  prostora; zasedenost po testnem naboru zavrnitev je enaka kot pred njim.
+- **SC-023**: Pred vpisom kode odgovor javne poti ne vsebuje oznake predala, navodila ne podatka o
+  tem, koliko je predal že prejel — preverjeno s primerjavo odgovora pred oddajo in po njej.
+- **SC-024**: Oddaja, ki jo poskusi sprožiti tuja stran, ne uspe brez izrecno pripete glave z
+  dovolilnico.
+- **SC-025**: Po izbrisu ali poteku predala je vsaka prejeta datoteka še vedno na lastnikovem
+  seznamu in jo je mogoče prenesti.
+- **SC-026**: Vsaka operacija predala je izvedljiva s HTTP klicem z API ključem — preverjeno s
+  pogodbenimi testi.

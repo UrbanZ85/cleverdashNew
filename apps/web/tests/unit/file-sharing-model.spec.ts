@@ -1,13 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
   EXPIRY_OPTIONS,
+  acceptsUploads,
+  describeDropCapacity,
   describeExpiry,
+  describeInboxState,
   describeQuota,
+  describeReceivedAt,
+  describeSource,
   describeState,
+  fileCountChoices,
   formatBytes,
   hasGuessingWarning,
+  inboxHasGuessingWarning,
+  isReceived,
   isShareable,
   quotaRatio,
+  totalMbChoices,
 } from '../../src/app/features/file-sharing/file-sharing.model.js';
 
 // Čista logika modula deljenja datotek — teče brez TestBed-a (isti vzorec kot notes-model.spec.ts).
@@ -108,5 +117,120 @@ describe('EXPIRY_OPTIONS', () => {
     // strežnika — sicer je "brez roka" neizrazljivo.
     const values = EXPIRY_OPTIONS.map((o) => o.value);
     expect(values).toEqual([1, 7, 30, null]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//  009b — sprejemni predali (obrnjena smer)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+const INBOX = {
+  state: 'open' as const,
+  expired: false,
+  openForUpload: true,
+  receivedFiles: 1,
+  maxFiles: 3,
+  receivedBytes: 2 * 1024 * 1024,
+  maxTotalBytes: 10 * 1024 * 1024,
+  remainingFiles: 2,
+  remainingBytes: 8 * 1024 * 1024,
+  failedAttempts: 0,
+  lockedUntil: null,
+};
+
+describe('describeInboxState', () => {
+  it('zaprtje je pomembnejše od poteka, potek od polnosti', () => {
+    // Lastnikovo dejanje pred posledico časa, oboje pred stanjem, ki ga je mogoče popraviti z
+    // brisanjem — isto pravilo kot pri `describeState` za datoteko.
+    expect(describeInboxState({ ...INBOX, state: 'closed', expired: true, remainingFiles: 0, remainingBytes: 0 })).toBe(
+      'Zaprt',
+    );
+    expect(describeInboxState({ ...INBOX, expired: true, remainingFiles: 0, remainingBytes: 0 })).toBe('Poteklo');
+    expect(describeInboxState({ ...INBOX, remainingFiles: 0 })).toBe('Poln');
+    expect(describeInboxState({ ...INBOX, remainingBytes: 0 })).toBe('Poln');
+    expect(describeInboxState(INBOX)).toBe('Sprejema');
+  });
+});
+
+describe('acceptsUploads', () => {
+  it('zahteva odprtost IN prostor — `openForUpload` s strežnika prostora ne pozna', () => {
+    expect(acceptsUploads(INBOX)).toBe(true);
+    expect(acceptsUploads({ ...INBOX, openForUpload: false })).toBe(false);
+    expect(acceptsUploads({ ...INBOX, remainingFiles: 0 })).toBe(false);
+    expect(acceptsUploads({ ...INBOX, remainingBytes: 0 })).toBe(false);
+  });
+});
+
+describe('describeDropCapacity', () => {
+  it('pove pošiljatelju, koliko sme še oddati', () => {
+    expect(describeDropCapacity({ remainingFiles: 2, remainingBytes: 8 * 1024 * 1024 })).toContain('2 datotek');
+    expect(describeDropCapacity({ remainingFiles: 1, remainingBytes: 1024 })).toContain('1 datoteko');
+  });
+
+  it('polni predal pove, da je poln, in ne "0 datotek"', () => {
+    expect(describeDropCapacity({ remainingFiles: 0, remainingBytes: 1024 })).toBe('Predal je poln.');
+    expect(describeDropCapacity({ remainingFiles: 2, remainingBytes: 0 })).toBe('Predal je poln.');
+  });
+});
+
+describe('izvor datoteke', () => {
+  it('prejeta datoteka je označena kot prejeta, z navedbo pošiljatelja, če jo je dal', () => {
+    expect(isReceived({ origin: 'inbox' })).toBe(true);
+    expect(isReceived({ origin: 'owner' })).toBe(false);
+    expect(describeSource({ origin: 'inbox', senderName: 'Janez' })).toBe('Prejeto — oddal: Janez');
+    expect(describeSource({ origin: 'inbox', senderName: null })).toBe('Prejeto prek povezave za oddajo');
+  });
+
+  it('pri lastni datoteki ni ničesar za povedati', () => {
+    expect(describeSource({ origin: 'owner', senderName: null })).toBeNull();
+    // Tudi če bi strežnik kdaj poslal navedbo pri lastni datoteki, je izvor tisti, ki odloča.
+    expect(describeSource({ origin: 'owner', senderName: 'Janez' })).toBeNull();
+  });
+});
+
+describe('inboxHasGuessingWarning', () => {
+  const now = new Date('2026-09-08T10:00:00.000Z');
+
+  it('opozori ob vsakem zgrešenem poskusu in med zaklepom', () => {
+    expect(inboxHasGuessingWarning({ failedAttempts: 1, lockedUntil: null }, now)).toBe(true);
+    expect(
+      inboxHasGuessingWarning({ failedAttempts: 0, lockedUntil: '2026-09-08T11:00:00.000Z' }, now),
+    ).toBe(true);
+  });
+
+  it('minuli zaklep brez zgrešenih poskusov ni več opozorilo', () => {
+    expect(inboxHasGuessingWarning({ failedAttempts: 0, lockedUntil: '2026-09-08T09:00:00.000Z' }, now)).toBe(false);
+    expect(inboxHasGuessingWarning({ failedAttempts: 0, lockedUntil: null }, now)).toBe(false);
+  });
+});
+
+describe('izbire mej predala', () => {
+  it('ne ponudijo vrednosti nad stropom namestitve — izbira, ki bo zavrnjena, ni izbira', () => {
+    expect(fileCountChoices({ maxFiles: 5 })).toEqual([1, 3, 5]);
+    expect(totalMbChoices({ maxTotalBytes: 100 * 1024 * 1024 })).toEqual([50, 100]);
+  });
+
+  it('strop je vedno med izbirami, tudi kadar ni med predlogami', () => {
+    // Namestitev z nenavadno mejo (7 datotek, 300 MB) ne sme pustiti uporabnika brez možnosti,
+    // da izbere ves prostor, ki mu je na voljo.
+    expect(fileCountChoices({ maxFiles: 7 })).toEqual([1, 3, 5, 7]);
+    expect(totalMbChoices({ maxTotalBytes: 300 * 1024 * 1024 })).toEqual([50, 100, 300]);
+  });
+
+  it('zelo majhen strop pusti vsaj eno izbiro', () => {
+    expect(fileCountChoices({ maxFiles: 1 })).toEqual([1]);
+    expect(totalMbChoices({ maxTotalBytes: 10 * 1024 * 1024 })).toEqual([10]);
+  });
+});
+
+describe('describeReceivedAt', () => {
+  it('brez oddaje pove, da še ni nič oddanega', () => {
+    expect(describeReceivedAt(null)).toBe('Še nič oddanega.');
+  });
+
+  it('čas je ljubljanski, ne v coni naprave (člen V.4)', () => {
+    // 8. 9. 2026 v poletnem času: 08:30 UTC je 10:30 v Ljubljani.
+    const text = describeReceivedAt('2026-09-08T08:30:00.000Z');
+    expect(text).toContain('10:30');
   });
 });
