@@ -69,8 +69,11 @@ import { helpTopic, type HelpTopic, type HelpTopicId } from './help-topics.js';
     .help-trigger:hover {
       --color: var(--ion-color-primary);
     }
+    /* Širina je zgornja meja, ne fiksna vrednost: 340 px je na 360 px širokem zaslonu skoraj
+       cel zaslon, na 320 px pa več od njega — pojasnilo bi štrlelo čez rob in besedilo ob
+       robu bi bilo odrezano. min() pusti ob strani en odmik na vsako stran. */
     .help-popover {
-      --width: 340px;
+      --width: min(340px, calc(100vw - 2 * var(--cd-space-4)));
       --max-height: 70vh;
       --backdrop-opacity: 0.2;
     }

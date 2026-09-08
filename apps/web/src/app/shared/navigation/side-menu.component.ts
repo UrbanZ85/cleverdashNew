@@ -115,11 +115,16 @@ import { AuthService } from '../../core/auth/auth.service.js';
       --background: var(--cd-surface);
     }
 
+    /* viewport-fit=cover (index.html) razširi stran pod zarezo in pod potezno črto. Meni
+       nima ne ion-header ne ion-footer, ki bi ta odmik prispevala sama, zato ga na obeh
+       koncih dodamo tukaj — brez tega je znamka pod uro telefona, gumb za odjavo pa pod
+       potezno črto in ga ni mogoče zadeti. Na namizju sta oba env() enaka 0. */
     .brand {
       display: flex;
       align-items: center;
       gap: var(--cd-space-3);
-      padding: var(--cd-space-5) var(--cd-space-4) var(--cd-space-4);
+      padding: calc(var(--cd-space-5) + env(safe-area-inset-top)) var(--cd-space-4)
+        var(--cd-space-4);
     }
     .brand-mark {
       width: 34px;
@@ -197,7 +202,8 @@ import { AuthService } from '../../core/auth/auth.service.js';
       display: flex;
       align-items: center;
       gap: var(--cd-space-3);
-      padding: var(--cd-space-3) var(--cd-space-3) var(--cd-space-4);
+      padding: var(--cd-space-3) var(--cd-space-3)
+        calc(var(--cd-space-4) + env(safe-area-inset-bottom));
       border-top: 1px solid var(--cd-divider);
       background: var(--cd-surface);
     }

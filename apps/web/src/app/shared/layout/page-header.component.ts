@@ -31,9 +31,9 @@ import {
       <ion-toolbar>
         <ion-buttons slot="start">
           @if (backRoute(); as route) {
-            <ion-button [routerLink]="route" [attr.aria-label]="backLabel()">
+            <ion-button class="back" [routerLink]="route" [attr.aria-label]="backLabel()">
               <ion-icon slot="start" name="chevron-back" aria-hidden="true"></ion-icon>
-              {{ backLabel() }}
+              <span class="back-label">{{ backLabel() }}</span>
             </ion-button>
           } @else {
             <ion-menu-button></ion-menu-button>
@@ -72,6 +72,19 @@ import {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    /* Na telefonu je pot nazaj SAMO puščica. Besedilo ob njej ("Beležke", "Kamere") vzame
+       skoraj tretjino orodne vrstice in naslov strani se stisne v tri pike — pri glavi, ki
+       ima na desni še gumb (Shrani, Nova beležka), pa ostane naslovu manj kot 100 px.
+       Pomen ostane dostopen: aria-label na gumbu se ne spremeni. Prag je Ionicov sm,
+       enak kot v theme/variables.scss. */
+    @media (max-width: 575.98px) {
+      .back-label {
+        display: none;
+      }
+      .back ion-icon[slot='start'] {
+        margin-inline-end: 0;
+      }
     }
   `,
 })

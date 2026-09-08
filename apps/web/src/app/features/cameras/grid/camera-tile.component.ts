@@ -42,6 +42,12 @@ const HAS_SNAPSHOT: ReadonlySet<CameraType> = new Set(['snapshot', 'snapshot+ifr
 // podvojena kot dokumentiran privzetek, ne kot samodejno usklajena konfiguracija.
 const DEGRADED_REFRESH_MULTIPLIER = 4;
 
+// Logična širina vdelane strani v predogledu (px), preden se ta pomanjša v ploščico — glej
+// `previewWidth` v embedded-camera.component.ts. Slika na strani kamere praviloma ni širša
+// od namizne širine brskalnika; pri 1280 px je zato v predogledu cela, ploščica pa je ne
+// riše v izvirni velikosti (prej se je izrisal samo njen levi zgornji kot, z drsniki okoli).
+const EMBED_PREVIEW_WIDTH = 1280;
+
 // FR-011, Story 5: ploščica kamere v mreži — posnetek (če vrsta to omogoča), čas zajema,
 // stanje (v redu/staro/nedosegljivo/še ni podatka — vrste brez posnetka značke stanja nimajo,
 // ker strežniškega preverjanja zanje ni). Osveževanje teče samo v
@@ -64,7 +70,10 @@ const DEGRADED_REFRESH_MULTIPLIER = 4;
                uporabnik ni odprl. Prosojna plast čez okvir poskrbi, da klik odpre kamero in
                ne pristane v tuji strani (isti prijem kot pri vtičniku na nadzorni plošči). -->
           <div class="camera-tile-embed">
-            <app-embedded-camera [url]="camera.previewUrl"></app-embedded-camera>
+            <app-embedded-camera
+              [url]="camera.previewUrl"
+              [previewWidth]="EMBED_PREVIEW_WIDTH"
+            ></app-embedded-camera>
             <span class="camera-tile-embed-catch"></span>
           </div>
         } @else {
@@ -111,6 +120,9 @@ const DEGRADED_REFRESH_MULTIPLIER = 4;
   `,
 })
 export class CameraTileComponent implements OnInit, OnDestroy {
+  // Predloga do konstante ne more sama — vidi jo samo prek razreda.
+  protected readonly EMBED_PREVIEW_WIDTH = EMBED_PREVIEW_WIDTH;
+
   @Input({ required: true }) camera!: CameraTileInput;
   /** Iz `Settings.cameraDataSaverEnabled` (GET /settings) — grid stran jo prebere enkrat
    * in poda vsem ploščicam, da vsaka ne kliče /settings zase. */

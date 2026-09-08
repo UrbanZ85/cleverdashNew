@@ -364,6 +364,13 @@ function problemDetail(err: unknown): string | null {
       text-align: center;
       text-transform: capitalize;
     }
+    /* Ime meseca med puščicama: 10 rem je na 320 px zaslonu s puščicama in gumbom "Danes"
+       preveč in vrstica se prelomi sredi imena. */
+    @media (max-width: 575.98px) {
+      .month-name {
+        min-width: 7rem;
+      }
+    }
     .selection {
       margin-top: var(--cd-space-3);
       padding: var(--cd-space-3) 0;
@@ -390,14 +397,18 @@ function problemDetail(err: unknown): string | null {
       font-size: 0.8rem;
       opacity: 0.65;
     }
+    /* Ime akcije se sme preliti v svojo vrstico: "Prijava na delo" ob polju za uro in
+       znački stanja na telefonu ne gre v eno vrstico, brez preloma pa bi se stisnilo v
+       stolpec posameznih črk. */
     .day-row {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: var(--cd-space-2);
       padding: var(--cd-space-1) 0;
     }
     .day-action {
-      flex: 1;
+      flex: 1 1 8rem;
       font-size: var(--cd-font-size-sm);
     }
     .day-time {

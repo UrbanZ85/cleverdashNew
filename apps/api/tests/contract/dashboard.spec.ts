@@ -152,4 +152,29 @@ describe('GET /dashboard/radar', () => {
     expect(res.headers['x-source-attribution']).toBe('Vir: ARSO');
     expect(res.headers['x-source-stale']).toBe('false');
   });
+
+  // Regresija: druga zahteva se postreže iz predpomnilnika (znotraj TTL), Mongo pa binarno
+  // telo vrne kot BSON `Binary` in ne kot `Buffer`. Express takega objekta ne pošlje kot
+  // bajte, ampak ga serializira v JSON (base64 v narekovajih) — z glavo `image/gif`, zato je
+  // bilo videti kot delujoč odgovor, brskalnik pa slike ni izrisal. Prvi zahtevi (edini, ki
+  // jo je test do zdaj preverjal) se to ne zgodi: ta vrne telo naravnost od vira.
+  it('drugo zahtevo postreže iz predpomnilnika z ISTIMI bajti', async () => {
+    const { app } = await createApp();
+    const token = await loginAndUnlock(app);
+
+    const first = await request(app)
+      .get('/api/v1/dashboard/radar')
+      .set('Authorization', `Bearer ${token}`)
+      .responseType('blob');
+    const second = await request(app)
+      .get('/api/v1/dashboard/radar')
+      .set('Authorization', `Bearer ${token}`)
+      .responseType('blob');
+
+    expect(second.status).toBe(200);
+    expect(second.headers['content-type']).toContain('image/gif');
+    expect(Buffer.isBuffer(second.body)).toBe(true);
+    expect(second.body.toString('latin1')).toBe('gif-binarni-placeholder');
+    expect(second.body.equals(first.body as Buffer)).toBe(true);
+  });
 });

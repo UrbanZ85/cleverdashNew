@@ -26,6 +26,36 @@ export type Fetcher = (conditional: {
   lastModified: string | null;
 }) => Promise<ConditionalFetchResult>;
 
+/**
+ * BSON `Binary`, kakor ga Mongo vrne za binarno vsebino v polju `payload` (`Mixed`).
+ * Preverja se `_bsontype` in ne `instanceof Binary`, ker `platform/cache` `bson` ne uvaža
+ * neposredno — razred iz druge kopije paketa bi `instanceof` zavrnil.
+ */
+function isStoredBinary(value: unknown): value is { buffer: Uint8Array } {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as { _bsontype?: unknown; buffer?: unknown };
+  return candidate._bsontype === 'Binary' && candidate.buffer instanceof Uint8Array;
+}
+
+/**
+ * Predpomnjeni podatek, pripravljen za vrnitev klicatelju.
+ *
+ * Mongo binarnega telesa (radar, posnetek kamere, vtičnik vrste `image`) NE vrne kot
+ * `Buffer`, ampak kot BSON `Binary` — in `res.send(Binary)` Express serializira v JSON
+ * (`"R0lGODlh…"`, base64 v narekovajih) z glavo `image/gif`. Brskalnik take slike ne izriše.
+ * Videti je bilo, kot da radar "včasih dela, včasih ne": veljavno sliko je dobila samo tista
+ * zahteva, ki je vir res znova prenesla (`result.body` JE `Buffer`), vse zahteve znotraj
+ * TTL-ja pa pokvarjeno. Pri kamerah je bilo skrito zato, ker je TTL enak intervalu
+ * osveževanja ploščice in skoraj vsak poziv sovpada z osvežitvijo.
+ *
+ * JSON telo (vreme, napoved, vtičnik vrste `json`) gre skozi nespremenjeno.
+ */
+function fromStorage(payload: unknown): unknown {
+  if (Buffer.isBuffer(payload)) return payload;
+  if (isStoredBinary(payload)) return Buffer.from(payload.buffer);
+  return payload;
+}
+
 export interface CacheResult {
   payload: unknown;
   contentType: string;
@@ -61,7 +91,7 @@ export async function getOrRefresh(params: GetOrRefreshParams): Promise<CacheRes
 
   if (currentState.kind === 'fresh' && existing) {
     return {
-      payload: existing.payload,
+      payload: fromStorage(existing.payload),
       contentType: existing.contentType,
       freshness: currentState,
       ageSeconds: ageSeconds(existing.fetchedAt, now),
@@ -85,7 +115,7 @@ export async function getOrRefresh(params: GetOrRefreshParams): Promise<CacheRes
         },
       );
       return {
-        payload: existing.payload,
+        payload: fromStorage(existing.payload),
         contentType: existing.contentType,
         freshness: { kind: 'refreshed', fetchedAt: existing.fetchedAt },
         ageSeconds: ageSeconds(existing.fetchedAt, now),
@@ -130,7 +160,7 @@ export async function getOrRefresh(params: GetOrRefreshParams): Promise<CacheRes
         { lastAttemptAt: now, lastError: message, $inc: { consecutiveFailures: 1 } },
       );
       return {
-        payload: existing.payload,
+        payload: fromStorage(existing.payload),
         contentType: existing.contentType,
         freshness: { kind: 'stale', fetchedAt: existing.fetchedAt },
         ageSeconds: ageSeconds(existing.fetchedAt, now),

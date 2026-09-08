@@ -120,6 +120,20 @@ import { IonCard, IonCardContent, IonIcon, IonSpinner } from '@ionic/angular/sta
       gap: var(--cd-space-2);
       flex-wrap: wrap;
     }
+    /* Na telefonu je ploščica že v odmiku strani; še 16 px na vsaki strani znotraj nje
+       pomeni, da je vsebine za manj kot dve tretjini zaslona. Prag je Ionicov sm, enak
+       kot v theme/variables.scss. */
+    @media (max-width: 575.98px) {
+      .tile-head {
+        padding: var(--cd-space-3);
+      }
+      .tile-body {
+        padding: var(--cd-space-3);
+      }
+      .tile-foot:has(> *) {
+        padding: var(--cd-space-2) var(--cd-space-3) var(--cd-space-3);
+      }
+    }
   `,
 })
 export class TileCardComponent {

@@ -233,6 +233,7 @@ const STATUS_COLOR: Record<RemoteSessionView['status'], string> = {
     }
     .actions {
       display: flex;
+      flex-wrap: wrap;
       gap: var(--cd-space-2);
       margin-top: var(--cd-space-2);
     }

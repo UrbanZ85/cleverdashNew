@@ -105,7 +105,7 @@ interface PluginDataResponse {
           @case ('image') {
             @if (imageUrl(); as url) {
               <button class="image-button" type="button" (click)="open()" aria-label="Odpri povečano">
-                <img class="image" [src]="url" [alt]="p.alt ?? p.name" />
+                <img class="image" [src]="url" [alt]="p.alt ?? p.name" (error)="onImageBroken()" />
               </button>
             } @else if (failed()) {
               <app-no-data (retry)="load()"></app-no-data>
@@ -207,6 +207,20 @@ interface PluginDataResponse {
           </ion-content>
         </ng-template>
       </ion-modal>
+    } @else if (pluginsLoaded()) {
+      <!-- Vnos v razporeditvi kaže na vtičnik, ki ga v seznamu ni (izbrisan drugje). Prej
+           se v tem primeru ni izrisalo NIČ — na nadzorni plošči je ostala prazna vrzel brez
+           pojasnila, videti enako kot pokvarjena ploščica. -->
+      <app-tile-card title="Vtičnik ni na voljo" icon="alert-circle-outline">
+        <p class="cd-muted description">
+          Ta ploščica kaže na vtičnik, ki ga ni več. Odstrani jo v Nastavitve → Razporeditev
+          ploščic.
+        </p>
+      </app-tile-card>
+    } @else {
+      <!-- Seznam vtičnikov še ni prišel (ali klic zanj ni uspel in ga shramba ponovi):
+           ploščica pokaže, da se nalaga, in ne prazne vrzeli. -->
+      <app-tile-card title="Vtičnik" icon="apps-outline" [loading]="true"></app-tile-card>
     }
   `,
   styles: `
@@ -323,6 +337,17 @@ interface PluginDataResponse {
       --max-width: 1600px;
       --border-radius: var(--cd-radius-lg);
     }
+    /* Na telefonu je okno CELOZASLONSKO. Ozek okvir (2 vw/vh) je poteza za miško — prostora
+       vzame toliko, da vsebine skorajda ni več, klik "ob rob" pa je s prstom v širini 7 px
+       zadetek slučaja. Pot ven ostane gumb za zapiranje v glavi okna. Prag je Ionicov sm,
+       enak kot v theme/variables.scss. */
+    @media (max-width: 575.98px) {
+      .plugin-modal {
+        --width: 100%;
+        --height: 100%;
+        --border-radius: 0;
+      }
+    }
     .modal-title {
       display: block;
       font-weight: 650;
@@ -377,6 +402,9 @@ export class PluginTileComponent implements OnInit, OnDestroy {
   readonly pluginId = input.required<string>();
 
   readonly plugin = computed(() => this.store.byId().get(this.pluginId()) ?? null);
+  /** Loči "vtičnika ni več" od "seznama vtičnikov še ni" — obojemu je prej pripadala ista
+   * prazna vrzel na nadzorni plošči. */
+  readonly pluginsLoaded = this.store.loaded;
   readonly data = signal<PluginDataResponse | null>(null);
   readonly imageUrl = signal<string | null>(null);
   readonly failed = signal(false);
@@ -416,6 +444,17 @@ export class PluginTileComponent implements OnInit, OnDestroy {
 
   open(): void {
     if (this.expandable()) this.modalOpen.set(true);
+  }
+
+  /** Kot pri radarski ploščici: prenesena, a neizrisljiva slika mora biti videti kot
+   * napaka s potjo ven, ne kot prazna ploščica. */
+  onImageBroken(): void {
+    if (this.previousObjectUrl) {
+      URL.revokeObjectURL(this.previousObjectUrl);
+      this.previousObjectUrl = null;
+    }
+    this.imageUrl.set(null);
+    this.failed.set(true);
   }
 
   async ngOnInit(): Promise<void> {

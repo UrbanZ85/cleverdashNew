@@ -114,6 +114,14 @@ const STATUS_MARKS: Record<string, string> = {
       gap: var(--cd-space-1);
       align-items: stretch;
     }
+    /* Telefon: sedem stolpcev s 4 px razmiki poje 24 px širine, ki jih dan potrebuje za
+       uri prihoda in odhoda — pri 320 px je razlika med "07:00" in obrezanim "07:0". */
+    @media (max-width: 575.98px) {
+      .head,
+      .week {
+        gap: 2px;
+      }
+    }
     .head {
       font-size: var(--cd-font-size-xs);
       color: var(--cd-text-muted);

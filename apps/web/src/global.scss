@@ -68,3 +68,32 @@
     animation: none;
   }
 }
+
+// ─── Telefon: gostota vrstic s kontrolami ───
+//
+// Vrstica seznama nosi na desni do ŠTIRI gumbe (opravilo: rok, gor, dol, izbriši; kamera:
+// gor, dol, uredi, izbriši; zavihek v meniju: gor, dol, stikalo). S privzetim odmikom
+// Ionicovega gumba zasedejo skupaj čez 170 px, kar je na 360 px zaslonu polovica vrstice —
+// naslovu ostane manj kot tretjina in vsak drugi se prelomi čez tri vrstice.
+//
+// Zato SAMO po širini: gumb obdrži svojo višino in s tem tarčo za prst, izgubi pa prazen
+// prostor levo in desno od ikone. Gumbov ne skrivamo — prerazporejanje in rok sta na
+// telefonu v rabi enako pogosto kot na namizju, dosegljiva pa sta izključno od tod.
+//
+// Tu in ne v vsaki komponenti zase, ker se vzorec ponovi na petih zaslonih (Opravila,
+// Urejanje kamer, Meni, Razporeditev ploščic, Beležke). Prag je Ionicov `sm` (576 px),
+// isti kot v theme/variables.scss.
+@media (max-width: 575.98px) {
+  // Samo vrstica, ki kontrolo na desni res ima — vrstici z besedilom rob nič ne škodi.
+  ion-item:has(> [slot='end']) {
+    --inner-padding-end: var(--cd-space-2);
+  }
+
+  // Gumb, ki je samo ikona. Besedilnega ne stiskamo: tam je odmik del berljivosti.
+  ion-item ion-button.button-has-icon-only {
+    --padding-start: 2px;
+    --padding-end: 2px;
+
+    margin-inline: 0;
+  }
+}

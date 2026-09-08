@@ -98,15 +98,17 @@ interface RenderedTile {
     ion-content {
       --background: var(--ion-background-color);
     }
+    /* Odmik in razmik med ploščicami sta isti žeton (theme/variables.scss): na telefonu se
+       oba stisneta hkrati, sicer ploščica ob robu diha drugače kot ploščica ob sosedi. */
     .dash {
-      padding: var(--cd-space-4);
+      padding: var(--cd-page-padding);
       max-width: 1600px;
       margin: 0 auto;
     }
     .grid {
       display: flex;
       flex-wrap: wrap;
-      gap: var(--cd-space-4);
+      gap: var(--cd-page-padding);
       align-items: stretch;
     }
     /* Vgrajena ploščica nima nastavljive širine: začne pri --cd-tile-min-width in razpotegne

@@ -302,9 +302,13 @@ function problemDetail(err: unknown): string | null {
       border-color: var(--ion-color-primary);
       color: var(--ion-color-primary-contrast);
     }
+    /* Ime akcije, ura in raztros so skupaj široki 19 rem; na telefonu se s prelomom
+       prerazporedijo v dve vrstici, brez njega pa bi se polje z uro stisnilo pod
+       širino, pri kateri brskalnik še izriše uro. */
     .action-row {
       display: flex;
       align-items: end;
+      flex-wrap: wrap;
       gap: var(--cd-space-2);
       padding: var(--cd-space-2) 0;
       border-top: 1px solid var(--cd-divider);

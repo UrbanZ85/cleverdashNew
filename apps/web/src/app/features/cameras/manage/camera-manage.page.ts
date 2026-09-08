@@ -59,12 +59,39 @@ interface CameraListItem extends CameraFormValue {
                 }
                 <p>{{ camera.type }}</p>
               </ion-label>
-              <ion-button fill="clear" size="small" [disabled]="i === 0" (click)="moveUp(i)">↑</ion-button>
-              <ion-button fill="clear" size="small" [disabled]="i === cameras().length - 1" (click)="moveDown(i)">↓</ion-button>
-              <ion-button fill="clear" size="small" (click)="openEditForm(camera)">
+              <ion-button
+                fill="clear"
+                size="small"
+                [disabled]="i === 0"
+                (click)="moveUp(i)"
+                [attr.aria-label]="'Premakni ' + camera.name + ' gor'"
+              >
+                <ion-icon slot="icon-only" name="arrow-up-outline"></ion-icon>
+              </ion-button>
+              <ion-button
+                fill="clear"
+                size="small"
+                [disabled]="i === cameras().length - 1"
+                (click)="moveDown(i)"
+                [attr.aria-label]="'Premakni ' + camera.name + ' dol'"
+              >
+                <ion-icon slot="icon-only" name="arrow-down-outline"></ion-icon>
+              </ion-button>
+              <ion-button
+                fill="clear"
+                size="small"
+                (click)="openEditForm(camera)"
+                [attr.aria-label]="'Uredi ' + camera.name"
+              >
                 <ion-icon slot="icon-only" name="create-outline"></ion-icon>
               </ion-button>
-              <ion-button fill="clear" size="small" color="danger" (click)="confirmDelete(camera)">
+              <ion-button
+                fill="clear"
+                size="small"
+                color="danger"
+                (click)="confirmDelete(camera)"
+                [attr.aria-label]="'Izbriši ' + camera.name"
+              >
                 <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
               </ion-button>
             </ion-item>

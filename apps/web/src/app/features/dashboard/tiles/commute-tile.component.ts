@@ -204,6 +204,15 @@ import {
       flex: 1 1 0;
       min-width: 0;
     }
+    /* Na telefonu postavitev "drug ob drugem" odpade. Ploščica si zanjo izprosi 780 px
+       (commuteTileWidthPx), na 360 px zaslonu pa se zoži na širino zaslona in vsak zemljevid
+       ostane ~150 px širok — na njem ni videti ne poti ne imen ulic. Izbira v nastavitvah
+       ostane, kar velja za širši zaslon; tukaj je zemljevid uporaben samo čez celo širino. */
+    @media (max-width: 575.98px) {
+      .legs.horizontal {
+        flex-direction: column;
+      }
+    }
     .leg-head {
       display: flex;
       align-items: center;
@@ -304,6 +313,15 @@ import {
       --height: 96vh;
       --max-width: 1600px;
       --border-radius: var(--cd-radius-lg);
+    }
+    /* Isto kot pri vtičniku: na telefonu je zemljevid celozaslonski, ker je 2 vw okvira ob
+       robu prstu neuporaben, zemljevidu pa ta prostor manjka. */
+    @media (max-width: 575.98px) {
+      .commute-modal {
+        --width: 100%;
+        --height: 100%;
+        --border-radius: 0;
+      }
     }
     .modal-map {
       display: block;

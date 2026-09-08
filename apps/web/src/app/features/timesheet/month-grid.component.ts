@@ -126,6 +126,22 @@ import { formatMinutes, KIND_LABELS, type PreviewDay, type PreviewWeek } from '.
       border: 1px solid var(--cd-divider);
       border-radius: var(--cd-radius-sm);
     }
+    /* Telefon. Osem stolpcev na 320 px pomeni pri 4 px razmikih in 3,5 rem stolpcu tedenske
+       vsote komaj 28 px na dan — kvadratek, ki ga s prstom ni mogoče zanesljivo zadeti, in
+       to je edini način, kako se v evidenci označi dopust. Razmik in stolpec z vsoto se
+       zato stisneta v korist dnevov, dan pa dobi mero, ki jo prst potrebuje; kvadratnost
+       (aspect-ratio) pri tem odpade, ker bi jo min-height tako ali tako prebil. */
+    @media (max-width: 575.98px) {
+      .head,
+      .week {
+        grid-template-columns: repeat(7, 1fr) 2.75rem;
+        gap: 2px;
+      }
+      .day {
+        aspect-ratio: auto;
+        min-height: 2.75rem;
+      }
+    }
   `,
 })
 export class MonthGridComponent {

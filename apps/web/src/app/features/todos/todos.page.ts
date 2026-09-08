@@ -431,6 +431,25 @@ import {
       margin: var(--cd-space-1) var(--cd-space-3);
       border-radius: var(--cd-radius-sm);
     }
+    /* Telefon. Vrstica opravila nosi ob kvadratku do štiri gumbe; stiskanje samih gumbov je
+       skupno vsem seznamom in je v global.scss. Tukaj je samo tisto, kar je last te strani:
+       kvadratek za odkljukanje sme bližje robu (na dotik ga je lažje zadeti kot majhen
+       gumb), vodoravni odmiki nad seznamom pa se poravnajo z njim. */
+    @media (max-width: 575.98px) {
+      ion-list ion-item {
+        --padding-start: var(--cd-space-2);
+      }
+      .chips,
+      .list-head,
+      .locked-note,
+      .add {
+        padding-inline: var(--cd-space-2);
+      }
+      .locked-note,
+      .add {
+        margin-inline: var(--cd-space-2);
+      }
+    }
   `,
 })
 export class TodosPage implements OnInit {

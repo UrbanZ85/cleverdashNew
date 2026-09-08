@@ -117,6 +117,23 @@
   // Najmanjša širina ploščice na nadzorni plošči; mreža sama izračuna število stolpcev.
   --cd-tile-min-width: 320px;
   --cd-menu-width: 268px;
+  // Odmik od roba zaslona na straneh (nadzorna plošča, nastavitve, seznami). Žeton in ne
+  // trdo zapisan `--cd-space-4` zato, ker je na telefonu manjši: 16 px levo in desno je na
+  // 360 px širokem zaslonu skoraj desetina širine, in ko je ploščica v takem odmiku še
+  // enkrat obrobljena, ostane vsebini manj kot 300 px.
+  --cd-page-padding: var(--cd-space-4);
+}
+
+// ─── Telefon ───
+// Prag je Ionicov `sm` (576 px) — isti, po katerem se ravna Ionicova razredna mreža, da
+// aplikacija ne prelamlja postavitve na dveh različnih širinah. Nad tem pragom se ne
+// spremeni nič; spodaj se stisnejo odmiki in ploščice smejo biti ožje, sicer na telefonu
+// ena sama ploščica ne gre v vrstico brez vodoravnega drsenja.
+@media (max-width: 575.98px) {
+  :root {
+    --cd-page-padding: var(--cd-space-3);
+    --cd-tile-min-width: 260px;
+  }
 }
 
 // Temna paleta. Ionic 8 jo pričakuje pod razredom `ion-palette-dark` na korenskem elementu

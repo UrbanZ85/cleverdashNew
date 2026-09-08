@@ -19,7 +19,7 @@ import { TileCardComponent } from '../../../shared/layout/tile-card.component.js
   template: `
     <app-tile-card title="Radar padavin" icon="rainy-outline" [loading]="loading()">
       @if (imageUrl(); as url) {
-        <img class="radar" [src]="url" alt="Radarska slika padavin ARSO" />
+        <img class="radar" [src]="url" alt="Radarska slika padavin ARSO" (error)="onImageBroken()" />
       } @else if (neverLoaded()) {
         <app-no-data (retry)="load()"></app-no-data>
       } @else {
@@ -73,6 +73,21 @@ export class RadarTileComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.unregister?.();
     if (this.previousObjectUrl) URL.revokeObjectURL(this.previousObjectUrl);
+  }
+
+  /**
+   * Prenos je uspel, brskalnik pa slike ne more izrisati (npr. odgovor ni slika). Brez tega
+   * ostane ploščica PRAZNA brez pojasnila — natanko tako je bila videti napaka, ko je
+   * strežnik iz predpomnilnika vračal binarno telo kot JSON. Ista pot ven kot pri neuspelem
+   * prenosu: sporočilo "ni podatka" z gumbom za ponovni poskus.
+   */
+  onImageBroken(): void {
+    if (this.previousObjectUrl) {
+      URL.revokeObjectURL(this.previousObjectUrl);
+      this.previousObjectUrl = null;
+    }
+    this.imageUrl.set(null);
+    this.neverLoaded.set(true);
   }
 
   async load(): Promise<{ intervalMs: number }> {

@@ -229,7 +229,7 @@ const MODULE_TABS: SettingsGroup[] = [
       --background: var(--ion-background-color);
     }
     .settings {
-      padding: var(--cd-space-4);
+      padding: var(--cd-page-padding);
       max-width: 780px;
       margin: 0 auto;
     }
@@ -244,9 +244,11 @@ const MODULE_TABS: SettingsGroup[] = [
     .groups ion-icon {
       font-size: 1.1rem;
     }
+    /* Odmik strani IN odmik razdelka sta na telefonu oba manjša (--cd-page-padding), sicer
+       gre 64 px širine samo za obrobo okoli obrobe in obrazcem ostane manj kot 300 px. */
     section {
       margin-bottom: var(--cd-space-5);
-      padding: var(--cd-space-4);
+      padding: var(--cd-page-padding);
       border: 1px solid var(--cd-divider);
       border-radius: var(--cd-radius-lg);
       background: var(--cd-surface);
