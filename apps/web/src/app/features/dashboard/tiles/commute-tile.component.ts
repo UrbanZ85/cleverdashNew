@@ -28,6 +28,7 @@ import {
   formatDelay,
   formatDistance,
   formatDuration,
+  mayReloadMap,
   nextRefreshMs,
   orderedCommuteLegs,
   travelUnavailableMessage,
@@ -53,6 +54,12 @@ import {
 // ploščica ostala prazna (kanonični vrednosti: core/embeds/embed-address.ts, ujemanje čuva
 // tests/unit/embed-iframe-attributes.spec.ts); čez okvir je prosojna plast, ki klik prestreže
 // in odpre povečan prikaz.
+//
+// `safe()` je klic v predlogi, izvede se torej ob VSAKEM preverjanju sprememb. Ker
+// `bypassSecurityTrustResourceUrl` vsakokrat vrne nov objekt, je Angular v `[src]` videl novo
+// vrednost in tuja stran se je naložila znova — ob vsakem klicu API-ja in vsaki spremembi na
+// strani. Zato so naslovi v predpomnilniku in nov objekt nastane šele, ko se izteče
+// MAP_RELOAD_MS (glej ../commute.model.ts).
 @Component({
   selector: 'app-commute-tile',
   standalone: true,
@@ -371,10 +378,31 @@ export class CommuteTileComponent implements OnInit, OnDestroy {
 
   private unregister?: () => void;
 
-  /** Naslov je sestavil strežnik (samo oblika, ki jo ponudnik v okvirju dovoli), okvir pa je
-   * poleg tega v peskovniku. */
+  /** Naslovi okvirjev in trenutek, ko so bili nazadnje sestavljeni — glej `safe()`. */
+  private readonly mapSources = new Map<string, SafeResourceUrl>();
+  private mapLoadedAtMs: number | null = null;
+
+  /**
+   * Naslov je sestavil strežnik (samo oblika, ki jo ponudnik v okvirju dovoli), okvir pa je
+   * poleg tega v peskovniku.
+   *
+   * Za isti naslov vrne ISTI objekt, dokler ne mine MAP_RELOAD_MS — tako se okvir ne naloži
+   * znova ob vsakem preverjanju sprememb, promet na zemljevidu pa se v petih minutah vseeno
+   * osveži. Predpomnilnik je po naslovu, ker sta zemljevida dva (in tretji v povečanem
+   * prikazu), čas nalaganja pa je skupen: obe smeri se osvežita hkrati.
+   */
   safe(url: string): SafeResourceUrl {
-    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+    const now = Date.now();
+    if (mayReloadMap(this.mapLoadedAtMs, now)) {
+      this.mapLoadedAtMs = now;
+      this.mapSources.clear();
+    }
+    let source = this.mapSources.get(url);
+    if (!source) {
+      source = this.sanitizer.bypassSecurityTrustResourceUrl(url);
+      this.mapSources.set(url, source);
+    }
+    return source;
   }
 
   icon(leg: CommuteLeg): string {

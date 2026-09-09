@@ -2,6 +2,16 @@
 // `tile-registry.ts`, ki uvaža komponente (isti razlog kot pri core/settings/settings.model.ts:
 // logika, ki se lahko zmoti, mora biti preverljiva brez ogrodja).
 
+/**
+ * Vrsta vnosa razporeditve, ki NI vgrajena ploščica, a je veljavna: uporabniško definirana
+ * ploščica (vtičnik, 005). Vtičnikov je poljubno mnogo in so osebni, zato niso v seznamu
+ * vgrajenih vrst — njihovi vnosi pa morajo v razporeditvi obstati.
+ *
+ * Živi tukaj in ne v `tile-registry.ts`, ker ga potrebuje ta čista logika; register ga od tu
+ * izvozi naprej kot `PLUGIN_TILE_TYPE`, da je vrednost na enem mestu.
+ */
+export const PLUGIN_LAYOUT_TYPE = 'plugin';
+
 export interface TileLayoutEntry {
   type: string;
   position: number;
@@ -23,11 +33,23 @@ export interface TileLayoutEntry {
 export function mergeMissingTypes(
   layout: readonly TileLayoutEntry[],
   builtInTypes: readonly string[],
+  extraTypes: readonly string[] = [PLUGIN_LAYOUT_TYPE],
 ): TileLayoutEntry[] {
+  // Vrste, ki jih aplikacija še pozna. Privzetek vključuje vtičnike, ker jih klicatelj v
+  // `builtInTypes` namenoma ne poda — brez tega bi vsak klic brez tretjega argumenta zavrgel
+  // vse vtičnike z nadzorne plošče.
+  const allowed = new Set([...builtInTypes, ...extraTypes]);
+
+  // Vnos ODSTRANJENE vrste se zavrže. Do 011 se je tak vnos ohranil, ker je bil pogoj samo
+  // "dopolni manjkajoče": po odstranitvi ploščice "Vreme" bi na nadzorni plošči ostala
+  // prazna vrzel (dashboard.page vrste brez komponente tiho preskoči), v nastavitvah pa
+  // vnos z imenom "weather" — angleški identifikator v slovenskem vmesniku (člen X), ki ga
+  // ni mogoče niti izrisati niti pojasniti. Ob prvem shranjevanju razporeditve vnos izgine
+  // tudi iz baze.
+  const kept = layout.filter((entry) => allowed.has(entry.type));
+
   const base =
-    layout.length > 0
-      ? [...layout]
-      : builtInTypes.map((type, i) => ({ type, position: i, visible: true }));
+    kept.length > 0 ? [...kept] : builtInTypes.map((type, i) => ({ type, position: i, visible: true }));
 
   const known = new Set(base.map((t) => t.type));
 

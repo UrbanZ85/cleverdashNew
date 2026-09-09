@@ -164,26 +164,29 @@ export const HELP_TOPICS = {
   // ─── Viri ───
   'sources.location': {
     title: 'Lokacija za vreme',
-    what: 'Kraj, za katerega se prikazujeta vreme in napoved.',
+    what: 'Kraj, za katerega se prikazuje napoved. Trenutne meritve (temperatura, padavine, veter, vlaga) od 011 prikazuje ploščica "Padavine po urah" iz izbrane merilne postaje — glej Moduli → Meritve.',
     how: [
       'Ime mora biti tako, kot ga pozna vremenski vir (ARSO): Ljubljana, Maribor, Kredarica …',
       'Zemljepisna širina in dolžina se uporabljata za prikaz, ne za iskanje kraja — ime je tisto, kar odloča.',
     ],
     ifEmpty: 'Privzeto Ljubljana.',
   },
-  // ─── Meritve ARSO (011) ───
+  // ─── Meritve (011) ───
   'meteo.station': {
-    title: 'Merilna postaja',
-    what: 'ARSO samodejna postaja, katere meritve kažeta zavihek "Meritve ARSO" in ploščica s padavinami po urah.',
+    title: 'Merilne postaje',
+    what: 'Samodejne postaje, katerih meritve kažeta zavihek "Meritve" in ploščica s padavinami po urah. Na voljo sta dve omrežji: ARSO (državne postaje v Sloveniji) in Neverin (zasebne in javne postaje v Sloveniji, na Hrvaškem, v BiH, Srbiji in Črni gori).',
     how: [
-      'Postajo izbereš s seznama — klik jo takoj shrani, posebnega gumba za shranjevanje ni.',
-      'Iskanje gre po imenu kraja; šumniki niso pomembni (“cesnjica” najde Bohinjsko Češnjico).',
+      'Izbereš jih lahko več (največ osem) in med njimi na zavihku preklapljaš s čipi nad grafi.',
+      'Vrstni red šteje: PRVA postaja (z zvezdico) je tista, ki jo kaže ploščica na nadzorni plošči in ki se odpre ob vstopu na zavihek. Z gumbom ob čipu jo premakneš na prvo mesto.',
+      'Klik postajo takoj shrani ali odstrani — posebnega gumba za shranjevanje ni.',
+      'Iskanje gre po imenu kraja; šumniki niso pomembni (“cesnjica” najde Bohinjsko Češnjico). S čipi nad iskalnikom omejiš seznam na eno omrežje.',
       'Vsaka postaja ne meri vsega: postaja brez barometra ali brez merilnika sevanja teh grafov ne bo imela. To ni napaka, ampak lastnost postaje.',
-      'Vir hrani dva dneva meritev; starejših podatkov ni od kod vzeti.',
+      'Isti kraj je lahko v obeh omrežjih (Ljubljano-Bežigrad meri ARSO, objavlja pa jo tudi Neverin) — to sta dve različni meritvi, zato je pri vsaki postaji izpisano, iz katerega omrežja je.',
+      'Oba vira hranita dva dneva meritev; starejših podatkov ni od kod vzeti.',
     ],
     ifEmpty:
-      'Če postaje ne izbereš, velja privzeta postaja namestitve (nastavi jo ARSO_DEFAULT_STATION v okolju strežnika, privzeto Ljubljana Bežigrad).',
-    example: 'Za Vrhniko izberi postajo "Vrhnika" (oznaka VRHNIKA).',
+      'Če ne izbereš nobene, velja privzeta postaja namestitve (nastavi jo ARSO_DEFAULT_STATION v okolju strežnika, privzeto Ljubljana Bežigrad).',
+    example: 'Za Vrhniko izberi "Vrhnika" (ARSO), za Istro pa "Sveta Marina" (Neverin).',
   },
   'sources.urls': {
     title: 'Naslovi virov',

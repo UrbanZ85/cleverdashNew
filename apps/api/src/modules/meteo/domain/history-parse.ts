@@ -1,3 +1,10 @@
+import {
+  StationHistoryFormatError,
+  type ParsedStationHistory,
+  type StationMeasurement,
+  type StationMeta,
+} from './measurement.js';
+
 // Razčlenjevanje ARSO strani "dvodnevna zgodovina" samodejne postaje.
 //
 // Zakaj HTML in ne XML: ARSO ponuja XML samo za ZADNJO meritev
@@ -17,54 +24,20 @@
 //
 // Člen IX: čista funkcija nad nizom, testirana brez omrežja (tests/unit/arso-history-parse.spec.ts).
 
-/** Struktura vira se je spremenila do neuporabnosti — klicatelj to prevede v 503 in NE v
- * prazno ploščico (člen VII: tiha napaka je hrošč najvišje resnosti). */
-export class ArsoHistoryFormatError extends Error {
+/** Vse ARSO samodejne postaje so v Sloveniji, zato je cona konstanta in ne podatek vira. */
+const ARSO_STATION_ZONE = 'Europe/Ljubljana';
+
+/**
+ * Struktura ARSO strani se je spremenila do neuporabnosti.
+ *
+ * Podrazred skupne napake in ne svoja vrsta: router obravnava vse ponudnike enako (503 z
+ * razlago), ime razreda pa pove, KATERI vir se je spremenil, ko se to znajde v dnevniku.
+ */
+export class ArsoHistoryFormatError extends StationHistoryFormatError {
   constructor(message: string) {
     super(message);
     this.name = 'ArsoHistoryFormatError';
   }
-}
-
-export interface StationMeta {
-  /** Ime kraja, kot ga ARSO izpiše v glavi tabele (npr. "Vrhnika"). */
-  title: string;
-  altitudeM: number | null;
-  latitude: number | null;
-  longitude: number | null;
-}
-
-/** Ena meritev. Vsako polje je lahko `null`: postaja merilnika morda nima (tlak, sevanje,
- * temperatura vode) ali pa je meritev tisti trenutek manjkala. `null` in `0` sta zato
- * NAMENOMA različna — "ni merilnika" ni isto kot "ni dežja". */
-export interface StationMeasurement {
-  /** Trenutek meritve v UTC (ISO 8601). Vir ga pove v stolpcu `valid_UTC`. */
-  validUtc: string;
-  temperatureC: number | null;
-  humidityPct: number | null;
-  /** Povprečna hitrost vetra v intervalu, km/h. */
-  windAvgKmh: number | null;
-  /** Najmočnejši sunek v intervalu, km/h. */
-  windMaxKmh: number | null;
-  windDirectionDeg: number | null;
-  /** Vsota padavin V INTERVALU (ne od začetka dneva), mm. */
-  precipitationMm: number | null;
-  /** ARSO-jeva vsota padavin od 6. oz. 18. ure UTC dalje, mm. */
-  precipitation12hMm: number | null;
-  pressureMslHpa: number | null;
-  pressureHpa: number | null;
-  globalRadiationWm2: number | null;
-  diffuseRadiationWm2: number | null;
-  snowCm: number | null;
-  waterTemperatureC: number | null;
-  /** Ime ARSO ikone pojava/oblačnosti (npr. `mostClear`, `modCloudy`), brez pripone. */
-  cloudsIcon: string | null;
-}
-
-export interface ParsedStationHistory {
-  station: StationMeta;
-  /** Naraščajoče po času. Vir jih izpiše od najnovejše navzdol; graf potrebuje obratno. */
-  measurements: StationMeasurement[];
 }
 
 /** Imena stolpcev, kakor jih ARSO zapiše v `class`/`id` celice. Levo je naše ime polja. */
@@ -105,11 +78,18 @@ export function parseStationHistory(html: string): ParsedStationHistory {
       altitudeM: numberOf(cells.get('domain_altitude')),
       latitude: numberOf(cells.get('domain_lat')),
       longitude: numberOf(cells.get('domain_lon')),
+      // ARSO postaje so vse v Sloveniji; vir cone ne izpiše, ker je zanj samoumevna.
+      timezone: ARSO_STATION_ZONE,
+      // ARSO svoje postaje upravlja sam — ločenega upravljavca ni (za razliko od Neverina,
+      // ki je omrežje tujih postaj).
+      operator: null,
     };
 
     const measurement: StationMeasurement = {
       validUtc,
       cloudsIcon: iconNameOf(cells.get('clouds_icon_wwsyn_icon')),
+      // Te tabele ARSO ne izpolni z indeksom UV — stolpca ni, ne le vrednosti.
+      uvIndex: null,
       ...(Object.fromEntries(
         Object.entries(NUMERIC_COLUMNS).map(([field, column]) => [field, numberOf(cells.get(column))]),
       ) as Record<keyof typeof NUMERIC_COLUMNS, number | null>),

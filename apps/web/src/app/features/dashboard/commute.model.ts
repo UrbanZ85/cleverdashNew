@@ -192,3 +192,30 @@ export function travelUnavailableMessage(reason: CommuteTravelUnavailable): stri
       return 'Čas poti trenutno ni dosegljiv.';
   }
 }
+
+// ─────────────────────── ponovno nalaganje zemljevida ───────────────────────
+
+/**
+ * Najkrajši premor med dvema nalaganjema vdelanega zemljevida.
+ *
+ * Okvir je TUJA stran in vsaka nova vrednost v `[src]` jo naloži od začetka. Naslov je sicer
+ * ves čas isti (strežnik ga sestavi iz krajev, brez časovnega žiga — apps/api/src/domain/
+ * map-embed.ts), zato bi bilo pravilno okvirja ne dotikati nikoli; ker pa je na zemljevidu
+ * narisan tudi promet, se sme sam osvežiti — a redko. Ploščica se prerisuje ob vsakem klicu
+ * API-ja in vsaki spremembi na strani, promet pa se v petih minutah ne spremeni toliko, da bi
+ * bilo vredno utripanja (in vsako nalaganje je klic k ponudniku).
+ */
+export const MAP_RELOAD_MS = 5 * 60 * 1000;
+
+/**
+ * Ali se vdelani zemljevid, nazadnje naložen ob `lastLoadMs`, sme naložiti znova.
+ * `null` pomeni "še nikoli" — takrat se naloži takoj.
+ *
+ * Premor se meri od zadnjega nalaganja in ne po petminutnih oknih ure: ploščica, ki se izriše
+ * ob 12:04:59, bi se sicer sekundo pozneje naložila znova.
+ */
+export function mayReloadMap(lastLoadMs: number | null, nowMs: number): boolean {
+  // Sistemski čas nazaj (uskladitev ure, prehod na zimski čas) ne sme zemljevida zakleniti za
+  // uro nazaj — takrat velja premor za iztečen.
+  return lastLoadMs === null || nowMs < lastLoadMs || nowMs - lastLoadMs >= MAP_RELOAD_MS;
+}

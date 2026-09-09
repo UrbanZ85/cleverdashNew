@@ -131,6 +131,25 @@ ne razstavi; pravilen izid je `gruße`. Popravljen je bil test, z zapisano mejo 
 nemški zapis bi za `ss` potreboval tabelo preslikav, ki je za slovenski vmesnik ne želimo
 (`research.md` §6).
 
+### 7. Mape se ni dalo ustvariti od tam, kjer jih uporabnik potrebuje
+
+Prva različica je urejanje map skrila za ikono mape v glavi strani in **nihče je ni našel** —
+ikona brez besedila ne pove, da za njo sploh kaj je. Hkrati je bilo v urejevalniku zapisa
+polje "Mapa" pri uporabniku brez map videti pokvarjeno: edina možnost je bila "Nerazvrščeno"
+in izbirnika ni bilo mogoče spremeniti v nič.
+
+Popravljeno dvakrat: nad seznamom sta zdaj gumba z besedilom ("Shrani stran", "Mape" s
+številom map), izbirnik mape v obrazcu pa ima možnost "+ Nova mapa …", ki vpraša za ime, mapo
+ustvari in jo takoj izbere — brez odhoda na drug zaslon sredi shranjevanja strani.
+
+**Ta popravek je razkril resnično napako v obrazcu.** `groups` je vezan na `store.groups()`,
+ki ob vsakem osvežitvi vrne NOVO polje — torej se šteje za spremembo vhoda in je sprožil
+`ngOnChanges`, ki je polja napolnil iz vhoda znova. Ustvarjanje mape sredi vnosa je zato
+pobrisalo že vpisani naslov in komentar: uporabnik je izbral "Nova mapa", jo poimenoval in se
+vrnil k praznemu obrazcu. Zdaj se polja napolnijo samo, kadar se zamenja `link` ali
+`defaultGroupId` (`SimpleChanges`), ne ob vsaki spremembi kateregakoli vhoda. Isti hrošč je
+tiho obstajal že prej, le da se ni pokazal, ker se je obrazec po shranjevanju zaprl.
+
 ## Najdeno mimogrede (ne pripada 008)
 
 `npm run typecheck` na `main` **že pred tem delom** pade na eni napaki, ki 008 ne pripada:

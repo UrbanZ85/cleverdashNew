@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   COMMUTE_MAX_WAIT_MS,
+  MAP_RELOAD_MS,
   DEFAULT_MAP_HEIGHT_PX,
   MAX_MAP_HEIGHT_PX,
   MIN_MAP_HEIGHT_PX,
@@ -11,6 +12,7 @@ import {
   formatDistance,
   formatDuration,
   ljubljanaClock,
+  mayReloadMap,
   msUntilNextSwitch,
   nextRefreshMs,
   orderedCommuteLegs,
@@ -227,5 +229,33 @@ describe('videz ploščice — višina in postavitev', () => {
 
   it('višina se zaokroži na celo slikovno točko', () => {
     expect(clampMapHeightPx(199.6)).toBe(200);
+  });
+});
+
+describe('ponovno nalaganje vdelanega zemljevida', () => {
+  // Okvir je tuja stran: vsaka nova vrednost v [src] jo naloži od začetka. Ploščica se
+  // prerisuje ob vsakem klicu API-ja, zato je edino, kar sme okvir naložiti znova, iztek
+  // premora — brez tega je zemljevid utripal ob vsaki spremembi na strani.
+  const t0 = Date.UTC(2025, 8, 9, 10, 0, 0);
+
+  it('prvič se naloži takoj', () => {
+    expect(mayReloadMap(null, t0)).toBe(true);
+  });
+
+  it('med premorom ostane pri miru', () => {
+    expect(mayReloadMap(t0, t0)).toBe(false);
+    expect(mayReloadMap(t0, t0 + 1000)).toBe(false);
+    expect(mayReloadMap(t0, t0 + MAP_RELOAD_MS - 1)).toBe(false);
+  });
+
+  it('po petih minutah se naloži znova', () => {
+    expect(MAP_RELOAD_MS).toBe(5 * 60 * 1000);
+    expect(mayReloadMap(t0, t0 + MAP_RELOAD_MS)).toBe(true);
+    expect(mayReloadMap(t0, t0 + 2 * MAP_RELOAD_MS)).toBe(true);
+  });
+
+  it('sistemski čas nazaj zemljevida ne zaklene', () => {
+    // Uskladitev ure ali prehod na zimski čas bi sicer premor podaljšal za celo uro.
+    expect(mayReloadMap(t0, t0 - 60_000)).toBe(true);
   });
 });

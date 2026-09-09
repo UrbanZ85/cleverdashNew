@@ -105,6 +105,21 @@ describe('resolveTabs', () => {
     expect(tabs.map((t) => t.id)).toEqual(['dashboard', 'settings']);
   });
 
+  it('zavihek z zahtevanimi obsegi: admin ga dobi, uporabnik brez obsega pa ne', async () => {
+    // 011 je prvi zavihek z `requiredScopes`. Admin ima dobesedno `['admin']` in ne
+    // poimenovanih obsegov — brez posebne obravnave je endpointe modula lahko klical
+    // (requireScopes to razume), zavihka v meniju pa ni videl, in pot do njega je bila
+    // zaprta tudi odjemalčevemu `tabGuard`.
+    const asAdmin = await resolveTabs(['admin'], USER_ID);
+    expect(asAdmin.map((t) => t.id)).toContain('meteo');
+
+    const asUser = await resolveTabs(['meteo:read'], USER_ID);
+    expect(asUser.map((t) => t.id)).toContain('meteo');
+
+    const withoutScope = await resolveTabs(['notes:read'], USER_ID);
+    expect(withoutScope.map((t) => t.id)).not.toContain('meteo');
+  });
+
   it('rezultat ne razkriva internega polja "enabled"', async () => {
     const tabs = await resolveTabs([], USER_ID);
     for (const tab of tabs) expect(tab).not.toHaveProperty('enabled');

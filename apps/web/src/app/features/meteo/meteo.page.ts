@@ -4,6 +4,7 @@ import {
   IonButton,
   IonContent,
   IonIcon,
+  IonLabel,
   IonSegment,
   IonSegmentButton,
   IonSpinner,
@@ -16,21 +17,29 @@ import { MeteoApi } from '../../core/meteo/meteo.api.js';
 import {
   METEO_WINDOWS,
   bucketAxisLabels,
+  bucketTooltipTitles,
   cumulativePrecipitation,
   formatValue,
   localDateTimeLabel,
   localTimeLabel,
+  measurementTooltipTitles,
   precipitationAxisMax,
   windArrowRotation,
   windDirectionLabel,
   type MeteoHistory,
+  type MeteoSelectedStation,
   type MeteoWindowHours,
 } from '../../core/meteo/meteo.model.js';
 import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart.component.js';
 
-// Zavihek "Meritve ARSO" (platform/tabs/registry.ts, id `meteo`).
+// Zavihek "Meritve" (platform/tabs/registry.ts, id `meteo`).
 //
-// Kaj kaže: dvodnevno zgodovino ENE samodejne postaje — tiste, ki je izbrana v nastavitvah.
+// Kaj kaže: dvodnevno zgodovino ENE samodejne postaje — tiste, ki je izbrana v preklopniku.
+// Postaj ima uporabnik lahko izbranih več, iz dveh omrežij (ARSO in Neverin), in med njimi
+// preklaplja s čipi nad grafi. Zakaj ena naenkrat in ne vse na istem grafu: padavine so
+// stolpci in "zdaj" je ena kartica — dve postaji hkrati bi pomenili dva niza stolpcev, ki se
+// prekrivata, in dve kartici "zdaj", od katerih nobena ni odgovor na vprašanje "koliko je
+// zunaj". Primerjava je drugo vprašanje od "kakšno je vreme pri meni".
 // Grafi so vsi, kar postaja meri: temperatura, padavine po urah, veter s sunki in smerjo,
 // vlaga, zračni tlak, sončno obsevanje, višina snega. Katerih grafov NI, pove strežnik
 // (`available`) — postaja brez barometra ne dobi prazne osi brez črte, ker je prazen graf
@@ -54,6 +63,7 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
     IonSegmentButton,
     IonButton,
     IonIcon,
+    IonLabel,
     IonSpinner,
   ],
   template: `
@@ -68,6 +78,26 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
 
     <ion-content>
       <div class="page">
+        <!-- Preklopnik postaj. Skrit, kadar je izbrana ena sama: en gumb, ki ne vodi nikamor,
+             je videti kot okvara. -->
+        @if (stations().length > 1) {
+          <ion-segment
+            scrollable
+            class="stations"
+            [value]="activeRef()"
+            (ionChange)="onStationChange($any($event.detail.value))"
+          >
+            @for (station of stations(); track station.ref) {
+              <ion-segment-button [value]="station.ref">
+                <ion-label>
+                  {{ station.title }}
+                  <small>{{ station.providerLabel }}</small>
+                </ion-label>
+              </ion-segment-button>
+            }
+          </ion-segment>
+        }
+
         <ion-segment [value]="hours()" (ionChange)="onWindowChange($any($event.detail.value))">
           @for (window of windows; track window.hours) {
             <ion-segment-button [value]="window.hours">{{ window.label }}</ion-segment-button>
@@ -85,6 +115,18 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
               <span class="now-temp">{{ formatValue(history.summary.latest.temperatureC, '°C') }}</span>
               <span class="now-time">{{ measuredAt() }}</span>
             </div>
+            <!-- "Koliko je padlo" je vprašanje glede na dogodek, ne glede na izbrano okno grafa:
+                 nevihta popoldne (4 h), cel dan dežja (12 h), vikend nalivov (48 h). Vsote so
+                 zato tu neodvisne od preklopnika nad njimi. -->
+            <div class="windows" aria-label="Vsote padavin po oknih">
+              @for (window of history.precipitationWindows; track window.hours) {
+                <div class="window" [class.window-dry]="(window.millimeters ?? 0) === 0">
+                  <span class="window-hours">{{ window.hours }} h</span>
+                  <span class="window-mm">{{ formatValue(window.millimeters, 'mm') }}</span>
+                </div>
+              }
+            </div>
+
             <dl class="now-grid">
               <div>
                 <dt>Najnižja / najvišja</dt>
@@ -139,6 +181,12 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
                   <dd>{{ formatValue(history.summary.latest.waterTemperatureC, '°C') }}</dd>
                 </div>
               }
+              @if (history.available.uv) {
+                <div>
+                  <dt>Indeks UV</dt>
+                  <dd>{{ formatValue(history.summary.latest.uvIndex, '', 1) }}</dd>
+                </div>
+              }
             </dl>
           </section>
 
@@ -154,6 +202,7 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
                 title="Padavine po urah"
                 [labels]="bucketLabels()"
                 [series]="precipitationSeries()"
+                [pointTitles]="bucketTitles()"
                 [leftMax]="precipitationMax()"
                 [leftBeginAtZero]="true"
                 [heightPx]="200"
@@ -177,6 +226,7 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
                 title="Temperatura"
                 [labels]="pointLabels()"
                 [series]="temperatureSeries()"
+                [pointTitles]="pointTitles()"
                 [heightPx]="220"
               ></app-meteo-chart>
             </section>
@@ -192,6 +242,7 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
                 title="Veter"
                 [labels]="pointLabels()"
                 [series]="windSeries()"
+                [pointTitles]="pointTitles()"
                 [leftBeginAtZero]="true"
                 [heightPx]="200"
               ></app-meteo-chart>
@@ -218,6 +269,7 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
                 title="Vlažnost"
                 [labels]="pointLabels()"
                 [series]="humiditySeries()"
+                [pointTitles]="pointTitles()"
                 [leftMin]="0"
                 [leftMax]="100"
                 [heightPx]="180"
@@ -232,6 +284,7 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
                 title="Zračni tlak"
                 [labels]="pointLabels()"
                 [series]="pressureSeries()"
+                [pointTitles]="pointTitles()"
                 [heightPx]="180"
               ></app-meteo-chart>
             </section>
@@ -244,6 +297,7 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
                 title="Sončno obsevanje"
                 [labels]="pointLabels()"
                 [series]="radiationSeries()"
+                [pointTitles]="pointTitles()"
                 [leftBeginAtZero]="true"
                 [heightPx]="180"
               ></app-meteo-chart>
@@ -257,6 +311,7 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
                 title="Snežna odeja"
                 [labels]="pointLabels()"
                 [series]="snowSeries()"
+                [pointTitles]="pointTitles()"
                 [leftBeginAtZero]="true"
                 [heightPx]="160"
               ></app-meteo-chart>
@@ -268,9 +323,20 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
               [text]="history.source.attribution.text"
               [url]="history.source.attribution.url"
             ></app-attribution>
-            <a class="source-link" [href]="history.source.url" target="_blank" rel="noopener">
-              Izvorna stran postaje
-            </a>
+            <span class="source-link">
+              @if (history.station.operator; as operator) {
+                <!-- Neverin je omrežje TUJIH postaj: navedba samo "Neverin" bi izpustila
+                     tistega, ki postajo v resnici drži (člen VIII). -->
+                postajo upravlja
+                @if (operator.url) {
+                  <a [href]="operator.url" target="_blank" rel="noopener">{{ operator.name }}</a>
+                } @else {
+                  {{ operator.name }}
+                }
+                ·
+              }
+              <a [href]="history.source.url" target="_blank" rel="noopener">Izvorna stran postaje</a>
+            </span>
           </footer>
         } @else if (loading()) {
           <div class="state"><ion-spinner name="dots"></ion-spinner></div>
@@ -336,6 +402,33 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
       font-weight: 650;
       line-height: 1;
     }
+    /* Vsote padavin po oknih — ista oblika kot v povečanem prikazu ploščice, da se bereta kot
+       ena stvar. */
+    .windows {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+      gap: var(--cd-space-2);
+      margin-bottom: var(--cd-space-4);
+    }
+    .window {
+      padding: var(--cd-space-2) var(--cd-space-3);
+      border: 1px solid var(--cd-divider);
+      border-radius: var(--cd-radius-md);
+      display: grid;
+      gap: 2px;
+    }
+    /* Suho okno je videti drugače od mokrega, da se "0,0 mm" ne bere kot manjkajoč podatek. */
+    .window-dry {
+      background: var(--cd-surface-sunken);
+    }
+    .window-hours {
+      font-size: var(--cd-font-size-xs);
+      color: var(--cd-text-muted);
+    }
+    .window-mm {
+      font-size: var(--cd-font-size-md);
+      font-weight: 650;
+    }
     .now-grid {
       margin: 0;
       display: grid;
@@ -376,6 +469,14 @@ import { MeteoChartComponent, type MeteoChartSeries } from './charts/meteo-chart
     .arrow-missing {
       opacity: 0.25;
     }
+    /* Preklopnik postaj je nad preklopnikom oken in je vizualno lažji: okno grafa se menja
+       pogosto, postaja redko. */
+    .stations ion-label small {
+      display: block;
+      opacity: 0.65;
+      font-size: 0.75em;
+      font-weight: 400;
+    }
     .page-foot {
       display: flex;
       flex-wrap: wrap;
@@ -409,9 +510,21 @@ export class MeteoPage implements OnInit, OnDestroy {
   readonly error = signal<string | null>(null);
   readonly hours = signal<MeteoWindowHours>(24);
 
+  /** Izbrane postaje za preklopnik. Prazno, dokler `/meteo/selection` ne odgovori — takrat je
+   * preklopnika ni in zavihek kaže privzeto postajo, kar je pravilno tudi samo zase. */
+  readonly stations = signal<MeteoSelectedStation[]>([]);
+  /**
+   * Sklic postaje, ki je trenutno na zaslonu.
+   *
+   * `null` pomeni "kar strežnik šteje za privzeto" in NE "nobena": ob prvem izrisu odjemalec
+   * še ne ve, katera postaja to je (lahko je privzetek namestitve iz `.env`), zato klic gre
+   * brez `?station=` in odgovor to pove sam.
+   */
+  readonly activeRef = signal<string | null>(null);
+
   private unregister?: () => void;
 
-  readonly stationTitle = computed(() => this.data()?.station.title ?? 'Meritve ARSO');
+  readonly stationTitle = computed(() => this.data()?.station.title ?? 'Meritve');
   readonly measuredAt = computed(() => {
     const iso = this.data()?.summary.latest.validUtc;
     return iso ? localDateTimeLabel(iso) : '';
@@ -419,7 +532,9 @@ export class MeteoPage implements OnInit, OnDestroy {
   readonly subtitle = computed(() => {
     const history = this.data();
     if (!history) return null;
-    const parts = [`${history.station.id}`];
+    // Ponudnik je v podnaslovu in ne samo v preklopniku: dve postaji istega kraja (ARSO in
+    // Neverin merita Ljubljano-Bežigrad obe) sta različni meritvi in človek mora vedeti, katero gleda.
+    const parts = [history.station.providerLabel, history.station.id];
     if (history.station.altitudeM !== null) parts.push(`${history.station.altitudeM} m`);
     // Da uporabnik ve, da gleda privzeto postajo in ne svoje — sicer išče napako v podatkih.
     if (!history.station.chosen) parts.push('privzeta postaja');
@@ -432,6 +547,11 @@ export class MeteoPage implements OnInit, OnDestroy {
 
   /** Oznake pod grafi posameznih meritev — ura in minuta v slovenski coni. */
   readonly pointLabels = computed(() => (this.measurements() ?? []).map((m) => localTimeLabel(m.validUtc)));
+
+  /** Naslovi namigov: pri stolpcih interval ure, pri črtah točen čas meritve. Os pod grafom
+   * nosi samo številko ure, ker je zanjo prostora toliko. */
+  readonly bucketTitles = computed(() => bucketTooltipTitles(this.data()?.buckets ?? []));
+  readonly pointTitles = computed(() => measurementTooltipTitles(this.measurements() ?? []));
 
   readonly precipitationMax = computed(() => precipitationAxisMax(this.data()?.buckets ?? []));
   readonly anyPrecipitation = computed(() => (this.data()?.summary.precipitationTotalMm ?? 0) > 0);
@@ -564,6 +684,9 @@ export class MeteoPage implements OnInit, OnDestroy {
   private readonly measurements = computed(() => this.data()?.measurements ?? null);
 
   ngOnInit(): void {
+    // Preklopnik se prenese enkrat in neodvisno od meritev: neuspeh tu ne sme pomeniti
+    // zavihka brez grafov, ker je zavihek uporaben tudi z eno samo (privzeto) postajo.
+    void this.loadSelection();
     // Osveževanje samo v ospredju in v intervalu, ki ga pove strežnik (člen VIII) — enako kot
     // ploščice na nadzorni plošči.
     this.unregister = this.refresh.register(() => this.load());
@@ -571,6 +694,14 @@ export class MeteoPage implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.unregister?.();
+  }
+
+  /** Preklop na drugo postajo. Prejšnji graf ostane, dokler ne pride novi — prazen zaslon ob
+   * vsakem dotiku čipa bi bil videti kot ponovno nalaganje zavihka. */
+  onStationChange(ref: string | undefined): void {
+    if (!ref || ref === this.activeRef()) return;
+    this.activeRef.set(ref);
+    void this.load();
   }
 
   onWindowChange(hours: MeteoWindowHours | undefined): void {
@@ -583,11 +714,29 @@ export class MeteoPage implements OnInit, OnDestroy {
     void this.load();
   }
 
+  private async loadSelection(): Promise<void> {
+    try {
+      const selection = await this.api.selection();
+      this.stations.set(selection.stations);
+    } catch {
+      // Brez preklopnika zavihek še vedno dela: kaže privzeto postajo. Napake zato ne
+      // izpisujemo — sporočilo o nečem, česar uporabnik ni zahteval, je šum.
+      this.stations.set([]);
+    }
+  }
+
   async load(): Promise<{ intervalMs: number }> {
     this.loading.set(true);
     try {
-      const history = await this.api.history({ hours: this.hours(), raw: true });
+      const history = await this.api.history({
+        hours: this.hours(),
+        station: this.activeRef(),
+        raw: true,
+      });
       this.data.set(history);
+      // Ob prvem klicu (brez `?station=`) šele odgovor pove, katera postaja velja — brez tega
+      // preklopnik ne bi vedel, kateri čip naj označi.
+      this.activeRef.set(history.station.ref);
       this.error.set(null);
       return { intervalMs: history.source.nextPollSeconds * 1000 };
     } catch (err) {

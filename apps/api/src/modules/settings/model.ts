@@ -77,8 +77,19 @@ const settingsSchema = new Schema(
     // Shrani se SAMO oznaka, ne ime in ne koordinati postaje: ime pride z istim ARSO virom kot
     // meritve, in dva vira resnice za "kako se postaja imenuje" bi se razšla ob prvem, ko ARSO
     // ime popravi.
+    // 011 razširitev: postaj je VEČ in vsaka pove, čigava je — `arso:VRHNIKA`,
+    // `neverin:sveta-marina` (`domain/meteo-station-ref.ts`). Zavihek med njimi preklaplja,
+    // ploščica na nadzorni plošči kaže PRVO.
+    //
+    // `station` (ednina) je ostanek časa, ko je bil ponudnik en sam in oznaka gola
+    // (`VRHNIKA`). Polje se OHRANI in ne izbriše: dokumenti s to obliko so v bazi in selitev
+    // ob branju je cenejša ter varnejša od enkratnega prepisa vseh dokumentov, ki mora
+    // uspeti. Bere se samo, kadar je `stations` prazen (glej `platform/settings/meteo.service.ts`),
+    // piše pa se ob vsakem shranjevanju seznama, da starejši odjemalec ne obtiči na
+    // prejšnji postaji.
     meteo: {
       station: { type: String, default: null },
+      stations: { type: [String], default: [] },
     },
     updatedAt: { type: Date, default: () => new Date() },
   },

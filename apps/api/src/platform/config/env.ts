@@ -94,6 +94,25 @@ const envSchema = z.object({
   // praviloma odgovor 304 brez telesa.
   METEO_STATIONS_CACHE_SECONDS: z.coerce.number().int().positive().default(21_600),
 
+  // Neverin (neverin.hr) — DRUGI ponudnik meritev poleg ARSO (011, razširitev): omrežje
+  // ~1335 postaj v Sloveniji, na Hrvaškem, v BiH, Srbiji in Črni gori. Postaje, ki jih ARSO
+  // nima (Sveta Marina v Istri), pridejo od tod.
+  //
+  // Meritve so na `core.neverin.hr` (JSON, ki ga uporablja njihova stran), ne na
+  // `www.neverin.hr` — ta je prazna lupina, ki podatke naloži z JavaScriptom.
+  NEVERIN_BASE_URL: z.string().url().default('https://core.neverin.hr'),
+  // Izvor, ki se pošlje v glavah `Origin` in `Referer`. Vir brez njega odgovori 403
+  // (`ORIGIN_BLOCKED`) — razlog in posledice so zapisani v `modules/meteo/client.ts`. Je
+  // nastavljiv in ne konstanta v kodi zato, ker je to odločitev lastnika namestitve.
+  NEVERIN_WEB_URL: z.string().url().default('https://www.neverin.hr'),
+  // Daljši TTL od ARSO in od izvornega `max-age=60`, ker vir NE pošilja `ETag` niti
+  // `Last-Modified`: pogojna zahteva ne deluje in vsaka osvežitev prenese celih ~59 kB.
+  // Člen VIII se tu bere kot "manj klicev", ne kot "kolikor jih izvor dovoli".
+  NEVERIN_CACHE_SECONDS: z.coerce.number().int().positive().default(600),
+  // Seznam 1335 postaj je ~320 kB in se spremeni ob novi postaji. Enako kot pri ARSO: dolg
+  // TTL ni agresivno branje, ampak manj branja.
+  NEVERIN_STATIONS_CACHE_SECONDS: z.coerce.number().int().positive().default(21_600),
+
   // Pot (ploščica "Pot" na nadzorni plošči) — Google Routes API za čas poti in zamudo
   // zaradi prometa.
   //

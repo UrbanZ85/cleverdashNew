@@ -1,7 +1,17 @@
-import { Component, EventEmitter, Input, OnChanges, Output, inject, signal } from '@angular/core';
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnChanges,
+  Output,
+  inject,
+  signal,
+  type SimpleChanges,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+  AlertController,
   IonButton,
   IonIcon,
   IonInput,
@@ -86,17 +96,22 @@ import type { SavedLink, SavedLinkGroup } from '../../core/saved-links/saved-lin
       </ion-item>
 
       <ion-item>
+        <!-- Izbirnik mape MORA znati ustvariti mapo. Brez tega je pri uporabniku, ki map še
+             nima, edina možnost "Nerazvrščeno" in izbirnika ni mogoče spremeniti v nič — kar
+             je videti kot pokvarjeno polje, ne kot "map še ni". -->
         <ion-select
           label="Mapa"
           labelPlacement="stacked"
           interface="popover"
-          [(ngModel)]="groupId"
+          [ngModel]="groupId"
+          (ngModelChange)="onGroupChange($event)"
           placeholder="Nerazvrščeno"
         >
           <ion-select-option [value]="''">Nerazvrščeno</ion-select-option>
           @for (group of groups; track group.id) {
             <ion-select-option [value]="group.id">{{ group.name }}</ion-select-option>
           }
+          <ion-select-option [value]="NEW_GROUP">+ Nova mapa …</ion-select-option>
         </ion-select>
       </ion-item>
 
@@ -218,6 +233,7 @@ import type { SavedLink, SavedLinkGroup } from '../../core/saved-links/saved-lin
 })
 export class LinkEditorComponent implements OnChanges {
   private readonly store = inject(SavedLinksStore);
+  private readonly alertController = inject(AlertController);
 
   /** `null`/izpuščeno = nov zapis; podan zapis = urejanje. */
   @Input() link: SavedLink | null = null;
@@ -233,6 +249,11 @@ export class LinkEditorComponent implements OnChanges {
 
   protected readonly icons = AVAILABLE_ICON_NAMES;
 
+  /** Vrednost, ki v izbirniku mape pomeni "ustvari novo". Sentinel in ne prazen niz, ker je
+   * prazen niz že zaseden za "nerazvrščeno" — in ne `null`, ker `ion-select` prazno vrednost
+   * pokaže kot neizbrano. */
+  protected readonly NEW_GROUP = '__nova__';
+
   protected url = '';
   protected title = '';
   protected comment = '';
@@ -243,7 +264,17 @@ export class LinkEditorComponent implements OnChanges {
   protected readonly busy = signal(false);
   protected readonly duplicate = signal<SavedLink | null>(null);
 
-  ngOnChanges(): void {
+  /**
+   * Polja se napolnijo iz vhoda SAMO, kadar se zamenja zapis, ki ga urejamo — ne ob vsaki
+   * spremembi kateregakoli vhoda.
+   *
+   * Razlika je bila prava napaka: `groups` je vezan na `store.groups()`, ki ob vsakem
+   * osvežitvi vrne NOVO polje, torej se šteje za spremembo vhoda. Ustvarjanje mape sredi
+   * vnosa je tako pobrisalo že vpisani naslov in komentar — uporabnik je izbral "Nova mapa",
+   * jo poimenoval in se vrnil k praznemu obrazcu.
+   */
+  ngOnChanges(changes: SimpleChanges): void {
+    if (!changes['link'] && !changes['defaultGroupId']) return;
     this.url = this.link?.url ?? '';
     this.title = this.link?.title ?? '';
     this.comment = this.link?.comment ?? '';
@@ -251,6 +282,58 @@ export class LinkEditorComponent implements OnChanges {
     this.icon = this.link?.icon ?? '';
     this.error.set(null);
     this.duplicate.set(null);
+  }
+
+  /**
+   * Sprememba izbrane mape. Izbira "+ Nova mapa …" vpraša za ime, mapo ustvari in jo TAKOJ
+   * izbere — uporabnik ne sme biti poslan na drug zaslon sredi shranjevanja strani.
+   *
+   * Ob preklicu ali napaki se izbirnik vrne na prejšnjo vrednost; brez tega bi v njem obtičal
+   * sentinel in shranjevanje bi poslalo `groupId: '__nova__'`, kar bi strežnik zavrnil s 404.
+   */
+  protected async onGroupChange(value: string): Promise<void> {
+    if (value !== this.NEW_GROUP) {
+      this.groupId = value;
+      return;
+    }
+
+    const previous = this.groupId;
+    // Vrnemo se na prejšnjo vrednost že zdaj: `ion-select` je svojo vrednost že postavil na
+    // sentinel, in če pogovorno okno prekličeš, mora izbirnik takoj kazati staro stanje.
+    this.groupId = previous;
+
+    const alert = await this.alertController.create({
+      header: 'Nova mapa',
+      inputs: [{ name: 'name', type: 'text', placeholder: 'npr. Delo, Recepti, Za prebrati', attributes: { maxlength: 60 } }],
+      buttons: [
+        { text: 'Prekliči', role: 'cancel' },
+        {
+          text: 'Ustvari',
+          handler: (data: { name?: string }) => {
+            void this.createGroup(data?.name ?? '');
+          },
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  private async createGroup(rawName: string): Promise<void> {
+    const name = rawName.trim();
+    if (name.length === 0) return;
+
+    this.busy.set(true);
+    try {
+      const group = await this.store.createGroup(name);
+      // Nova mapa je izbrana takoj — sicer bi jo uporabnik moral poiskati še enkrat.
+      this.groupId = group.id;
+      this.error.set(null);
+    } catch (err) {
+      // Najpogostejši razlog je zasedeno ime; `detail` strežnika to pove (člen VII).
+      this.error.set(detailOf(err) ?? 'Mape ni bilo mogoče ustvariti.');
+    } finally {
+      this.busy.set(false);
+    }
   }
 
   protected async save(): Promise<void> {

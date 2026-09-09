@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import type { StationMeasurement } from './history-parse.js';
+import type { StationMeasurement } from './measurement.js';
 
 // Urne vrednosti iz posameznih meritev — os, po kateri se bere padavine ("koliko je padlo
 // med 14. in 15. uro"), kakor jih kaže Bergfex.
@@ -12,6 +12,9 @@ import type { StationMeasurement } from './history-parse.js';
 // Ločljivost vira je odvisna od postaje (10 ali 30 minut) — tu se nikjer ne domneva, koliko
 // meritev je v uri; `samples` to preprosto pove.
 
+/** Cona, kadar je vir ne pove. Postaje obeh ponudnikov, ki jih ta zavihek kaže, so v
+ * srednjeevropskem času; Neverin cono pove pri vsaki postaji posebej in ta privzetek se
+ * takrat ne uporabi. */
 export const STATION_ZONE = 'Europe/Ljubljana';
 
 export interface HourBucket {
@@ -50,6 +53,26 @@ export interface AvailableSeries {
   radiation: boolean;
   snow: boolean;
   waterTemperature: boolean;
+  /** Indeks UV. ARSO ga v tabeli zgodovine nima, Neverin pa pri postajah s senzorjem. */
+  uv: boolean;
+}
+
+/**
+ * Okna, za katera se izpišejo vsote padavin.
+ *
+ * Zakaj ravno ta: "koliko je padlo" je vprašanje, ki ga človek postavi glede na dogodek, ne
+ * glede na koledar — nevihta popoldne (4 h), cel dan dežja (12 h), vikend nalivov (48 h).
+ * Zgornja meja je 48, ker vir hrani dva dneva in več od tega ni od kod vzeti.
+ */
+export const PRECIPITATION_WINDOW_HOURS = [4, 8, 12, 24, 48] as const;
+
+export interface PrecipitationWindow {
+  hours: number;
+  /** Vsota padavin v oknu (mm), ali `null`, kadar postaja padavin ne meri. */
+  millimeters: number | null;
+  /** Koliko meritev je v oknu — pri postaji, ki je pravkar začela oddajati, je to manj kot
+   * pričakovano in vsota takrat ne pomeni "toliko je padlo v 48 urah". */
+  samples: number;
 }
 
 export interface HistorySummary {
@@ -118,6 +141,22 @@ export function toHourlyBuckets(measurements: readonly StationMeasurement[], zon
     });
 }
 
+/**
+ * Vsote padavin po oknih. Šteje se od ZADNJE meritve nazaj (isti dogovor kot `withinHours`) in
+ * VEDNO iz celotne prebrane serije — tudi kadar klicatelj zahteva krajše okno prikaza, ker je
+ * "koliko je padlo v 48 urah" smiselno vprašanje tudi ob 6-urnem grafu.
+ */
+export function precipitationWindows(measurements: readonly StationMeasurement[]): PrecipitationWindow[] {
+  return PRECIPITATION_WINDOW_HOURS.map((hours) => {
+    const inWindow = withinHours(measurements, hours);
+    return {
+      hours,
+      millimeters: sum(inWindow.map((m) => m.precipitationMm)),
+      samples: inWindow.length,
+    };
+  });
+}
+
 export function detectAvailableSeries(measurements: readonly StationMeasurement[]): AvailableSeries {
   const any = (pick: (m: StationMeasurement) => number | null): boolean =>
     measurements.some((m) => pick(m) !== null);
@@ -131,6 +170,7 @@ export function detectAvailableSeries(measurements: readonly StationMeasurement[
     radiation: any((m) => m.globalRadiationWm2) || any((m) => m.diffuseRadiationWm2),
     snow: any((m) => m.snowCm),
     waterTemperature: any((m) => m.waterTemperatureC),
+    uv: any((m) => m.uvIndex),
   };
 }
 

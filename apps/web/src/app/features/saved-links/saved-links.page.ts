@@ -91,6 +91,23 @@ import { GroupEditorComponent } from './group-editor.component.js';
           <app-group-editor (closed)="groupsOpen.set(false)"></app-group-editor>
         }
 
+        <!-- Dejanji sta TU in ne le kot ikoni v glavi. Ikona mape v glavi je bila edina pot do
+             urejanja map in je nihče ni našel — ikona brez besedila ne pove, da za njo sploh
+             kaj je. Gumba z besedilom sta prva stvar nad seznamom. -->
+        <div class="actions">
+          <ion-button size="small" (click)="openNew(null)">
+            <ion-icon slot="start" name="add-outline" aria-hidden="true"></ion-icon>
+            Shrani stran
+          </ion-button>
+          <ion-button size="small" fill="outline" (click)="toggleGroups()">
+            <ion-icon slot="start" name="folder-outline" aria-hidden="true"></ion-icon>
+            {{ groupsOpen() ? 'Zapri mape' : 'Mape' }}
+            @if (store.groups().length > 0) {
+              <ion-badge slot="end" color="medium">{{ store.groups().length }}</ion-badge>
+            }
+          </ion-button>
+        </div>
+
         <ion-searchbar
           placeholder="Išči po imenu, naslovu in komentarju"
           [debounce]="100"
@@ -235,6 +252,12 @@ import { GroupEditorComponent } from './group-editor.component.js';
       padding: var(--cd-space-3);
       max-width: 820px;
       margin: 0 auto;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--cd-space-1);
+      margin-bottom: var(--cd-space-1);
     }
     .section {
       margin-bottom: var(--cd-space-3);

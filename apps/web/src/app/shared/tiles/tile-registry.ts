@@ -1,5 +1,4 @@
 import type { Type } from '@angular/core';
-import { WeatherTileComponent } from '../../features/dashboard/tiles/weather-tile.component.js';
 import { RadarTileComponent } from '../../features/dashboard/tiles/radar-tile.component.js';
 import { ForecastTileComponent } from '../../features/dashboard/tiles/forecast-tile.component.js';
 import { PluginTileComponent } from '../../features/dashboard/tiles/plugin-tile.component.js';
@@ -9,7 +8,7 @@ import { SavedLinksTileComponent } from '../../features/saved-links/tiles/saved-
 import { MeteoTileComponent } from '../../features/meteo/tiles/meteo-tile.component.js';
 import { commuteTileWidthPx } from '../../features/dashboard/commute.model.js';
 import type { Settings } from '../../core/settings/settings.model.js';
-import { mergeMissingTypes, type TileLayoutEntry } from './tile-layout.model.js';
+import { PLUGIN_LAYOUT_TYPE, mergeMissingTypes, type TileLayoutEntry } from './tile-layout.model.js';
 import { BUILT_IN_TILE_TYPES } from './tile-types.js';
 
 export type { TileLayoutEntry } from './tile-layout.model.js';
@@ -48,7 +47,10 @@ export interface TileTypeDefinition {
 }
 
 export const TILE_REGISTRY: TileTypeDefinition[] = [
-  { type: 'weather', component: WeatherTileComponent },
+  // Ploščice "Vreme" (trenutna meritev iz ARSO API-ja) tu NI: od 011 iste podatke — in po urah
+  // tudi njihov potek — pokaže ploščica `meteo` iz izbrane merilne postaje, ki je bližja in
+  // natančnejša od vremenske "lokacije". Endpoint `GET /dashboard/weather` ostaja (člen III:
+  // kar je v vmesniku, mora ostati dosegljivo tudi s klicem) in ga uporablja napoved.
   { type: 'forecast', component: ForecastTileComponent },
   { type: 'radar', component: RadarTileComponent },
   // Zemljevida: razpotegnjena čez cel zaslon sta trak, v katerem se poti ne vidi. Širina
@@ -74,13 +76,12 @@ export const TILE_REGISTRY: TileTypeDefinition[] = [
  * VGRAJENE vrste, ki jih `defaultTileLayout()` postavi na novo nadzorno ploščo in ki jih
  * zaslon za razporejanje ponudi vsem. Vtičnikov je poljubno mnogo in so osebni, zato so
  * ločena os — vsak vnos v razporeditvi nosi svoj `config.pluginId`. */
-export const PLUGIN_TILE_TYPE = 'plugin';
+export const PLUGIN_TILE_TYPE = PLUGIN_LAYOUT_TYPE;
 
 /** Slovenski naslov vrste ploščice za nastavitve. Do zdaj je zaslon za razporejanje
  * ploščic izpisoval surov niz vrste ("weather", "radar") — angleški identifikator v
  * slovenskem vmesniku (člen X). */
 export const TILE_TYPE_TITLES: Record<string, string> = {
-  weather: 'Vreme',
   forecast: 'Napoved',
   radar: 'Radar padavin',
   commute: 'Pot v službo in domov',
@@ -124,5 +125,8 @@ export function withMissingBuiltIns(layout: readonly TileLayoutEntry[]): TileLay
   // Imena pridejo iz `tile-types.ts`, ne iz `TILE_REGISTRY`: isti seznam potrebuje tudi
   // ploščica sama (za pripenjanje), ta pa registra ne sme uvoziti — krožni uvoz. Da se vira ne
   // razideta, ju primerja tests/unit/tile-registry.spec.ts.
+  //
+  // Vnos odstranjene vrste `mergeMissingTypes` zavrže; vtičniki obstanejo (glej
+  // `PLUGIN_LAYOUT_TYPE` v tile-layout.model.ts).
   return mergeMissingTypes(layout, BUILT_IN_TILE_TYPES);
 }

@@ -140,6 +140,14 @@ export class MeteoChartComponent implements OnDestroy {
   readonly leftMin = input<number | null>(null);
   /** Ali naj leva os obvezno vključi ničlo (padavine, obsevanje, sneg). */
   readonly leftBeginAtZero = input(false);
+  /**
+   * Polni naslovi za namig ob dotiku, en na točko (npr. `sre. 9. 9. 17:00–18:00`).
+   *
+   * Os pod grafom nosi kratko oznako, ker je zanjo prostora toliko ("17"), namig pa mora
+   * povedati DAN in uro — pri 48 stolpcih je "17" sam zase neuporaben. Brez tega vhoda namig
+   * pokaže oznako osi, kar ostane smiselno za grafe brez časovne osi.
+   */
+  readonly pointTitles = input<readonly string[] | null>(null);
 
   /** Sistemska tema se lahko spremeni brez uporabnikovega dejanja (nastavitev "po sistemu"),
    * `<canvas>` pa se sam ne prebarva — barve osi in črt je treba nariati znova. */
@@ -159,7 +167,7 @@ export class MeteoChartComponent implements OnDestroy {
 
     effect(() => {
       // Odvisnosti učinka: podatki, oznake, meje osi in tema.
-      const config = this.buildConfig(this.labels(), this.series(), this.isDark());
+      const config = this.buildConfig(this.labels(), this.series(), this.isDark(), this.pointTitles());
       const canvas = this.canvasRef().nativeElement;
 
       if (this.chart) {
@@ -181,7 +189,12 @@ export class MeteoChartComponent implements OnDestroy {
     this.chart = null;
   }
 
-  private buildConfig(labels: string[], series: MeteoChartSeries[], dark: boolean): ChartConfiguration {
+  private buildConfig(
+    labels: string[],
+    series: MeteoChartSeries[],
+    dark: boolean,
+    pointTitles: readonly string[] | null,
+  ): ChartConfiguration {
     const palette = dark ? DARK_PALETTE : LIGHT_PALETTE;
     const gridColor = dark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(16, 21, 28, 0.08)';
     const tickColor = dark ? '#98a3b3' : '#5b6b7f';
@@ -238,6 +251,11 @@ export class MeteoChartComponent implements OnDestroy {
           tooltip: {
             displayColors: series.length > 1,
             callbacks: {
+              title: (items) => {
+                const index = items[0]?.dataIndex;
+                if (index === undefined) return '';
+                return pointTitles?.[index] ?? String(items[0]?.label ?? '');
+              },
               label: (item) => {
                 const value = item.parsed.y;
                 if (value === null || value === undefined) return `${item.dataset.label}: ni meritve`;

@@ -52,7 +52,7 @@ const BASE_USER_SCOPES: readonly string[] = [
   // (docs/adding-a-tab.md, korak 5). Niza sta PREPISANA, ne uvožena iz modula (člen I).
   'saved-links:read',
   'saved-links:write',
-  // 011 — brez tega bi zavihek "Meritve ARSO" delal samo administratorju
+  // 011 — brez tega bi zavihek "Meritve postaj" delal samo administratorju
   // (docs/adding-a-tab.md, korak 5). Niz je PREPISAN, ne uvožen iz modula (člen I).
   'meteo:read',
 ];

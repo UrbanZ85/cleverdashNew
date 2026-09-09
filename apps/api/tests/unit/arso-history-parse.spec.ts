@@ -112,6 +112,10 @@ describe('parseStationHistory', () => {
 
     expect(parsed.station).toEqual({
       title: 'Vrhnika',
+      // Cona in upravljavec sta pri ARSO konstanti: vse postaje so v Sloveniji in ARSO jih
+      // upravlja sam (za razliko od Neverina, ki je omrežje tujih postaj).
+      timezone: 'Europe/Ljubljana',
+      operator: null,
       altitudeM: 310,
       latitude: 45.966,
       longitude: 14.2717,

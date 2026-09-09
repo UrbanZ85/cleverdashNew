@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   METEO_WINDOWS,
   bucketAxisLabels,
+  bucketTooltipTitles,
   cumulativePrecipitation,
   formatValue,
   hasPrecipitation,
   localDateTimeLabel,
+  localFullLabel,
   localTimeLabel,
+  measurementTooltipTitles,
   precipitationAxisMax,
   windArrowRotation,
   windDirectionLabel,
@@ -83,6 +86,33 @@ describe('bucketAxisLabels', () => {
 
   it('prazen vhod da prazne oznake', () => {
     expect(bucketAxisLabels([])).toEqual([]);
+  });
+});
+
+describe('bucketTooltipTitles', () => {
+  it('namig pove dan in INTERVAL ure, ne le številke z osi', () => {
+    // Os pod grafom nosi "17", ker je zanjo prostora toliko; pri 48 stolpcih je tak namig
+    // enako uporaben kot noben — in stolpec pomeni vsoto cele ure, ne trenutka.
+    const titles = bucketTooltipTitles([bucket('17', 'tor. 8. 9.', 1.2), bucket('23', 'tor. 8. 9.', 0)]);
+    expect(titles).toEqual(['tor. 8. 9. 17:00–18:00', 'tor. 8. 9. 23:00–00:00']);
+  });
+
+  it('polnoč se ne prevesi v 24:00', () => {
+    expect(bucketTooltipTitles([bucket('00', 'sre. 9. 9.', 0)])).toEqual(['sre. 9. 9. 00:00–01:00']);
+  });
+});
+
+describe('measurementTooltipTitles / localFullLabel', () => {
+  it('namig nad črto pove dan v tednu, datum in točen čas meritve', () => {
+    const titles = measurementTooltipTitles([{ validUtc: '2026-09-09T07:40:00.000Z' }]);
+    expect(titles[0]).toMatch(/sre/i);
+    expect(titles[0]).toMatch(/9\. 9\./);
+    // 07:40 UTC je v poletnem času 09:40 v Ljubljani (člen V.4).
+    expect(titles[0]).toMatch(/09:40/);
+  });
+
+  it('neveljaven čas ne podre namiga', () => {
+    expect(localFullLabel('ni datum')).toBe('');
   });
 });
 

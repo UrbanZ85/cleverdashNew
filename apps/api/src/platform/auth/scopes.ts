@@ -28,7 +28,7 @@ declare module 'express-serve-static-core' {
  * ročno dopolnitev seznama scopes.ts, ki jo je lahko pozabiti, in bi edinega uporabnika
  * sistema po nepotrebnem izklopil iz lastnih endpointov (FR-013 govori o API ključu, ki
  * SAM po sebi ni admin — ne o tem, da bi moral biti človek eksplicitno naveden povsod). */
-const ADMIN_SCOPE = 'admin';
+export const ADMIN_SCOPE = 'admin';
 
 /** Middleware tovarna: zahteva, da ima `req.auth` vse navedene obsege (ali `admin`).
  * Uporabljena za JWT in za API ključe enako — obe poti nastavita `req.auth` in se tu

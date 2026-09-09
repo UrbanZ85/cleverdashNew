@@ -30,7 +30,7 @@ export const TAB_REGISTRY: TabDefinition[] = [
   // ob odprtju vrnil 403.
   {
     id: 'meteo',
-    title: 'Meritve ARSO',
+    title: 'Meritve postaj',
     icon: 'rainy-outline',
     route: '/meteo',
     order: 2,

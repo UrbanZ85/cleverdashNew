@@ -1,4 +1,4 @@
-// Čisti model meritev ARSO postaje — BREZ uvozov iz @angular/*, da je preverljiv brez
+// Čisti model meritev samodejne postaje — BREZ uvozov iz @angular/*, da je preverljiv brez
 // TestBed-a (isti razlog kot pri core/plugins/plugin.model.ts in core/settings/settings.model.ts).
 //
 // Zakaj v `core/` in ne v `features/meteo/`: potrebujeta ga DVA zavihka — zavihek z grafi in
@@ -22,6 +22,8 @@ export interface MeteoMeasurement {
   diffuseRadiationWm2: number | null;
   snowCm: number | null;
   waterTemperatureC: number | null;
+  /** Indeks UV. ARSO ga v tabeli zgodovine nima, Neverin pa pri postajah s senzorjem. */
+  uvIndex: number | null;
   cloudsIcon: string | null;
 }
 
@@ -44,14 +46,40 @@ export interface MeteoHourBucket {
   samples: number;
 }
 
+/** Ponudnik meritev. Postaje obeh so v vmesniku en sam seznam, sklic pa vedno pove, čigava
+ * je postaja — oznaki se sicer ne moreta pomešati, a se na to ne zanašamo. */
+export type MeteoProviderId = 'arso' | 'neverin';
+
+export interface MeteoAttribution {
+  text: string;
+  url: string;
+}
+
 export interface MeteoStation {
+  /** Sklic `<ponudnik>:<oznaka>` — `arso:VRHNIKA`, `neverin:sveta-marina`. */
+  ref: string;
+  provider: MeteoProviderId;
+  /** Ime ponudnika za vmesnik ("ARSO", "Neverin"). */
+  providerLabel: string;
   id: string;
   title: string;
   altitudeM: number | null;
   latitude: number | null;
   longitude: number | null;
+  /** Cona postaje (IANA). Ura v grafu je koledarska ura POSTAJE, ne brskalnika. */
+  timezone: string;
+  /** Kdo postajo upravlja, kadar to ni ponudnik sam — Neverin je omrežje tujih postaj in
+   * navedba samo "Neverin" bi izpustila tistega, ki postajo v resnici drži. */
+  operator: { name: string; url: string | null } | null;
   /** `false` pomeni, da je to privzetek namestitve in ne uporabnikova izbira. */
   chosen: boolean;
+}
+
+/** Vsota padavin v oknu, kot jo izračuna strežnik (4/8/12/24/48 h). */
+export interface MeteoPrecipitationWindow {
+  hours: number;
+  millimeters: number | null;
+  samples: number;
 }
 
 export interface MeteoSummary {
@@ -74,6 +102,7 @@ export interface MeteoAvailableSeries {
   radiation: boolean;
   snow: boolean;
   waterTemperature: boolean;
+  uv: boolean;
 }
 
 export interface MeteoSource {
@@ -82,7 +111,7 @@ export interface MeteoSource {
   ageSeconds: number;
   stale: boolean;
   nextPollSeconds: number;
-  attribution: { text: string; url: string };
+  attribution: MeteoAttribution;
 }
 
 export interface MeteoHistory {
@@ -92,22 +121,66 @@ export interface MeteoHistory {
   /** Prisotno samo, kadar je bil klic z `raw=true`. */
   measurements?: MeteoMeasurement[];
   summary: MeteoSummary;
+  /** Vsote padavin po oknih; računane iz CELOTNE prebrane serije, ne iz prikazanega okna. */
+  precipitationWindows: MeteoPrecipitationWindow[];
   available: MeteoAvailableSeries;
   source: MeteoSource;
 }
 
 export interface MeteoStationOption {
+  /** Sklic, ki se shrani v nastavitve. Enolična je REFERENCA in ne oznaka: postaja
+   * `ljubljana-bezigrad` obstaja pri obeh ponudnikih in to sta dve različni postaji. */
+  ref: string;
+  provider: MeteoProviderId;
   id: string;
   title: string;
   altitudeM: number | null;
   latitude: number | null;
   longitude: number | null;
+  /** Dvočrkovna oznaka države, kadar jo vir pove (`SI`, `HR`). */
+  countryCode: string | null;
+}
+
+/** Stanje enega ponudnika v seznamu postaj. */
+export interface MeteoProviderInfo {
+  id: MeteoProviderId;
+  label: string;
+  attribution: MeteoAttribution;
+  stationCount: number;
+  /** Seznama tega ponudnika ni bilo mogoče prenesti. Ostali so vseeno v odgovoru — izpad
+   * enega vira ne pomeni praznega seznama, mora pa biti VIDEN (člen VII). */
+  unavailable: boolean;
+  source: MeteoSource | null;
 }
 
 export interface MeteoStationList {
   stations: MeteoStationOption[];
-  selected: { id: string; chosen: boolean };
-  source: MeteoSource;
+  /** Koliko postaj se ujema z iskanjem, tudi kadar jih je vrnjenih manj. */
+  total: number;
+  providers: MeteoProviderInfo[];
+  /** Sklici trenutno veljavnih postaj. */
+  selected: string[];
+  chosen: boolean;
+}
+
+/** Ena izbrana postaja v preklopniku na zavihku. */
+export interface MeteoSelectedStation {
+  ref: string;
+  provider: MeteoProviderId;
+  providerLabel: string;
+  id: string;
+  title: string;
+  altitudeM: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  countryCode: string | null;
+  /** Ali je to postaja, ki jo dobi klic brez `?station=` (in ploščica na nadzorni plošči). */
+  primary: boolean;
+}
+
+export interface MeteoSelection {
+  stations: MeteoSelectedStation[];
+  chosen: boolean;
 }
 
 /** Okna, med katerimi se preklaplja na zavihku. Vir hrani dva dneva; več od tega ni od kod
@@ -172,6 +245,42 @@ export function localDateTimeLabel(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+}
+
+/** Dan v tednu, datum in ura — polna oznaka za namig ob dotiku grafa. */
+export function localFullLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('sl-SI', {
+    timeZone: 'Europe/Ljubljana',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+/**
+ * Naslovi namigov nad stolpci urnih vrednosti: dan in INTERVAL ure.
+ *
+ * Os pod grafom nosi samo številko ure ("17"), ker je zanjo prostora toliko — v namigu pa mora
+ * biti nedvoumno, katera ura in kateri dan sta v igri, in da stolpec pomeni vsoto CELE ure in
+ * ne trenutka. Brez tega je pri 48 stolpcih namig "17" enako uporaben kot noben.
+ */
+export function bucketTooltipTitles(buckets: readonly MeteoHourBucket[]): string[] {
+  return buckets.map((bucket) => {
+    const from = Number.parseInt(bucket.label, 10);
+    const to = Number.isFinite(from) ? String((from + 1) % 24).padStart(2, '0') : '';
+    return `${bucket.dayLabel} ${bucket.label}:00–${to}:00`;
+  });
+}
+
+/** Naslovi namigov nad posameznimi meritvami — dan in točen čas meritve. */
+export function measurementTooltipTitles(
+  measurements: readonly { validUtc: string }[],
+): string[] {
+  return measurements.map((m) => localFullLabel(m.validUtc));
 }
 
 /**

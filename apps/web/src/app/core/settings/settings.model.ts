@@ -75,11 +75,17 @@ export interface CommuteSettings {
   layout: CommuteLayout;
 }
 
-/** 011: izbrana ARSO samodejna postaja. `null` pomeni "nisem izbral" — strežnik takrat vrne
- * privzetek namestitve, zato zavihek deluje tudi brez te nastavitve. Shrani se SAMO oznaka
- * (npr. `VRHNIKA`); ime postaje pride z istim virom kot meritve. */
+/** 011: izbrane samodejne postaje. Prazen seznam pomeni "nisem izbral" — strežnik takrat vrne
+ * privzetek namestitve, zato zavihek deluje tudi brez te nastavitve. Shranijo se SAMO sklici
+ * (`arso:VRHNIKA`); imena postaj pridejo z istim virom kot meritve. */
 export interface MeteoSettings {
+  /** Prva izbrana postaja — izpeljanka iz `stations`, ne drugi vir resnice. Ostaja zaradi
+   * odjemalcev, napisanih pred razširitvijo na več postaj. */
   station: string | null;
+  /** Izbrane postaje kot sklici `<ponudnik>:<oznaka>` (`arso:VRHNIKA`,
+   * `neverin:sveta-marina`). Prazen seznam pomeni "nisem izbral" in strežnik takrat vrne
+   * privzetek namestitve. Vrstni red je uporabnikov: PRVA je tista, ki jo kaže ploščica. */
+  stations: string[];
 }
 
 export interface Settings {
@@ -121,7 +127,7 @@ export const SETTINGS_DEFAULTS: Settings = {
   sources: {},
   cameraDataSaverEnabled: true,
   notes: { serverTranscription: false },
-  meteo: { station: null },
+  meteo: { station: null, stations: [] },
   commute: {
     home: { label: 'Doma', address: null, latitude: null, longitude: null },
     work: { label: 'Služba', address: null, latitude: null, longitude: null },

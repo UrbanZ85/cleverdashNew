@@ -1,9 +1,25 @@
 import { TAB_REGISTRY, type TabDefinition } from './registry.js';
+import { ADMIN_SCOPE } from '../auth/scopes.js';
 import { collectTabDetails, type TabDetail } from './extension.js';
 import { UNDISABLEABLE_TAB_IDS } from '../../modules/settings/services/tab-overrides.service.js';
 import { getOrCreateSettingsForUser, type TabOverride } from '../../modules/settings/model.js';
 
 export type ResolvedTab = Omit<TabDefinition, 'enabled'> & { detail?: TabDetail };
+
+/**
+ * Ali klicatelj pokriva obsege, ki jih zavihek zahteva.
+ *
+ * `admin` pomeni "vsi obsegi" — natanko tako, kot to razume `requireScopes()`
+ * (platform/auth/scopes.ts). Brez tega je nastal razkorak, ki se je pokazal pri PRVEM zavihku
+ * z `requiredScopes` (011): endpointi modula so administratorju delovali, zavihka v meniju pa
+ * ni bilo, ker ima admin dobesedno `['admin']` in ne poimenovanih obsegov. Pot do zavihka je
+ * bila s tem zaprta tudi za `tabGuard` na odjemalcu — klik na ploščico ni naredil ničesar.
+ */
+function coversRequiredScopes(callerScopes: readonly string[], required: readonly string[] | undefined): boolean {
+  if (!required || required.length === 0) return true;
+  if (callerScopes.includes(ADMIN_SCOPE)) return true;
+  return required.every((scope) => callerScopes.includes(scope));
+}
 
 /** Razreši register s prekritji `enabled`/`order` iz OSEBNIH nastavitev tega uporabnika
  * (004: `Settings` ni več singleton, glej data-model.md), filtrira po obsegih in vrne samo
@@ -29,7 +45,7 @@ export async function resolveTabs(callerScopes: string[], userId: string | null)
     };
   })
     .filter((tab) => tab.enabled)
-    .filter((tab) => !tab.requiredScopes || tab.requiredScopes.every((s) => callerScopes.includes(s)))
+    .filter((tab) => coversRequiredScopes(callerScopes, tab.requiredScopes))
     .sort((a, b) => a.order - b.order)
     .map(({ enabled: _enabled, ...rest }) => {
       const detail = details.get(rest.id);
@@ -61,6 +77,6 @@ export async function listAllTabsForUser(
       undisableable: UNDISABLEABLE_TAB_IDS.has(tab.id),
     };
   })
-    .filter((tab) => !tab.requiredScopes || tab.requiredScopes.every((s) => callerScopes.includes(s)))
+    .filter((tab) => coversRequiredScopes(callerScopes, tab.requiredScopes))
     .sort((a, b) => a.order - b.order);
 }

@@ -8,7 +8,7 @@ import {
 } from '../../src/domain/arso-station.js';
 import { parseStationList } from '../../src/modules/meteo/domain/station-list-parse.js';
 import { STATION_CATALOG, mergeStationCatalog } from '../../src/modules/meteo/domain/station-catalog.js';
-import { validateMeteoSettings } from '../../src/modules/settings/services/meteo-settings.service.js';
+import { normalizeMeteoSettings } from '../../src/modules/settings/services/meteo-settings.service.js';
 
 // 011: oznaka ARSO postaje, naslovi, ki iz nje sledijo, in seznam postaj.
 //
@@ -158,21 +158,61 @@ describe('mergeStationCatalog', () => {
   });
 });
 
-describe('validateMeteoSettings', () => {
+describe('normalizeMeteoSettings', () => {
   it('izpuščeno polje pomeni "ne spreminjaj"', () => {
-    expect(validateMeteoSettings({})).toEqual({});
+    expect(normalizeMeteoSettings({})).toBeNull();
   });
 
-  it('null in prazen niz pomenita "naj velja privzetek namestitve"', () => {
-    expect(validateMeteoSettings({ station: null })).toEqual({ station: null });
-    expect(validateMeteoSettings({ station: '   ' })).toEqual({ station: null });
+  it('null in prazen seznam pomenita "naj velja privzetek namestitve"', () => {
+    expect(normalizeMeteoSettings({ stations: null })).toEqual({ station: null, stations: [] });
+    expect(normalizeMeteoSettings({ stations: [] })).toEqual({ station: null, stations: [] });
+    expect(normalizeMeteoSettings({ station: null })).toEqual({ station: null, stations: [] });
+    expect(normalizeMeteoSettings({ station: '   ' })).toEqual({ station: null, stations: [] });
   });
 
-  it('oznako normalizira v velike črke', () => {
-    expect(validateMeteoSettings({ station: ' vrhnika ' })).toEqual({ station: 'VRHNIKA' });
+  it('golo ARSO oznako sprejme in ji doda ponudnika (združljivost nazaj)', () => {
+    // Dokler je bil ponudnik en sam, so klicatelji pošiljali `{"station":"VRHNIKA"}` in
+    // avtomatizacija, napisana takrat, to počne še danes (člen III).
+    expect(normalizeMeteoSettings({ station: ' vrhnika ' })).toEqual({
+      station: 'arso:VRHNIKA',
+      stations: ['arso:VRHNIKA'],
+    });
+  });
+
+  it('sprejme več postaj različnih ponudnikov in ohrani vrstni red', () => {
+    expect(normalizeMeteoSettings({ stations: ['arso:VRHNIKA', 'neverin:sveta-marina'] })).toEqual({
+      station: 'arso:VRHNIKA',
+      stations: ['arso:VRHNIKA', 'neverin:sveta-marina'],
+    });
+  });
+
+  it('`station` je vedno PRVA postaja seznama — polji se ne smeta razhajati', () => {
+    // Odjemalec, ki bere še staro polje, mora videti isto postajo kot preklopnik na zavihku.
+    const written = normalizeMeteoSettings({ stations: ['neverin:sveta-marina', 'arso:VRHNIKA'] });
+    expect(written?.station).toBe('neverin:sveta-marina');
+  });
+
+  it('kadar prideta obe obliki, obvelja seznam', () => {
+    expect(normalizeMeteoSettings({ station: 'VRHNIKA', stations: ['neverin:sveta-marina'] })).toEqual({
+      station: 'neverin:sveta-marina',
+      stations: ['neverin:sveta-marina'],
+    });
+  });
+
+  it('podvojeno postajo tiho izpusti', () => {
+    expect(normalizeMeteoSettings({ stations: ['arso:VRHNIKA', 'arso:vrhnika'] })).toEqual({
+      station: 'arso:VRHNIKA',
+      stations: ['arso:VRHNIKA'],
+    });
   });
 
   it('neveljavno oznako zavrne z razumljivim sporočilom', () => {
-    expect(() => validateMeteoSettings({ station: '../../etc' })).toThrowError(/postaje/i);
+    expect(() => normalizeMeteoSettings({ stations: ['../../etc'] })).toThrowError(/postaje/i);
+    expect(() => normalizeMeteoSettings({ stations: ['ni-tak-ponudnik:x'] })).toThrowError(/postaje/i);
+  });
+
+  it('zavrne več postaj, kot jih preklopnik lahko pokaže', () => {
+    const many = Array.from({ length: 9 }, (_, i) => `neverin:postaja-${i}`);
+    expect(() => normalizeMeteoSettings({ stations: many })).toThrowError(/največ/i);
   });
 });

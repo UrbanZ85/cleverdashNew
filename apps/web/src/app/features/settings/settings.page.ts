@@ -51,7 +51,7 @@ const MODULE_TABS: SettingsGroup[] = [
   { id: 'time-tracking', title: 'Beleženje časa', icon: 'time-outline' },
   { id: 'cameras', title: 'Kamere', icon: 'videocam-outline' },
   { id: 'notes', title: 'Beležke', icon: 'reader-outline' },
-  { id: 'meteo', title: 'Meritve ARSO', icon: 'rainy-outline' },
+  { id: 'meteo', title: 'Meritve postaj', icon: 'rainy-outline' },
 ];
 
 @Component({

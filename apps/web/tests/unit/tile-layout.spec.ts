@@ -52,6 +52,26 @@ describe('mergeMissingTypes', () => {
     expect(mergeMissingTypes(stored, ['weather', 'radar']).map((t) => t.type)).toEqual(['radar', 'weather']);
   });
 
+  it('011: vnos ODSTRANJENE vrste se zavrže, vtičniki pa obstanejo', () => {
+    // Po odstranitvi ploščice "Vreme" bi tak vnos pomenil prazno vrzel na nadzorni plošči in
+    // ime "weather" v slovenskem vmesniku. Vtičnik ni vgrajena vrsta, a je veljaven.
+    const stored = [
+      { type: 'weather', position: 0, visible: true },
+      { type: 'plugin', position: 1, visible: true, config: { pluginId: 'a1' } },
+      { type: 'radar', position: 2, visible: true },
+    ];
+
+    const result = mergeMissingTypes(stored, ['radar']);
+    expect(result.map((t) => t.type)).toEqual(['plugin', 'radar']);
+    expect(result.find((t) => t.type === 'plugin')?.config).toEqual({ pluginId: 'a1' });
+  });
+
+  it('011: razporeditev SAMO iz odstranjenih vrst se obravnava kot prazna', () => {
+    // Sicer bi uporabnik, ki je imel shranjeno samo staro vrsto, ostal brez vsake ploščice.
+    const result = mergeMissingTypes([{ type: 'weather', position: 0, visible: true }], ['radar', 'forecast']);
+    expect(result.map((t) => t.type)).toEqual(['radar', 'forecast']);
+  });
+
   // Regresija, najdena v uporabi (010): pripenjanje seznama na ploščico Opravila je padlo s
   // sporočilom "Pripenjanja ni bilo mogoče shraniti". Vzrok ni bil v ploščici — nova vrsta je
   // dobila položaj `base.length + i`, kar ob VRZELI v shranjenih položajih podvoji obstoječega,

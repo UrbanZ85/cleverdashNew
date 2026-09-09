@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { StationMeasurement } from '../../src/modules/meteo/domain/history-parse.js';
+import type { StationMeasurement } from '../../src/modules/meteo/domain/measurement.js';
 import {
+  PRECIPITATION_WINDOW_HOURS,
   detectAvailableSeries,
+  precipitationWindows,
   summarize,
   toHourlyBuckets,
   withinHours,
@@ -26,6 +28,7 @@ function measurement(validUtc: string, fields: Partial<StationMeasurement> = {})
     diffuseRadiationWm2: null,
     snowCm: null,
     waterTemperatureC: null,
+    uvIndex: null,
     cloudsIcon: null,
     ...fields,
   };
@@ -142,6 +145,38 @@ describe('summarize', () => {
 
   it('brez meritev vrne null (klicatelj to prevede v 503, ne v prazen graf)', () => {
     expect(summarize([])).toBeNull();
+  });
+});
+
+describe('precipitationWindows', () => {
+  // Ura za uro nazaj od zadnje meritve; v vsaki uri po 1 mm.
+  const series = Array.from({ length: 49 }, (_, i) =>
+    measurement(new Date(Date.UTC(2026, 8, 9, 8, 0) - (48 - i) * 3600_000).toISOString(), {
+      precipitationMm: 1,
+    }),
+  );
+
+  it('vrne vsote za 4, 8, 12, 24 in 48 ur', () => {
+    const windows = precipitationWindows(series);
+
+    expect(windows.map((w) => w.hours)).toEqual([...PRECIPITATION_WINDOW_HOURS]);
+    // Meja je vključujoča (glej withinHours), zato je v 4-urnem oknu 5 meritev.
+    expect(windows.map((w) => w.millimeters)).toEqual([5, 9, 13, 25, 49]);
+  });
+
+  it('šteje meritve v oknu — kratka serija ne sme brati kot "toliko je padlo v 48 urah"', () => {
+    const windows = precipitationWindows(series.slice(-3));
+    expect(windows.find((w) => w.hours === 48)?.samples).toBe(3);
+    expect(windows.find((w) => w.hours === 48)?.millimeters).toBe(3);
+  });
+
+  it('postaja brez merilnika padavin da null in ne 0', () => {
+    const windows = precipitationWindows([measurement('2026-09-09T08:00:00.000Z', { temperatureC: 20 })]);
+    expect(windows.every((w) => w.millimeters === null)).toBe(true);
+  });
+
+  it('prazna serija da null v vseh oknih', () => {
+    expect(precipitationWindows([]).every((w) => w.millimeters === null && w.samples === 0)).toBe(true);
   });
 });
 

@@ -180,15 +180,28 @@ pojem opravil). E-pošta se v njem prikaže **zamaskirana** (`j…k@agenda.si`):
 enako dobro kot cela, ne izroči pa vsakemu prijavljenemu uporabniku seznama naslovov cele
 namestitve.
 
-### Meritve ARSO (011)
+### Meritve postaj — ARSO in Neverin (011)
 
-Dvodnevna zgodovina ENE ARSO samodejne postaje v grafih: padavine po urah (stolpci, kot na
+Dvodnevna zgodovina ENE izbrane samodejne postaje v grafih: padavine po urah (stolpci, kot na
 Bergfexu), temperatura, veter s sunki in smerjo, vlaga, zračni tlak, sončno obsevanje in višina
-snežne odeje. Okno je 6, 24 ali 48 ur. Postajo izbereš v Nastavitve → Moduli → Meritve ARSO s
-seznama vseh ~106 postaj; ploščica na nadzorni plošči kaže urne padavine zadnjih 24 ur in klik
-odpre zavihek.
+snežne odeje. Okno je 6, 24 ali 48 ur, vsote padavin pa so za 4/8/12/24/48 ur in so neodvisne od
+izbranega okna — "koliko je padlo" je vprašanje glede na dogodek, ne glede na graf.
 
-Tri stvari, ki jih je vredno poznati, preden se kdo loti sprememb:
+**Omrežji sta dve in postaj je lahko izbranih več.** `arso` so državne postaje (~106, samo
+Slovenija), `neverin` je omrežje [neverin.hr](https://www.neverin.hr) (~1335 zasebnih in javnih
+postaj v Sloveniji, na Hrvaškem, v BiH, Srbiji in Črni gori) — od tam pridejo postaje, ki jih
+ARSO nima, na primer Sveta Marina v Istri. Izbereš jih v Nastavitve → Moduli → Meritve postaj
+(največ osem) in med njimi na zavihku preklapljaš s čipi; PRVA je tista, ki jo kaže ploščica na
+nadzorni plošči. Postaja se povsod navaja kot sklic `<ponudnik>:<oznaka>` (`arso:VRHNIKA`,
+`neverin:sveta-marina`); gola oznaka brez predpone se še vedno bere kot ARSO, ker so take
+vrednosti v obstoječih nastavitvah in v avtomatizaciji (člen III).
+
+Ploščica na nadzorni plošči kaže urne padavine zadnjih 24 ur; klik odpre povečan prikaz z
+vsotami po oknih in 48-urnim grafom, iz njega pa gumb na zavihek. Ploščica **"Vreme" je s tem
+odstranjena** — ista meritev pride z merilne postaje, ki je bližja kot vremenska "lokacija";
+endpoint `GET /dashboard/weather` ostaja in ga uporablja "Napoved" (člen III).
+
+Nekaj stvari, ki jih je vredno poznati, preden se kdo loti sprememb:
 
 - **Vir je HTML in to ni izbira.** ARSO ponuja XML samo za ZADNJO meritev postaje; dvodnevna
   zgodovina obstaja izključno kot HTML tabela (`observationAms_<oznaka>_history.html`) — enak
@@ -207,14 +220,32 @@ Tri stvari, ki jih je vredno poznati, preden se kdo loti sprememb:
 - **`null` ni `0`.** Postaja brez barometra ima stolpec prisoten in prazen; "ni merilnika" ni
   isto kot "ni dežja". Polje `available` v odgovoru pove, katerih grafov odjemalec NE riše —
   prazna os brez črte je videti kot okvara (člen VII).
+- **Pri Neverinu je bilo troje treba IZMERITI**, ker vir dokumentacije nima, in vsako od njih bi
+  ob napačni domnevi dalo napako, ki je ni videti (vse preverjeno 9. 9. 2026): veter je pri viru
+  v **m/s** in se pretvori v km/h (brez tega bi bil 3,6-krat prešibek); `precip` je vsota **v
+  intervalu** in ne števec od začetka dneva (vsota 24-urne serije se ujema z njihovim
+  `precip_acc_24h`); tlak **ni enotno reduciran na morsko gladino** (postaja na 2228 m pošilja
+  782 hPa, druga na 1078 m pa 1017 hPa), zato gre v `pressureHpa` in nikoli v `pressureMslHpa`.
+  Podrobnosti so v [`domain/neverin-parse.ts`](apps/api/src/modules/meteo/domain/neverin-parse.ts).
+- **Neverin zahteva glavo `Origin`** z njihovo domeno, sicer odgovori `403 ORIGIN_BLOCKED`, in
+  njihovi pogoji uporabe avtomatiziran dostop omejujejo — uporaba tega vira je zavestna odločitev
+  lastnika namestitve. Izvor je zato nastavljiv (`NEVERIN_WEB_URL`) in ne zapisan v kodi. Ker vir
+  ne pošilja `ETag` niti `Last-Modified`, pogojna zahteva ne deluje in vsaka osvežitev prenese
+  celo telo; privzeti `NEVERIN_CACHE_SECONDS=600` je zato desetkrat daljši od njihovega
+  `max-age=60` — en prenos na postajo na deset minut, ne glede na število uporabnikov (člen VIII).
+- **Nov ponudnik je nova datoteka.** [`modules/meteo/providers/`](apps/api/src/modules/meteo/providers/)
+  je vmesnik in ne veja `if`; ponudnik vrne OPIS prenosa, prenese pa router prek skupnega
+  predpomnilnika, da pravila iz člena VIII ni mogoče obiti. Izpad enega ponudnika pri
+  `GET /meteo/stations` ne izprazni seznama drugega — odgovor je `200`, prizadeti ponudnik pa
+  ima `unavailable: true` (člen VII: vidno, ne tiho).
 
-Ura je koledarska ura v `Europe/Ljubljana` (člen V.4) in meritev ob polni uri pripada uri, ki se
-je pravkar KONČALA, ker vir interval označuje z njegovim koncem. Ob prehodu na zimski čas sta
+Ura je koledarska ura V CONI POSTAJE (člen V.4; cono pove vir — pri ARSO vedno
+`Europe/Ljubljana`, pri Neverinu pri vsaki postaji posebej) in meritev ob polni uri pripada uri,
+ki se je pravkar KONČALA, ker vir interval označuje z njegovim koncem. Ob prehodu na zimski čas sta
 zato dve ločeni vedri z napisom "02" in ne eno z dvojno vsoto padavin.
 
-Modul je prvi brez lastne kolekcije: meritve so ARSO-jeve (predpomnilnik, privzeto 600 s —
-usklajeno z `max-age` izvora), izbrana postaja pa je osebna nastavitev
-(`Settings.meteo.station`). Zato en sam obseg `meteo:read` in noben mutacijski endpoint. Pogodba
+Modul je prvi brez lastne kolekcije: meritve so ponudnikove (predpomnilnik, privzeto 600 s),
+izbrane postaje pa so osebna nastavitev (`Settings.meteo.stations`). Zato en sam obseg `meteo:read` in noben mutacijski endpoint. Pogodba
 je v [`specs/011-meteo-station/contracts/openapi.yaml`](specs/011-meteo-station/contracts/openapi.yaml),
 odločitve v [`nacrt/011-meteo-station/spec.md`](nacrt/011-meteo-station/spec.md).
 
