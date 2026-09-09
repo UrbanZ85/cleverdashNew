@@ -71,6 +71,29 @@ const envSchema = z.object({
   RADAR_CACHE_SECONDS: z.coerce.number().int().positive().default(300),
   WEATHER_CACHE_SECONDS: z.coerce.number().int().positive().default(600),
 
+  // Meritve samodejnih postaj (011). Isti gostitelj kot radar, druga mapa: strani, ki jih
+  // ARSO sam uporablja za prikaz dvodnevne zgodovine postaje, in seznam vseh postaj.
+  //
+  // `ARSO_STATION_BASE_URL` je MAPA, ne datoteka — ime datoteke se sestavi iz oznake postaje
+  // (`domain/arso-station.ts`), ker se postaja izbere v nastavitvah in je torej podatek, ne
+  // konfiguracija namestitve.
+  ARSO_STATION_BASE_URL: z
+    .string()
+    .url()
+    .default('https://meteo.arso.gov.si/uploads/probase/www/observ/surface/text/sl/'),
+  /** Postaja za novega uporabnika, dokler si svoje ne izbere (glej platform/settings/meteo.service.ts). */
+  ARSO_DEFAULT_STATION: z.string().default('LJUBL-ANA_BEZIGRAD'),
+  // Vir pošilja `cache-control: no-cache, max-age=600` in meritve objavlja vsakih 10 minut
+  // (`suggested_pickup_period` v ARSO XML) — 600 s je torej usklajenih z izvorom, ne
+  // agresivnejših (člen VIII).
+  METEO_CACHE_SECONDS: z.coerce.number().int().positive().default(600),
+  // Seznam postaj je DRUGA zgodba kot meritve: iz njega beremo samo ovojnico postaje (ime,
+  // višina, koordinati), ki se spremeni ob novi postaji, torej nekajkrat na leto — in ne
+  // meritev, ki so v isti datoteki. Šest ur zato ni agresivno branje istega vira, ampak
+  // manj branja: datoteka je ~800 kB, osvežitev pa je zaradi pogojne zahteve (`ETag`)
+  // praviloma odgovor 304 brez telesa.
+  METEO_STATIONS_CACHE_SECONDS: z.coerce.number().int().positive().default(21_600),
+
   // Pot (ploščica "Pot" na nadzorni plošči) — Google Routes API za čas poti in zamudo
   // zaradi prometa.
   //
@@ -186,6 +209,19 @@ const envSchema = z.object({
   FILE_SHARE_INBOX_MAX_FILES: z.coerce.number().int().positive().default(10),
   FILE_SHARE_INBOX_MAX_MB: z.coerce.number().int().positive().default(1000),
   FILE_SHARE_INBOX_TICKET_MINUTES: z.coerce.number().int().positive().default(60),
+
+  // Shranjeni linki (008) — vse tri so NEOBVEZNE, s privzetki tukaj (research.md §14,
+  // kakovostna vrata, točka 4: `docker compose up` iz čiste kopije ne sme zahtevati vpisa).
+  //
+  // Prvi dve sta PRORAČUN za branje tuje strani, ne nastavitev zmogljivosti: `<title>` je v
+  // glavi dokumenta, zato je 128 KB z veliko rezervo dovolj, hkrati pa stran s stotimi
+  // megabajti ne more zasesti strežnika. Meji varujeta tudi tujo stran, ne le nas (člen VIII).
+  //
+  // TTL favicona je 7 dni, ker se favicon skoraj nikoli ne spremeni; predpomni se po
+  // GOSTITELJU (research.md §4), zato je dvajset zapisov z `github.com` en prenos na teden.
+  SAVED_LINKS_METADATA_TIMEOUT_MS: z.coerce.number().int().positive().default(2500),
+  SAVED_LINKS_METADATA_MAX_BYTES: z.coerce.number().int().positive().default(131_072),
+  SAVED_LINKS_FAVICON_TTL_SECONDS: z.coerce.number().int().positive().default(604_800),
 });
 
 export type Env = z.infer<typeof envSchema>;

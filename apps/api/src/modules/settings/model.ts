@@ -69,6 +69,17 @@ const settingsSchema = new Schema(
     notes: {
       serverTranscription: { type: Boolean, default: false },
     },
+    // 011 (meritve ARSO postaje): oznaka izbrane samodejne postaje (`domain/arso-station.ts`),
+    // npr. `VRHNIKA`. `null` pomeni "nisem izbral" in NE "izklopljeno" — strežnik takrat vrne
+    // privzetek namestitve (`platform/settings/meteo.service.ts`), da zavihek ni prazen, dokler
+    // si človek postaje ne izbere.
+    //
+    // Shrani se SAMO oznaka, ne ime in ne koordinati postaje: ime pride z istim ARSO virom kot
+    // meritve, in dva vira resnice za "kako se postaja imenuje" bi se razšla ob prvem, ko ARSO
+    // ime popravi.
+    meteo: {
+      station: { type: String, default: null },
+    },
     updatedAt: { type: Date, default: () => new Date() },
   },
   { versionKey: false },

@@ -48,6 +48,11 @@ export const APP_ROUTES: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'meteo',
+    loadComponent: () => import('./features/meteo/meteo.page.js').then((m) => m.MeteoPage),
+    canActivate: [authGuard, tabGuard],
+  },
+  {
     path: 'notes',
     loadComponent: () => import('./features/notes/notes.page.js').then((m) => m.NotesPage),
     canActivate: [authGuard, tabGuard],
@@ -71,6 +76,12 @@ export const APP_ROUTES: Routes = [
     path: 'notes/:noteId',
     loadComponent: () => import('./features/notes/note-editor.page.js').then((m) => m.NoteEditorPage),
     canActivate: [authGuard],
+  },
+  {
+    path: 'saved-links',
+    loadComponent: () =>
+      import('./features/saved-links/saved-links.page.js').then((m) => m.SavedLinksPage),
+    canActivate: [authGuard, tabGuard],
   },
   {
     path: 'timesheet',

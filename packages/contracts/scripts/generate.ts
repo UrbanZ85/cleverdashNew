@@ -7,7 +7,10 @@
  * - `specs/005-profile-plugins/contracts/openapi.yaml` → `src/generated/profile-plugins.d.ts`
  * - `specs/006-timesheet/contracts/openapi.yaml` → `src/generated/timesheet.d.ts`
  * - `specs/007-notes/contracts/openapi.yaml` → `src/generated/notes.d.ts`
+ * - `specs/008-saved-links/contracts/openapi.yaml` → `src/generated/saved-links.d.ts`
  * - `specs/009-file-sharing/contracts/openapi.yaml` → `src/generated/file-sharing.d.ts`
+ * - `specs/010-todos/contracts/openapi.yaml` → `src/generated/todos.d.ts`
+ * - `specs/011-meteo-station/contracts/openapi.yaml` → `src/generated/meteo-station.d.ts`
  *
  * 004 (Keycloak SSO) svoje pogodbe nima: spremenil je poti `/auth/*`, ki so last 001,
  * zato je bila posodobljena tam.
@@ -50,12 +53,20 @@ const targets = [
     out: resolve(here, '../src/generated/notes.d.ts'),
   },
   {
+    spec: resolve(here, '../../../specs/008-saved-links/contracts/openapi.yaml'),
+    out: resolve(here, '../src/generated/saved-links.d.ts'),
+  },
+  {
     spec: resolve(here, '../../../specs/009-file-sharing/contracts/openapi.yaml'),
     out: resolve(here, '../src/generated/file-sharing.d.ts'),
   },
   {
     spec: resolve(here, '../../../specs/010-todos/contracts/openapi.yaml'),
     out: resolve(here, '../src/generated/todos.d.ts'),
+  },
+  {
+    spec: resolve(here, '../../../specs/011-meteo-station/contracts/openapi.yaml'),
+    out: resolve(here, '../src/generated/meteo-station.d.ts'),
   },
 ];
 

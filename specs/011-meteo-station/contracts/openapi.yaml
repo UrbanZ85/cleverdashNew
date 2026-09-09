@@ -1,0 +1,373 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash — Meritve ARSO postaje
+  version: 1.0.0
+  description: |
+    REST pogodba za zavihek "Meritve ARSO" (011). Samostojna pogodba pod `/meteo`, po istem
+    vzorcu kot 003, 007, 009 in 010 — ne podvaja poti iz 001 (`/auth/*`, `/settings`,
+    `/dashboard/*`, `/health`), ki se v produkciji strežejo iz istega Express app-a.
+
+    Nastavitev `Settings.meteo.station` je razširitev pogodbe 001 (`PUT /settings`) in je
+    dokumentirana tam, kjer živi — enako kot je 003 razširil `/settings` s
+    `cameraDataSaverEnabled`.
+
+    ## Prvi modul, ki ničesar ne shrani
+
+    Vseh deset prejšnjih modulov ima svojo kolekcijo. Ta je nima: meritve so ARSO-jeve in
+    strežnik jih samo prenese prek skupnega predpomnilnika (`platform/cache`), izbrana postaja
+    pa živi v NASTAVITVAH, ker je osebna nastavitev in ne zapis modula (člen I: moduli se
+    srečajo v skupnih storitvah, ne med sabo). Posledica za pogodbo: en sam obseg, `meteo:read`,
+    in nobenega mutacijskega endpointa — postaja se spremeni z `PUT /settings`.
+
+    ## Zakaj HTML vir in kaj to pomeni za odgovore
+
+    ARSO ponuja XML samo za ZADNJO meritev postaje; dvodnevna zgodovina obstaja izključno kot
+    HTML tabela (`observationAms_<oznaka>_history.html`, preverjeno 9. 9. 2026 — enak naslov s
+    `_history.xml` vrne 404). Strežnik jo razčleni in vrne strukturirano; odjemalec ARSO nikoli
+    ne kliče sam (člen VIII).
+
+    Ko se oblika te strani spremeni, endpoint vrne **`503`** z razlago in NE praznih serij:
+    tiha napaka je hrošč najvišje resnosti (člen VII).
+
+    ## Dve ločljivosti v istem odgovoru
+
+    - `buckets` — URNE vrednosti. Padavine so vsota V INTERVALU, zato so smiselne samo po urah
+      (stolpci); ura je koledarska ura v coni `Europe/Ljubljana` (člen V.4), zato jih je ob
+      prehodu na zimski čas 25 na dan in dve od njih se imenujeta enako.
+    - `measurements` — posamezne meritve (10 ali 30 minut, odvisno od postaje). Prisotne SAMO ob
+      `?raw=true`; brez njih je odgovor približno desetkrat manjši, kar je za ploščico na
+      nadzorni plošči edino pomembno.
+
+    `null` in `0` sta različna: `null` pomeni "postaja te veličine ne meri" ali "meritev ni
+    prišla", `0` pa je meritev. Katere veličine postaja meri, pove `available` — odjemalec po
+    tem ve, katerih grafov NE riše (prazna os brez črte je videti kot okvara).
+
+    ## Avtentikacija (enako kot 001/002/003)
+
+    - **Uporabniška seja** — `Authorization: Bearer <access JWT>`.
+    - **Avtomatizacija** — `X-API-Key: <ključ>`.
+
+    Nov obseg: `meteo:read`. Klicatelj z API ključem osebnih nastavitev nima, zato zanj velja
+    privzeta postaja namestitve (`ARSO_DEFAULT_STATION`) — postajo lahko navede z `?station=`.
+
+    ## Idempotentnost
+
+    Ni mutacijskih endpointov, zato `Idempotency-Key` v tej pogodbi ne nastopa.
+
+servers:
+  - url: /api/v1
+    description: Isti izvor kot SPA (člen II).
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+tags:
+  - name: Meritve
+    description: Dvodnevna zgodovina meritev izbrane samodejne postaje.
+  - name: Postaje
+    description: Seznam ARSO samodejnih postaj za izbiro v nastavitvah.
+
+paths:
+  /meteo/history:
+    get:
+      tags: [Meritve]
+      summary: Meritve postaje po urah in po posameznih meritvah
+      description: |
+        Vrne meritve postaje za zadnjih `hours` ur. Okno se meri od ZADNJE meritve in ne od
+        trenutnega časa: če vir zastane, mora odjemalec pokazati zadnje znano stanje z oznako
+        starosti (FR-026), ne praznega grafa.
+
+        Postaja se določi v tem vrstnem redu: `?station=` → `Settings.meteo.station` →
+        `ARSO_DEFAULT_STATION` iz okolja. `station.chosen` pove, ali je šlo za uporabnikovo
+        izbiro ali za privzetek.
+      operationId: getMeteoHistory
+      parameters:
+        - name: station
+          in: query
+          required: false
+          schema: { type: string, maxLength: 40, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{1,39}$' }
+          description: |
+            Oznaka postaje (`domain_meteosiId` brez zaključnega podčrtaja, npr. `VRHNIKA` ali
+            `NOVA-GOR_BILJE`). Prepiše izbrano postajo za ta klic — člen III: kar zmore vmesnik,
+            mora zmoči tudi klic. Neveljavna oblika je `400`; oblika je omejena zato, ker se iz
+            oznake sestavi naslov, ki ga strežnik sam prenese.
+        - name: hours
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 48, default: 48 }
+          description: Dolžina okna. Vir hrani dva dneva, zato je zgornja meja 48.
+        - name: raw
+          in: query
+          required: false
+          schema: { type: string, enum: ['true', 'false'] }
+          description: '`true` doda `measurements` (posamezne meritve). Privzeto jih ni.'
+      responses:
+        '200':
+          description: Meritve, urne vrednosti, povzetek in navedba vira.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeteoHistory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/SourceUnavailable' }
+
+  /meteo/stations:
+    get:
+      tags: [Postaje]
+      summary: Vse ARSO samodejne postaje
+      description: |
+        Seznam postaj z oznako za naslov in imenom za človeka, urejen po imenu po slovensko.
+        Namen je en sam: da se postaja v nastavitvah IZBERE s seznama in ne vpiše na pamet —
+        oznaka v naslovu namreč ni ime kraja (postaja "Bilje Nova Gorica" je `NOVA-GOR_BILJE`).
+
+        **Seznam je ZLITJE zapisanega imenika in živega vira.** `observationAms_si_latest.xml` ni
+        imenik postaj, ampak posnetek zadnjega objavnega cikla: 9. 9. 2026 je ob 08:00 UTC
+        vseboval 106 postaj, ob 09:25 istega dne pa 19 — in med njimi niti Vrhnike niti Ljubljane
+        Bežigrad. Brez zlitja bi bila vsebina odgovora odvisna od trenutka klica in uporabnik
+        svoje postaje ob napačnem trenutku na seznamu ne bi našel. Živi vir ima prednost pri
+        vsebini (popravljeno ime, višina, koordinati), zapisani imenik pa skrbi za pokritost.
+
+        Predpomni se dlje kot meritve (`METEO_STATIONS_CACHE_SECONDS`, privzeto 6 ur): iz istega
+        vira se bere samo ovojnica postaje, ki se spremeni nekajkrat na leto.
+      operationId: listMeteoStations
+      responses:
+        '200':
+          description: Postaje in trenutno veljavna izbira.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeteoStationList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/SourceUnavailable' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  responses:
+    BadRequest:
+      description: Parameter ne ustreza pogodbi (npr. neveljavna oznaka postaje).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Manjka ali je neveljavna avtentikacija.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Manjka obseg `meteo:read`.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    SourceUnavailable:
+      description: |
+        Podatka vira še ni (prvi zagon ob izpadu ARSO), postaja v zadnjih urah ni poslala
+        meritve, ali pa se je oblika ARSO strani spremenila. Vedno z razlago v `detail` —
+        nikoli prazne serije (člen VII).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 7807.
+      required: [title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        correlationId: { type: string }
+
+    SourceMeta:
+      type: object
+      description: |
+        Od kod je podatek in kako star je. `attribution` je del PODATKA in ne stvar odjemalčeve
+        predloge — člen VIII zahteva, da so ARSO podatki vedno prikazani z navedbo vira, in
+        odjemalec je tako ne more pozabiti izrisati.
+      required: [url, fetchedAt, ageSeconds, stale, nextPollSeconds, attribution]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Naslov izvorne strani — v vmesniku povezava "poglej pri ARSO".
+        fetchedAt: { type: string, format: date-time }
+        ageSeconds: { type: integer }
+        stale:
+          type: boolean
+          description: Podatek je starejši od TTL in osvežitev ni uspela — prikaže se z oznako starosti.
+        nextPollSeconds:
+          type: integer
+          description: Čez koliko sekund naj odjemalec poskusi znova. Interval pove strežnik, ne odjemalec.
+        attribution:
+          type: object
+          required: [text, url]
+          properties:
+            text: { type: string, examples: ['Vir: ARSO'] }
+            url: { type: string, format: uri }
+
+    MeteoStation:
+      type: object
+      required: [id, title, altitudeM, latitude, longitude, chosen]
+      properties:
+        id:
+          type: string
+          examples: ['VRHNIKA', 'NOVA-GOR_BILJE']
+          description: Oznaka postaje, kakor nastopa v ARSO naslovu.
+        title: { type: string, examples: ['Vrhnika'] }
+        altitudeM: { type: [integer, 'null'] }
+        latitude: { type: [number, 'null'] }
+        longitude: { type: [number, 'null'] }
+        chosen:
+          type: boolean
+          description: |
+            `false` pomeni, da je to privzetek namestitve in ne uporabnikova izbira. Vmesnik to
+            pove, da človek ve, da gleda Ljubljano, ker svoje postaje še ni izbral.
+
+    Measurement:
+      type: object
+      description: |
+        Ena meritev. Vsako številsko polje je lahko `null` — postaja merilnika nima ali meritev
+        ni prišla. `null` NI `0`.
+      required: [validUtc]
+      properties:
+        validUtc: { type: string, format: date-time }
+        temperatureC: { type: [number, 'null'] }
+        humidityPct: { type: [number, 'null'] }
+        windAvgKmh: { type: [number, 'null'], description: Povprečna hitrost v intervalu. }
+        windMaxKmh: { type: [number, 'null'], description: Najmočnejši sunek v intervalu. }
+        windDirectionDeg:
+          type: [number, 'null']
+          description: Smer, IZ KATERE piha veter (meteorološki dogovor).
+        precipitationMm:
+          type: [number, 'null']
+          description: Vsota padavin v intervalu (ne od začetka dneva).
+        precipitation12hMm:
+          type: [number, 'null']
+          description: ARSO-jeva vsota padavin od 6. oz. 18. ure UTC dalje.
+        pressureMslHpa: { type: [number, 'null'] }
+        pressureHpa: { type: [number, 'null'], description: Tlak na lokaciji (nereduciran). }
+        globalRadiationWm2: { type: [number, 'null'] }
+        diffuseRadiationWm2: { type: [number, 'null'] }
+        snowCm: { type: [number, 'null'] }
+        waterTemperatureC: { type: [number, 'null'] }
+        cloudsIcon:
+          type: [string, 'null']
+          description: Ime ARSO ikone pojava/oblačnosti (npr. `mostClear`), brez pripone.
+
+    HourBucket:
+      type: object
+      description: |
+        Urna vrednost. `startUtc` je začetek koledarske ure v coni `Europe/Ljubljana` kot
+        instant — edini ključ, po katerem je vedro nedvoumno tudi ob prehodu na zimski čas, ko
+        se ura 02 zgodi dvakrat in imata obe vedri `label` `"02"`.
+
+        Meritev ob polni uri pripada uri, ki se je pravkar KONČALA: vir označuje interval z
+        njegovim koncem, zato dež, izmerjen ob 15:00, pripada uri 14–15.
+      required: [startUtc, label, dayLabel, samples]
+      properties:
+        startUtc: { type: string, format: date-time }
+        label: { type: string, examples: ['14'] }
+        dayLabel: { type: string, examples: ['sre. 9. 9.'] }
+        precipitationMm: { type: [number, 'null'], description: Vsota padavin v uri. }
+        temperatureAvgC: { type: [number, 'null'] }
+        temperatureMinC: { type: [number, 'null'] }
+        temperatureMaxC: { type: [number, 'null'] }
+        humidityAvgPct: { type: [number, 'null'] }
+        windAvgKmh: { type: [number, 'null'] }
+        windMaxKmh: { type: [number, 'null'] }
+        windDirectionDeg:
+          type: [number, 'null']
+          description: |
+            Vektorsko povprečje smeri, uteženo s hitrostjo. Aritmetično povprečje stopinj je za
+            smer napačno (350° in 10° dasta 180° namesto 0°).
+        pressureHpa: { type: [number, 'null'] }
+        globalRadiationWm2: { type: [number, 'null'] }
+        snowCm: { type: [number, 'null'] }
+        samples:
+          type: integer
+          description: Koliko meritev je v uri sodelovalo (6 pri desetminutni postaji, 2 pri polurni).
+
+    Summary:
+      type: object
+      required: [fromUtc, toUtc, latest]
+      properties:
+        fromUtc: { type: string, format: date-time }
+        toUtc: { type: string, format: date-time }
+        temperatureMinC: { type: [number, 'null'] }
+        temperatureMaxC: { type: [number, 'null'] }
+        precipitationTotalMm: { type: [number, 'null'] }
+        precipitation24hMm: { type: [number, 'null'] }
+        windMaxKmh: { type: [number, 'null'] }
+        latest: { $ref: '#/components/schemas/Measurement' }
+
+    AvailableSeries:
+      type: object
+      description: |
+        Katere veličine ta postaja dejansko meri. Odjemalec po tem ve, katerih grafov NE riše —
+        postaja brez barometra ne sme dobiti prazne osi brez črte, ker je to videti kot okvara.
+      required: [temperature, humidity, wind, precipitation, pressure, radiation, snow, waterTemperature]
+      properties:
+        temperature: { type: boolean }
+        humidity: { type: boolean }
+        wind: { type: boolean }
+        precipitation: { type: boolean }
+        pressure: { type: boolean }
+        radiation: { type: boolean }
+        snow: { type: boolean }
+        waterTemperature: { type: boolean }
+
+    MeteoHistory:
+      type: object
+      required: [station, hours, buckets, summary, available, source]
+      properties:
+        station: { $ref: '#/components/schemas/MeteoStation' }
+        hours: { type: integer, description: Dolžina uporabljenega okna v urah. }
+        buckets:
+          type: array
+          items: { $ref: '#/components/schemas/HourBucket' }
+        measurements:
+          type: array
+          description: Posamezne meritve. Prisotno SAMO ob `?raw=true`.
+          items: { $ref: '#/components/schemas/Measurement' }
+        summary: { $ref: '#/components/schemas/Summary' }
+        available: { $ref: '#/components/schemas/AvailableSeries' }
+        source: { $ref: '#/components/schemas/SourceMeta' }
+
+    StationOption:
+      type: object
+      required: [id, title, altitudeM, latitude, longitude]
+      properties:
+        id: { type: string, examples: ['VRHNIKA'] }
+        title: { type: string, examples: ['Vrhnika'] }
+        altitudeM: { type: [integer, 'null'] }
+        latitude: { type: [number, 'null'] }
+        longitude: { type: [number, 'null'] }
+
+    MeteoStationList:
+      type: object
+      required: [stations, selected, source]
+      properties:
+        stations:
+          type: array
+          items: { $ref: '#/components/schemas/StationOption' }
+        selected:
+          type: object
+          description: Trenutno veljavna postaja, da vmesnik ne ugiba, katero naj v seznamu označi.
+          required: [id, chosen]
+          properties:
+            id: { type: string }
+            chosen: { type: boolean }
+        source: { $ref: '#/components/schemas/SourceMeta' }

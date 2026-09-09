@@ -28,6 +28,11 @@ function typesFromRegistry(): string[] {
   return [...block.matchAll(/type:\s*'([^']+)'/g)].map((m) => m[1] as string);
 }
 
+/** Blok `TILE_TYPE_TITLES` iz registra, kot besedilo. */
+function titleBlock(): string {
+  return /export const TILE_TYPE_TITLES[\s\S]*?\n\};/.exec(REGISTRY_SOURCE)?.[0] ?? '';
+}
+
 describe('tile-types.ts se ujema s TILE_REGISTRY', () => {
   it('vsebuje iste vrste v istem vrstnem redu', () => {
     expect(typesFromRegistry()).toEqual([...BUILT_IN_TILE_TYPES]);
@@ -43,5 +48,31 @@ describe('tile-types.ts se ujema s TILE_REGISTRY', () => {
 
   it('"plugin" NI vgrajena vrsta — vtičniki so ločena os', () => {
     expect(BUILT_IN_TILE_TYPES as readonly string[]).not.toContain('plugin');
+  });
+
+  // 008: ploščica shranjenih linkov je navaden vnos v registru (research.md §11) — zavihek se
+  // dodaja z enim vnosom, ploščica prav tako.
+  it('008: "saved-links" je vgrajena vrsta in je v registru', () => {
+    expect(BUILT_IN_TILE_TYPES as readonly string[]).toContain('saved-links');
+    expect(typesFromRegistry()).toContain('saved-links');
+  });
+});
+
+// 008, T055: naslednja dva testa bi po nalogi lahko klicala `getTileComponent('saved-links')`
+// in `tileTypeTitle('saved-links')` neposredno — a uvoz registra potegne za sabo komponente
+// Ionica in s tem cel Angular, česar enotski testi v tem projektu namenoma ne delajo (brez
+// TestBed-a; glej opombo na vrhu datoteke). Register se zato bere kot BESEDILO, enako kot v
+// testih zgoraj. Preverjena je ista lastnost: vrsta je registrirana in ima slovenski naslov.
+describe('slovenski naslovi vrst ploščic (člen X)', () => {
+  it('vsaka vgrajena vrsta ima slovenski naslov — surov identifikator v vmesniku je napaka', () => {
+    const titles = titleBlock();
+    for (const type of BUILT_IN_TILE_TYPES) {
+      expect(titles, `vrsta "${type}" nima naslova v TILE_TYPE_TITLES`).toContain(type);
+    }
+  });
+
+  it('008: naslov vrste "saved-links" je "Shranjeni linki"', () => {
+    const titles = titleBlock();
+    expect(titles).toContain("'saved-links': 'Shranjeni linki'");
   });
 });

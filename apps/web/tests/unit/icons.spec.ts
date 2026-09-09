@@ -18,6 +18,7 @@ const TAB_REGISTRY_ICONS = [
   'document-text-outline', // timesheet — Evidenca delovnega časa
   'cloud-upload-outline', // file-sharing — Deljenje datotek (009, privzeto izklopljen)
   'checkbox-outline', // todos — Opravila (010)
+  'bookmarks-outline', // saved-links — Shranjeni linki (008)
   'settings-outline', // settings — Nastavitve
 ];
 
@@ -36,6 +37,21 @@ const TODOS_ICONS = [
   'ellipsis-vertical', // meni seznama
 ];
 
+// 008: ikone, ki jih zavihek "Shranjeni linki" uporablja v svojih predlogah. `link-outline` je
+// bila registrirana že za vtičnike (005) — tu je nadomestek, kadar zapis nima niti izbrane
+// ikone niti favicona (research.md §9).
+const SAVED_LINKS_ICONS = [
+  'link-outline', // nadomestek na koncu vrste prednosti
+  'bookmarks-outline', // zavihek in ploščica
+  'open-outline', // "odpri stran v novem zavihku"
+  'refresh-outline', // "osveži podatke strani"
+  'folder-outline', // mapa
+  'reorder-three-outline', // ročica za prerazporejanje
+  'add-outline',
+  'create-outline',
+  'trash-outline',
+];
+
 describe('register-icons', () => {
   it('registrira vsako ikono, ki jo uporablja strežniški register zavihkov', () => {
     for (const name of TAB_REGISTRY_ICONS) {
@@ -46,6 +62,14 @@ describe('register-icons', () => {
   it('registrira vsako ikono, ki jo uporablja zavihek Opravila (010)', () => {
     for (const name of TODOS_ICONS) {
       expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz zavihka Opravila ni registrirana`).toContain(name);
+    }
+  });
+
+  it('registrira vsako ikono, ki jo uporablja zavihek Shranjeni linki (008)', () => {
+    for (const name of SAVED_LINKS_ICONS) {
+      expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz zavihka Shranjeni linki ni registrirana`).toContain(
+        name,
+      );
     }
   });
 

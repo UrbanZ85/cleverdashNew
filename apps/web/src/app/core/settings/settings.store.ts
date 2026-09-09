@@ -19,6 +19,7 @@ export {
 
 export type {
   CommuteLayout,
+  MeteoSettings,
   CommutePlaceSettings,
   CommuteSettings,
   Settings,
@@ -50,6 +51,7 @@ export class SettingsStore {
   readonly tabs = computed(() => this.state().tabs);
   readonly sources = computed(() => this.state().sources);
   readonly commute = computed(() => this.state().commute);
+  readonly meteo = computed(() => this.state().meteo);
 
   async ensureLoaded(): Promise<void> {
     if (this.loadedSignal()) return;

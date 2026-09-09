@@ -102,6 +102,42 @@ poti Google v tujem okvirju ne dovoli. Kraja sta v nastavitvah (`Settings.commut
 okolju ([`docs/env-reference.md`](docs/env-reference.md) §2), meja med smerema pa je 12:00 po
 `Europe/Ljubljana` — enaka kot razvrstitev kamer po času dneva v 003.
 
+### Shranjeni linki (008)
+
+Osebna knjižnica shranjenih strani — naslednica strani "Useful links" iz starega CleverDasha,
+z istimi tremi podatki (ime, naslov, komentar), le da sta tu ime in komentar **neobvezna**.
+Zapis nastane iz prilepljenega naslova in enega klika: shema ni potrebna (`primer.si/stran` se
+shrani kot `https://primer.si/stran`), **ime strani pa prebere strežnik sam** iz `<title>`.
+Zapise je mogoče razvrstiti v mape (ena raven, brez gnezdenja), jih znotraj mape prerazporediti
+in po njih iskati po imenu, naslovu **in** komentarju — neobčutljivo na velike črke in šumnike,
+zato `cas` najde "Beleženje časa". Ploščica na nadzorni plošči kaže šest nazadnje shranjenih.
+
+Modul se namenoma razlikuje od **vtičnika vrste `link`** iz 005: ta je ploščica z nekaj vedno
+vidnimi bližnjicami ("kam kliknem vsak dan"), 008 pa knjižnica, ki s časom raste ("kje je bila
+že tista stran").
+
+Tri odločitve, ki jih je vredno poznati, preden se kdo loti sprememb:
+
+- **Shranjevanje ni odvisno od dosegljivosti strani.** Zapis se ustvari **pred** branjem
+  metapodatkov in se ob neuspehu ne razveljavi (FR-004). Izid branja ni skrit v dnevnik, ampak
+  je polje `metadataStatus` v odgovoru in značka v vmesniku (člen VII): `ok`, `failed`
+  (poskusili in ni šlo) ali `skipped` — naslova **nismo obiskali**.
+- **Kaj strežnik obišče in kaj ne.** Shranjeni naslov odpre BRSKALNIK, zato je
+  `http://192.168.1.1` (usmerjevalnik v domačem omrežju) povsem legitimen zapis. Strežnik ga
+  obišče samo zato, da prebere ime strani, in to stori le, če naslov prestane isto varovalo kot
+  vtičniki ([`domain/outbound-url.ts`](apps/api/src/domain/outbound-url.ts)) — tudi ob vsaki
+  preusmeritvi znova. Naslov, ki ga ne prestane, dobi `skipped`.
+- **Favicon gre prek našega strežnika, s ključem po GOSTITELJU.** Dvajset shranjenih strani z
+  `github.com` je en prenos na teden, ne dvajset; brskalnik tujega gostitelja ne kliče nikoli
+  (člen VIII, SC-005). Manjkajoč favicon **ni napaka** — izriše se ikona.
+
+Ročni vnos ima vedno prednost pred samodejnim: ime, ki ga vpiše uporabnik, se označi kot
+`manual` in ga osveževanje ne prepiše, dokler tega izrecno ne zahteva ("prevzemi ime s
+strani"). Ponovnega branja po nastanku zapisa ni brez uporabnikovega povoda, in rednega
+preverjanja, ali je shranjena stran še dosegljiva, modul namenoma ne počne. Pogodba je v
+[`specs/008-saved-links/contracts/openapi.yaml`](specs/008-saved-links/contracts/openapi.yaml),
+obsega sta `saved-links:read` in `saved-links:write`.
+
 ### Opravila (010)
 
 Seznami opravil z odkljukavanjem, **deljeni med prijavljenimi uporabniki**. Zavihek ima
@@ -143,6 +179,44 @@ Izbirnik oseb je nov skupni `GET /users` v `platform/users/` (ne v modulu — iz
 pojem opravil). E-pošta se v njem prikaže **zamaskirana** (`j…k@agenda.si`): soimenjaka loči
 enako dobro kot cela, ne izroči pa vsakemu prijavljenemu uporabniku seznama naslovov cele
 namestitve.
+
+### Meritve ARSO (011)
+
+Dvodnevna zgodovina ENE ARSO samodejne postaje v grafih: padavine po urah (stolpci, kot na
+Bergfexu), temperatura, veter s sunki in smerjo, vlaga, zračni tlak, sončno obsevanje in višina
+snežne odeje. Okno je 6, 24 ali 48 ur. Postajo izbereš v Nastavitve → Moduli → Meritve ARSO s
+seznama vseh ~106 postaj; ploščica na nadzorni plošči kaže urne padavine zadnjih 24 ur in klik
+odpre zavihek.
+
+Tri stvari, ki jih je vredno poznati, preden se kdo loti sprememb:
+
+- **Vir je HTML in to ni izbira.** ARSO ponuja XML samo za ZADNJO meritev postaje; dvodnevna
+  zgodovina obstaja izključno kot HTML tabela (`observationAms_<oznaka>_history.html`) — enak
+  naslov s `_history.xml` vrne 404 (preverjeno 9. 9. 2026). Tabela ima vsak stolpec dvakrat:
+  skrito celico s SUROVO vrednostjo in vidno z zaokroženo. Beremo skrito, ker je graf iz
+  zaokroženih vrednosti stopničast. Celice iščemo po imenu razreda, ne po zaporedju — stolpci
+  se med postajami razlikujejo (Bežigrad ima tlak in sevanje, Vrhnika ne).
+- **Oznaka postaje ni ime kraja.** Naslov uporablja `domain_meteosiId` brez zaključnega
+  podčrtaja: postaja "Bilje Nova Gorica" je `NOVA-GOR_BILJE`, "Bohinjska Češnjica" pa
+  `BOHIN-CES`. Zato se postaja izbere s seznama (`GET /meteo/stations`) in ne vpiše. Oznaka je
+  omejena z vzorcem ([`domain/arso-station.ts`](apps/api/src/domain/arso-station.ts)), ker se iz
+  nje sestavi naslov, ki ga strežnik obišče sam. Seznam postaj je pri tem **zlitje zapisanega
+  imenika in živega vira**: `observationAms_si_latest.xml` ni imenik, ampak posnetek zadnjega
+  objavnega cikla (9. 9. 2026 ob 08:00 UTC 106 postaj, ob 09:25 le 19), zato bi brez imenika
+  seznam bil odvisen od trenutka klica.
+- **`null` ni `0`.** Postaja brez barometra ima stolpec prisoten in prazen; "ni merilnika" ni
+  isto kot "ni dežja". Polje `available` v odgovoru pove, katerih grafov odjemalec NE riše —
+  prazna os brez črte je videti kot okvara (člen VII).
+
+Ura je koledarska ura v `Europe/Ljubljana` (člen V.4) in meritev ob polni uri pripada uri, ki se
+je pravkar KONČALA, ker vir interval označuje z njegovim koncem. Ob prehodu na zimski čas sta
+zato dve ločeni vedri z napisom "02" in ne eno z dvojno vsoto padavin.
+
+Modul je prvi brez lastne kolekcije: meritve so ARSO-jeve (predpomnilnik, privzeto 600 s —
+usklajeno z `max-age` izvora), izbrana postaja pa je osebna nastavitev
+(`Settings.meteo.station`). Zato en sam obseg `meteo:read` in noben mutacijski endpoint. Pogodba
+je v [`specs/011-meteo-station/contracts/openapi.yaml`](specs/011-meteo-station/contracts/openapi.yaml),
+odločitve v [`nacrt/011-meteo-station/spec.md`](nacrt/011-meteo-station/spec.md).
 
 ---
 
@@ -358,6 +432,8 @@ vzporedni številčenji. Zato je vhodno gradivo v `nacrt/`, ustava pa v
 | `nacrt/002-time-tracking/` | Vhodno gradivo za 002 — prenova `belezenje_casa`; funkcionalnost je implementirana |
 | `nacrt/003-cameras/spec.md` | Vhodno gradivo za 003 — zavihek kamer; funkcionalnost je implementirana |
 | `nacrt/005-profile-plugins/spec.md` | Vhodno gradivo za 005 — osebni profil in vtičniki; funkcionalnost je implementirana |
+| `nacrt/008-saved-links/spec.md` | Vhodno gradivo za 008 — zavihek shranjenih linkov; funkcionalnost je implementirana |
+| `nacrt/011-meteo-station/spec.md` | Odločitve za 011 — zavihek meritev ARSO postaje; nastalo skupaj s kodo, ne pred njo |
 | `docs/legacy-engine.md` | Obratno inženirstvo starega engine-a beleženja časa + napake, ki jih 002 ne sme ponoviti |
 | `docs/env-reference.md` | Vse okoljske spremenljivke: kaj ostane, kaj gre v bazo, kaj je novo |
 | `docs/SECURITY-FIRST.md` | Razkrite skrivnosti iz starega sistema, ki jih je treba zavrteti |

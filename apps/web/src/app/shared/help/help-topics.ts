@@ -171,6 +171,20 @@ export const HELP_TOPICS = {
     ],
     ifEmpty: 'Privzeto Ljubljana.',
   },
+  // ─── Meritve ARSO (011) ───
+  'meteo.station': {
+    title: 'Merilna postaja',
+    what: 'ARSO samodejna postaja, katere meritve kažeta zavihek "Meritve ARSO" in ploščica s padavinami po urah.',
+    how: [
+      'Postajo izbereš s seznama — klik jo takoj shrani, posebnega gumba za shranjevanje ni.',
+      'Iskanje gre po imenu kraja; šumniki niso pomembni (“cesnjica” najde Bohinjsko Češnjico).',
+      'Vsaka postaja ne meri vsega: postaja brez barometra ali brez merilnika sevanja teh grafov ne bo imela. To ni napaka, ampak lastnost postaje.',
+      'Vir hrani dva dneva meritev; starejših podatkov ni od kod vzeti.',
+    ],
+    ifEmpty:
+      'Če postaje ne izbereš, velja privzeta postaja namestitve (nastavi jo ARSO_DEFAULT_STATION v okolju strežnika, privzeto Ljubljana Bežigrad).',
+    example: 'Za Vrhniko izberi postajo "Vrhnika" (oznaka VRHNIKA).',
+  },
   'sources.urls': {
     title: 'Naslovi virov',
     what: 'Od kod se berejo vreme, radarska slika in spletne kamere. Sistem ima za vsakega privzeto vrednost; tu jo prepišeš samo zase.',

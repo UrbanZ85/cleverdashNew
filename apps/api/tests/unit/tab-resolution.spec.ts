@@ -6,7 +6,8 @@ import { resolveTabs } from '../../src/platform/tabs/resolver.js';
 // research.md §9: prekritje za neobstoječ id se ignorira; koda pove, kaj obstaja, baza
 // pove, kaj je vklopljeno. Register vsebuje "dashboard" (order 0), "notes" (order 3, dodano
 // v 007), "todos" (order 4, dodano v 010), "time-tracking" (order 5, dodano v 002), "timesheet" (order 6, dodano v 006),
-// "cameras" (order 7, dodano v 003) in "settings" (order 10). Testi, ki preverjajo mehaniko
+// "cameras" (order 7, dodano v 003), "saved-links" (order 8, dodano v 008) in "settings"
+// (order 10). Testi, ki preverjajo mehaniko
 // prekritja (ne dejansko vsebino registra), vse module izklopijo prek nastavitev, da ostanejo
 // osredotočeni na par dashboard/settings.
 //
@@ -29,6 +30,7 @@ describe('resolveTabs', () => {
       'time-tracking',
       'timesheet',
       'cameras',
+      'saved-links',
       'settings',
     ]);
   });
@@ -46,6 +48,7 @@ describe('resolveTabs', () => {
       'time-tracking',
       'timesheet',
       'cameras',
+      'saved-links',
       'settings',
     ]);
   });
@@ -60,6 +63,7 @@ describe('resolveTabs', () => {
         'time-tracking': { enabled: false },
         timesheet: { enabled: false },
         cameras: { enabled: false },
+        'saved-links': { enabled: false },
       },
     });
     const tabs = await resolveTabs([], USER_ID);
@@ -76,6 +80,7 @@ describe('resolveTabs', () => {
         'time-tracking': { enabled: false },
         timesheet: { enabled: false },
         cameras: { enabled: false },
+        'saved-links': { enabled: false },
       },
     });
     const tabs = await resolveTabs([], USER_ID);
@@ -93,6 +98,7 @@ describe('resolveTabs', () => {
         'time-tracking': { enabled: false },
         timesheet: { enabled: false },
         cameras: { enabled: false },
+        'saved-links': { enabled: false },
       },
     });
     const tabs = await resolveTabs([], USER_ID);

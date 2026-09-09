@@ -75,6 +75,13 @@ export interface CommuteSettings {
   layout: CommuteLayout;
 }
 
+/** 011: izbrana ARSO samodejna postaja. `null` pomeni "nisem izbral" — strežnik takrat vrne
+ * privzetek namestitve, zato zavihek deluje tudi brez te nastavitve. Shrani se SAMO oznaka
+ * (npr. `VRHNIKA`); ime postaje pride z istim virom kot meritve. */
+export interface MeteoSettings {
+  station: string | null;
+}
+
 export interface Settings {
   weather: { locationName: string; latitude: number; longitude: number };
   theme: ThemePreference;
@@ -84,6 +91,7 @@ export interface Settings {
   cameraDataSaverEnabled: boolean;
   notes: NotesSettings;
   commute: CommuteSettings;
+  meteo: MeteoSettings;
 }
 
 export type SettingsPatch = {
@@ -94,6 +102,7 @@ export type SettingsPatch = {
   sources?: SourceOverrides;
   cameraDataSaverEnabled?: boolean;
   notes?: Partial<NotesSettings>;
+  meteo?: Partial<MeteoSettings>;
   /** Po krajih in po polju delno: `{ commute: { work: { label } } }` spremeni samo ime službe. */
   commute?: {
     home?: Partial<CommutePlaceSettings>;
@@ -112,6 +121,7 @@ export const SETTINGS_DEFAULTS: Settings = {
   sources: {},
   cameraDataSaverEnabled: true,
   notes: { serverTranscription: false },
+  meteo: { station: null },
   commute: {
     home: { label: 'Doma', address: null, latitude: null, longitude: null },
     work: { label: 'Služba', address: null, latitude: null, longitude: null },
@@ -129,6 +139,7 @@ export function mergeWithDefaults(raw: Partial<Settings> | null | undefined): Se
     sources: raw?.sources ?? {},
     cameraDataSaverEnabled: raw?.cameraDataSaverEnabled ?? SETTINGS_DEFAULTS.cameraDataSaverEnabled,
     notes: { ...SETTINGS_DEFAULTS.notes, ...(raw?.notes ?? {}) },
+    meteo: { ...SETTINGS_DEFAULTS.meteo, ...(raw?.meteo ?? {}) },
     commute: {
       home: { ...SETTINGS_DEFAULTS.commute.home, ...(raw?.commute?.home ?? {}) },
       work: { ...SETTINGS_DEFAULTS.commute.work, ...(raw?.commute?.work ?? {}) },
@@ -156,6 +167,7 @@ export function applyPatch(current: Settings, patch: SettingsPatch): Settings {
     sources: patch.sources ? { ...current.sources, ...patch.sources } : current.sources,
     cameraDataSaverEnabled: patch.cameraDataSaverEnabled ?? current.cameraDataSaverEnabled,
     notes: { ...current.notes, ...(patch.notes ?? {}) },
+    meteo: { ...current.meteo, ...(patch.meteo ?? {}) },
     // Zlitje PO KRAJIH in po polju: shranjevanje enega kraja (ali samo njegovega imena) ne
     // sme pobrisati drugega — enako ravna strežnik (settings/router.ts).
     commute: {

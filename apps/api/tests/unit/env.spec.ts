@@ -195,4 +195,41 @@ describe('loadEnv', () => {
       /FILE_SHARE_ATTEMPT_LIMIT/,
     );
   });
+
+  // ── Shranjeni linki (008) ─────────────────────────────────────────────────────────────
+  // Vse tri so NEOBVEZNE (quickstart.md §2: "Nič ni treba dodati") — namestitev iz čiste
+  // kopije ne sme zahtevati dopolnjevanja `.env`.
+
+  it('008: brez vpisa v .env veljajo dokumentirani privzetki', () => {
+    const env = loadEnv(VALID);
+    expect(env.SAVED_LINKS_METADATA_TIMEOUT_MS).toBe(2500);
+    expect(env.SAVED_LINKS_METADATA_MAX_BYTES).toBe(131_072);
+    expect(env.SAVED_LINKS_FAVICON_TTL_SECONDS).toBe(604_800);
+  });
+
+  it('008: vpisana vrednost prepiše privzetek', () => {
+    const env = loadEnv({
+      ...VALID,
+      SAVED_LINKS_METADATA_TIMEOUT_MS: '900',
+      SAVED_LINKS_FAVICON_TTL_SECONDS: '3600',
+    });
+    expect(env.SAVED_LINKS_METADATA_TIMEOUT_MS).toBe(900);
+    expect(env.SAVED_LINKS_FAVICON_TTL_SECONDS).toBe(3600);
+  });
+
+  it('008: proračun 0 je zavrnjen — meja 0 bi tiho pomenila, da se ime strani ne prebere nikoli', () => {
+    expect(() => loadEnv({ ...VALID, SAVED_LINKS_METADATA_TIMEOUT_MS: '0' })).toThrowError(
+      /SAVED_LINKS_METADATA_TIMEOUT_MS/,
+    );
+    resetEnvCacheForTests();
+    expect(() => loadEnv({ ...VALID, SAVED_LINKS_METADATA_MAX_BYTES: '-1' })).toThrowError(
+      /SAVED_LINKS_METADATA_MAX_BYTES/,
+    );
+  });
+
+  it('008: nešteviln SAVED_LINKS_FAVICON_TTL_SECONDS da jasno napako, ne NaN (past SALT_ROUNDS)', () => {
+    expect(() => loadEnv({ ...VALID, SAVED_LINKS_FAVICON_TTL_SECONDS: 'teden' })).toThrowError(
+      /SAVED_LINKS_FAVICON_TTL_SECONDS/,
+    );
+  });
 });

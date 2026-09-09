@@ -5,6 +5,7 @@ import { validateTileLayout } from './services/tile-layout.service.js';
 import { validateTabOverrides } from './services/tab-overrides.service.js';
 import { validateSourceOverrides } from './services/source-overrides.service.js';
 import { DEFAULT_MAP_HEIGHT_PX, validateCommuteSettings } from './services/commute-settings.service.js';
+import { validateMeteoSettings } from './services/meteo-settings.service.js';
 import { requireScopes } from '../../platform/auth/scopes.js';
 
 export const settingsRouter = Router();
@@ -23,6 +24,9 @@ function toResponse(settings: Awaited<ReturnType<typeof getOrCreateSettingsForUs
     // 003, data-model.md "Nastavitve porabe podatkov": privzeto true, tudi za dokumente,
     // ustvarjene pred to funkcionalnostjo (Mongoose shemin privzetek se uveljavi ob branju).
     cameraDataSaverEnabled: settings.cameraDataSaverEnabled ?? true,
+    // 011: izbrana ARSO postaja; `null` pomeni "nisem izbral" in strežnik takrat vrne
+    // privzetek namestitve (platform/settings/meteo.service.ts).
+    meteo: { station: settings.meteo?.station ?? null },
     // 007: privolitev za prepis govora na strežniku (privzeto izklopljena, glej model.ts).
     notes: { serverTranscription: settings.notes?.serverTranscription === true },
     // Ploščica "Pot": dva kraja in videz ploščice. `null` pomeni "ni nastavljeno"; privzetki
@@ -84,6 +88,8 @@ const settingsUpdateSchema = z.object({
     .optional(),
   cameraDataSaverEnabled: z.boolean().optional(),
   notes: z.object({ serverTranscription: z.boolean().optional() }).optional(),
+  // Kot pri `sources`: `null`/prazen niz pomeni "naj velja privzetek", ne "ne spreminjaj".
+  meteo: z.object({ station: z.string().nullish() }).optional(),
   // Kot pri `sources`: `null`/prazen niz pomeni "ni nastavljeno", ne "ne spreminjaj".
   // Vsebinska pravila (dolžine, koordinati kot par, meje) so v commute-settings.service.ts —
   // tu samo oblika.
@@ -144,6 +150,12 @@ settingsRouter.put('/settings', requireScopes(), async (req, res, next) => {
       // pot sam ustvari in označi kot spremenjeno tudi pri dokumentih, shranjenih PRED to
       // funkcionalnostjo, kjer `settings.notes` še ne obstaja.
       settings.set('notes.serverTranscription', body.notes.serverTranscription);
+    }
+    if (body.meteo) {
+      // `settings.set(pot, vrednost)` — gnezdenega `meteo` pri dokumentih, shranjenih PRED to
+      // funkcionalnostjo, še ni, in Mongoose ga po tej poti sam ustvari (enako kot pri `notes`).
+      const meteo = validateMeteoSettings(body.meteo);
+      if (meteo.station !== undefined) settings.set('meteo.station', meteo.station);
     }
     if (body.commute) {
       // `settings.set(pot, vrednost)` po posameznem polju — gnezdenega `commute` pri

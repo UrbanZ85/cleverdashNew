@@ -48,6 +48,13 @@ const BASE_USER_SCOPES: readonly string[] = [
   'todos:read',
   'todos:write',
   'todos:share',
+  // 008 — brez teh dveh bi zavihek "Shranjeni linki" delal samo administratorju
+  // (docs/adding-a-tab.md, korak 5). Niza sta PREPISANA, ne uvožena iz modula (člen I).
+  'saved-links:read',
+  'saved-links:write',
+  // 011 — brez tega bi zavihek "Meritve ARSO" delal samo administratorju
+  // (docs/adding-a-tab.md, korak 5). Niz je PREPISAN, ne uvožen iz modula (člen I).
+  'meteo:read',
 ];
 
 /** Preslika seznam Keycloak vlog/skupin (iz `realm_access.roles` ali `groups` claima) v

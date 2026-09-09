@@ -16,6 +16,7 @@ import { TimeTrackingLocationsComponent } from './time-tracking-locations.compon
 import { WebhooksSettingsComponent } from './webhooks-section.component.js';
 import { CamerasSettingsComponent } from './cameras-section.component.js';
 import { NotesSettingsComponent } from './notes-section.component.js';
+import { MeteoSettingsComponent } from './meteo-section.component.js';
 
 interface SettingsGroup {
   id: string;
@@ -50,6 +51,7 @@ const MODULE_TABS: SettingsGroup[] = [
   { id: 'time-tracking', title: 'Beleženje časa', icon: 'time-outline' },
   { id: 'cameras', title: 'Kamere', icon: 'videocam-outline' },
   { id: 'notes', title: 'Beležke', icon: 'reader-outline' },
+  { id: 'meteo', title: 'Meritve ARSO', icon: 'rainy-outline' },
 ];
 
 @Component({
@@ -75,6 +77,7 @@ const MODULE_TABS: SettingsGroup[] = [
     WebhooksSettingsComponent,
     CamerasSettingsComponent,
     NotesSettingsComponent,
+    MeteoSettingsComponent,
   ],
   template: `
     <app-page-header title="Nastavitve" [subtitle]="currentUser.user()?.displayName ?? null"></app-page-header>
@@ -216,6 +219,16 @@ const MODULE_TABS: SettingsGroup[] = [
                     <app-help topic="notes.serverTranscription"></app-help>
                   </h2>
                   <app-notes-settings></app-notes-settings>
+                </section>
+              }
+
+              @case ('meteo') {
+                <section>
+                  <h2 class="cd-section-title">
+                    Merilna postaja
+                    <app-help topic="meteo.station"></app-help>
+                  </h2>
+                  <app-meteo-settings></app-meteo-settings>
                 </section>
               }
             }

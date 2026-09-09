@@ -219,6 +219,34 @@ je ni bral nihče.
 | `RADAR_CACHE_SECONDS` | `300` |
 | `WEATHER_CACHE_SECONDS` | `600` |
 
+### Meritve samodejnih postaj (011)
+
+Zavihek "Meritve ARSO" bere dvodnevno zgodovino ENE postaje — tiste, ki jo uporabnik izbere v
+Nastavitve → Moduli → Meritve ARSO. `ARSO_DEFAULT_STATION` je privzetek za uporabnika, ki si
+postaje še ni izbral (`Settings.meteo.station` je `null`), po istem dogovoru kot
+`ARSO_DEFAULT_LOCATION` pri vremenu.
+
+Oznaka postaje je `domain_meteosiId` iz ARSO seznama postaj BREZ zaključnega podčrtaja in NE
+ime kraja: postaja "Bilje Nova Gorica" je `NOVA-GOR_BILJE`, "Bohinjska Češnjica" pa
+`BOHIN-CES`. Ime v naslovu vrne 404. Vse veljavne oznake pove `GET /meteo/stations`.
+
+| Spremenljivka | Privzeto | Opomba |
+|---|---|---|
+| `ARSO_STATION_BASE_URL` | `https://meteo.arso.gov.si/uploads/probase/www/observ/surface/text/sl/` | MAPA, ne datoteka — ime datoteke se sestavi iz oznake postaje |
+| `ARSO_DEFAULT_STATION` | `LJUBL-ANA_BEZIGRAD` | postaja za uporabnika brez lastne izbire |
+| `METEO_CACHE_SECONDS` | `600` | usklajeno z izvorom: vir pošilja `max-age=600` in objavlja meritve vsakih 10 minut (člen VIII) |
+| `METEO_STATIONS_CACHE_SECONDS` | `21600` | seznam postaj, ne meritev: iz njega se bere samo ime, višina in koordinati postaje, kar se spremeni nekajkrat na leto. Datoteka je ~800 kB, osvežitev pa je zaradi `ETag` praviloma odgovor 304 brez telesa |
+
+Postaja se v nastavitvah IZBERE s seznama in ne vpiše: iz oznake se sestavi naslov, ki ga
+strežnik prenese sam, zato mora prestati vzorec iz `apps/api/src/domain/arso-station.ts` in
+nato še preverjanje iz `apps/api/src/domain/outbound-url.ts`.
+
+Seznam postaj v nastavitvah je zlitje zapisanega imenika
+(`apps/api/src/modules/meteo/domain/station-catalog.ts`) in živega vira, ker `observationAms_si_latest.xml`
+ni imenik, ampak posnetek zadnjega objavnega cikla (9. 9. 2026 med 19 in 106 postaj, odvisno od
+trenutka). Imenik se osveži ročno z `node apps/api/scripts/refresh-arso-stations.mjs`; nobena
+okoljska spremenljivka za to ni potrebna.
+
 Osebni prepis naslova mora prestati isto preverjanje kot naslov vtičnika
 (`apps/api/src/domain/outbound-url.ts`): samo `https`, brez poverilnic v naslovu, brez
 zasebnih ali lokalnih naslovov — strežnik te naslove obišče sam.
@@ -347,6 +375,10 @@ ARSO_WEATHER_URL=https://vreme.arso.gov.si/api/1.0/location/
 ARSO_DEFAULT_LOCATION=Ljubljana
 RADAR_CACHE_SECONDS=300
 WEATHER_CACHE_SECONDS=600
+ARSO_STATION_BASE_URL=https://meteo.arso.gov.si/uploads/probase/www/observ/surface/text/sl/
+ARSO_DEFAULT_STATION=LJUBL-ANA_BEZIGRAD
+METEO_CACHE_SECONDS=600
+METEO_STATIONS_CACHE_SECONDS=21600
 
 # ─── Pot v službo in domov (neobvezno; dva LOČENA ključa, glej §2) ───
 GOOGLE_MAPS_SERVER_KEY=

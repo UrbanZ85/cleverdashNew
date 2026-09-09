@@ -25,6 +25,18 @@ export const TAB_REGISTRY: TabDefinition[] = [
     order: 0,
     enabled: true,
   },
+  // 011: meritve ARSO postaje po urah. `requiredScopes` je tu prvi pravi filter zavihka —
+  // brez `meteo:read` zavihek v meniju ne nastane (resolver.ts), namesto da bi se pojavil in
+  // ob odprtju vrnil 403.
+  {
+    id: 'meteo',
+    title: 'Meritve ARSO',
+    icon: 'rainy-outline',
+    route: '/meteo',
+    order: 2,
+    requiredScopes: ['meteo:read'],
+    enabled: true,
+  },
   {
     id: 'notes',
     title: 'Beležke',
@@ -82,6 +94,17 @@ export const TAB_REGISTRY: TabDefinition[] = [
     icon: 'checkbox-outline',
     route: '/todos',
     order: 4,
+    enabled: true,
+  },
+  // 008: knjižnica shranjenih strani. Namenoma LOČENA od vtičnika vrste `link` iz 005 — ta je
+  // ploščica z nekaj vedno vidnimi bližnjicami, ta zavihek pa knjižnica, ki s časom raste in
+  // jo je treba znati preiskati in razvrstiti v mape (research.md §1).
+  {
+    id: 'saved-links',
+    title: 'Shranjeni linki',
+    icon: 'bookmarks-outline',
+    route: '/saved-links',
+    order: 8,
     enabled: true,
   },
   {

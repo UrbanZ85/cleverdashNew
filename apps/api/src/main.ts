@@ -31,6 +31,8 @@ import { fileSharingPublicRouter } from './modules/file-sharing/public.router.js
 import { ensureDirs as ensureFileShareDirs } from './modules/file-sharing/services/blob-storage.service.js';
 import { startFileShareCleanup } from './modules/file-sharing/services/cleanup.service.js';
 import { todosRouter } from './modules/todos/router.js';
+import { savedLinksRouter, savedLinkGroupsRouter } from './modules/saved-links/router.js';
+import { meteoRouter } from './modules/meteo/router.js';
 import { usersRouter } from './platform/users/router.js';
 import { registerTodosTabDetail } from './modules/todos/tab-detail.js';
 
@@ -69,6 +71,7 @@ export async function createApp() {
   apiV1Router.use(dashboardPluginsRouter);
   apiV1Router.use(tabsRouter);
   apiV1Router.use(settingsRouter);
+  apiV1Router.use(meteoRouter);
   apiV1Router.use(notificationsRouter);
   apiV1Router.use(timeTrackingRouter);
   apiV1Router.use(camerasRouter);
@@ -87,6 +90,10 @@ export async function createApp() {
   // vratarji preskočil.
   apiV1Router.use(fileSharingPublicRouter);
   apiV1Router.use(todosRouter);
+  // 008: knjižnica shranjenih strani. Dva usmerjevalnika, ker sta poti dve korenini
+  // (`/saved-links*` in `/saved-link-groups*`) — enako kot `camerasRouter`/`cameraGroupsRouter`.
+  apiV1Router.use(savedLinksRouter);
+  apiV1Router.use(savedLinkGroupsRouter);
   // 010: imenik uporabnikov je SKUPNA zmogljivost, ne del modula opravil — izbira osebe ni
   // pojem opravil in mora preživeti odstranitev katerega koli modula (člen I). Zato živi v
   // platform/users/, tako kot `/tabs` in `/devices`.

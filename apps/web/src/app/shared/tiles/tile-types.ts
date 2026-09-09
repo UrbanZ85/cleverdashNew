@@ -12,6 +12,14 @@
 // Da se ta seznam in `TILE_REGISTRY` ne razideta, ju primerja enotski test
 // `apps/web/tests/unit/tile-registry.spec.ts` — razhajanje bi pomenilo ploščico, ki se izriše,
 // a je razporeditev ne pozna (ali obratno).
-export const BUILT_IN_TILE_TYPES = ['weather', 'forecast', 'radar', 'commute', 'todos'] as const;
+export const BUILT_IN_TILE_TYPES = [
+  'weather',
+  'forecast',
+  'radar',
+  'commute',
+  'todos',
+  'saved-links',
+  'meteo',
+] as const;
 
 export type BuiltInTileType = (typeof BUILT_IN_TILE_TYPES)[number];

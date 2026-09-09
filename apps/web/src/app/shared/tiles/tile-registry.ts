@@ -5,6 +5,8 @@ import { ForecastTileComponent } from '../../features/dashboard/tiles/forecast-t
 import { PluginTileComponent } from '../../features/dashboard/tiles/plugin-tile.component.js';
 import { CommuteTileComponent } from '../../features/dashboard/tiles/commute-tile.component.js';
 import { TodoTileComponent } from '../../features/todos/todo-tile.component.js';
+import { SavedLinksTileComponent } from '../../features/saved-links/tiles/saved-links-tile.component.js';
+import { MeteoTileComponent } from '../../features/meteo/tiles/meteo-tile.component.js';
 import { commuteTileWidthPx } from '../../features/dashboard/commute.model.js';
 import type { Settings } from '../../core/settings/settings.model.js';
 import { mergeMissingTypes, type TileLayoutEntry } from './tile-layout.model.js';
@@ -60,6 +62,12 @@ export const TILE_REGISTRY: TileTypeDefinition[] = [
   // 010: ploščica bere svojo nastavitev (pripeti seznam) SAMA iz Settings.tiles[].config,
   // ker nadzorna plošča vgrajenim ploščicam vhodov ne podaja in namenoma ne pozna imen vrst.
   { type: 'todos', component: TodoTileComponent },
+  // 008: ploščica kaže 6 nazadnje shranjenih strani. Brez `config` — nastavljivost (izbrana
+  // mapa, drugačno število) ni v obsegu 008 (research.md §11).
+  { type: 'saved-links', component: SavedLinksTileComponent },
+  // 011: urne padavine zadnjih 24 ur na postaji iz nastavitev. Stolpci potrebujejo prostor po
+  // širini (24 ur = 24 stolpcev), zato ima ploščica svojo želeno širino in ne privzete 320 px.
+  { type: 'meteo', component: MeteoTileComponent, widthPx: 480 },
 ];
 
 /** Vrsta uporabniško definirane ploščice (005). NI v `TILE_REGISTRY`: ta seznam so
@@ -77,6 +85,8 @@ export const TILE_TYPE_TITLES: Record<string, string> = {
   radar: 'Radar padavin',
   commute: 'Pot v službo in domov',
   todos: 'Opravila',
+  'saved-links': 'Shranjeni linki',
+  meteo: 'Padavine po urah (ARSO)',
 };
 
 export function tileTypeTitle(type: string): string {
