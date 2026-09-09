@@ -154,7 +154,7 @@ describe('POST /inboxes — nastanek predala', () => {
     const { IdempotencyKeyModel } = await import('../../../src/platform/idempotency/model.js');
     const { app } = await createApp();
     const token = await loginAndUnlock(app);
-    const headers = { Authorization: `Bearer ${token}`, 'Idempotency-Key': 'kljuc-predal-1' };
+    const headers = { Authorization: `Bearer ${token}`, 'Idempotency-Key': 'kljuc-predal' };
     const body = { label: 'Fotografije' };
 
     const prvi = await request(app).post('/api/v1/inboxes').set(headers).send(body).expect(201);
