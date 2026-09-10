@@ -52,6 +52,30 @@ const SAVED_LINKS_ICONS = [
   'trash-outline',
 ];
 
+// 011: ikone razdelka za izbiro postaj in preklopnika na zavihku "Meritve postaj". Ta seznam
+// je nastal iz PRAVE napake: razdelek je bil napisan s štirimi ikonami, ki jih ni nihče
+// registriral, zato klik na postajo ni pokazal kljukice, gumba za odstranitev pa sploh ni bilo
+// videti — razdelek je bil videti pokvarjen, čeprav je shranjevanje delovalo.
+const METEO_ICONS = [
+  'checkmark-circle', // izbrana postaja v seznamu
+  'location-outline', // neizbrana postaja
+  'star', // privzeta postaja (prva izbrana)
+  'arrow-up-circle-outline', // "nastavi kot privzeto"
+  'close-circle', // "odstrani postajo"
+  'rainy-outline', // zavihek in gumb "Odpri meritve"
+];
+
+// 012: ikone izbirnika "delaj kot drug uporabnik" (meni) in opozorilnega pasu nad vsebino.
+// Pas je edina stvar, ki adminu pove, da piše v tuje podatke — ikona, ki se ne izriše, mu
+// vzame polovico tega opozorila.
+const ACTING_USER_ICONS = [
+  'people', // prevzeto ime (pas, aktiven izbirnik)
+  'people-outline', // izbirnik v mirovanju
+  'person-circle-outline', // "delaj v svojem imenu"
+  'chevron-forward-outline', // odpiranje izbirnika
+  'checkmark', // trenutna izbira v seznamu
+];
+
 describe('register-icons', () => {
   it('registrira vsako ikono, ki jo uporablja strežniški register zavihkov', () => {
     for (const name of TAB_REGISTRY_ICONS) {
@@ -68,6 +92,22 @@ describe('register-icons', () => {
   it('registrira vsako ikono, ki jo uporablja zavihek Shranjeni linki (008)', () => {
     for (const name of SAVED_LINKS_ICONS) {
       expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz zavihka Shranjeni linki ni registrirana`).toContain(
+        name,
+      );
+    }
+  });
+
+  it('registrira vsako ikono, ki jo uporablja izbira postaj (011)', () => {
+    for (const name of METEO_ICONS) {
+      expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz razdelka Meritve postaj ni registrirana`).toContain(
+        name,
+      );
+    }
+  });
+
+  it('registrira vsako ikono izbirnika uporabnika in opozorilnega pasu (012)', () => {
+    for (const name of ACTING_USER_ICONS) {
+      expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz izbirnika uporabnika ni registrirana`).toContain(
         name,
       );
     }

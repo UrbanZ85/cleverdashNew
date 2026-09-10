@@ -16,9 +16,32 @@ export interface AuthContext {
   scopes: string[];
 }
 
+/**
+ * Kdo je zahtevo RESNIČNO poslal — v nasprotju z `req.auth`, ki po 012 pove, V ČIGAVEM IMENU
+ * teče (glej platform/auth/acting-user.ts).
+ *
+ * Brez prevzema imena sta oba konteksta enaka. Ko admin prevzame ime drugega uporabnika, se
+ * `req.auth.subjectId` zamenja z izbranim uporabnikom — s tem vsi moduli naenkrat berejo in
+ * pišejo njegove podatke, brez ene same spremembe v usmerjevalnikih — `req.actor` pa ostane
+ * admin sam.
+ *
+ * Uporabi `req.actor` in NE `req.auth` povsod, kjer gre za fizično osebo ali napravo za
+ * tipkovnico, ne za lastnika podatkov: seje (`/auth/sessions`), odjava, `/auth/me` in
+ * registracija naprav za obvestila (`/devices`). Vse drugo mora ostati na `req.auth`, sicer
+ * prevzem imena tam ne bo deloval.
+ */
+export interface ActorContext {
+  subjectType: 'user' | 'apiKey';
+  subjectId: string;
+  scopes: string[];
+  /** Identifikator uporabnika, katerega ime je prevzeto; `null` = klicatelj dela v svojem imenu. */
+  actingAsUserId: string | null;
+}
+
 declare module 'express-serve-static-core' {
   interface Request {
     auth?: AuthContext;
+    actor?: ActorContext;
   }
 }
 

@@ -19,6 +19,7 @@ import { auditLogin, auditLoginFailed, auditLogout } from './auth.audit.js';
 import { unauthorized, notFound, serviceUnavailable } from '../../platform/errors/problem.js';
 import { loadEnv } from '../../platform/config/env.js';
 import { UserModel } from './models/user.model.js';
+import { readUserSummaries } from '../../platform/users/directory.service.js';
 
 // 004, contracts/openapi.yaml, research.md §1/§2/§9/§10: nadomesti celotno prejšnjo
 // e-pošta/geslo pot. `/auth/login`, `/auth/callback` in `/auth/refresh` NE sprejemajo
@@ -378,7 +379,7 @@ authRouter.post('/auth/logout', async (req, res, next) => {
     const session = await getActiveSession(sessionId);
     await revokeSession(sessionId);
     auditLogout(req.log, {
-      userId: req.auth?.subjectId ?? (session ? String(session.userId) : null),
+      userId: req.actor?.subjectId ?? (session ? String(session.userId) : null),
       sessionId,
     });
     res.clearCookie(SESSION_COOKIE, { path: SESSION_COOKIE_PATH });
@@ -393,19 +394,32 @@ authRouter.post('/auth/logout', async (req, res, next) => {
   }
 });
 
+// 012: `req.actor` in NE `req.auth` — ta pot mora povedati, kdo je PRIJAVLJEN, tudi (in prav
+// takrat) kadar admin dela v imenu drugega. `actingAs` je edini vir resnice o prevzemu imena
+// za odjemalca: web si izbiro sicer hrani v `localStorage`, a ta lahko obvisi (uporabnik je
+// izbrisan, admin vloga odvzeta), zato je odgovor te poti tisti, ki ga popravi — glej
+// platform/auth/acting-user.ts, `NO_EFFECT_PREFIXES`.
 authRouter.get('/auth/me', requireScopes(), async (req, res, next) => {
   try {
-    const user = await UserModel.findById(req.auth!.subjectId).lean();
+    const user = await UserModel.findById(req.actor!.subjectId).lean();
     if (!user) {
       next(notFound('Uporabnik ne obstaja.'));
       return;
     }
+
+    const actingAsId = req.actor!.actingAsUserId;
+    // Zamaskirana e-pošta in ne cela — ista projekcija kot v imeniku (`GET /users`, FR-072).
+    // Prevzem imena pravice do celega naslova ne prinese; za razločevanje soimenjakov v pasu
+    // "delaš kot …" pa namig zadošča.
+    const actingAs = actingAsId ? (await readUserSummaries([actingAsId])).get(actingAsId) ?? null : null;
+
     res.json({
       id: String(user._id),
       email: user.email,
       displayName: user.displayName,
-      scopes: req.auth!.scopes,
+      scopes: req.actor!.scopes,
       lastLoginAt: user.lastLoginAt,
+      actingAs,
     });
   } catch (err) {
     next(err);
@@ -416,8 +430,10 @@ authRouter.get('/auth/sessions', requireScopes(), async (req, res, next) => {
   try {
     const env = loadEnv();
     const currentSessionId = readSessionCookieValue(env, req.cookies?.[SESSION_COOKIE] as string | undefined);
+    // 012: `req.actor` — seje pripadajo prijavljenemu človeku. Prevzem tujega imena ne sme
+    // pokazati (in `DELETE` spodaj ne preklicati) tujih sej.
     const sessions = await KeycloakSessionModel.find({
-      userId: req.auth!.subjectId,
+      userId: req.actor!.subjectId,
       state: 'active',
     }).lean();
     res.json(
@@ -439,7 +455,7 @@ authRouter.delete('/auth/sessions/:sessionId', requireScopes(), async (req, res,
   try {
     const session = await KeycloakSessionModel.findOne({
       _id: req.params.sessionId,
-      userId: req.auth!.subjectId,
+      userId: req.actor!.subjectId,
     });
     if (!session) {
       next(notFound('Seja ne obstaja.'));

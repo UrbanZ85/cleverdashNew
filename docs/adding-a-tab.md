@@ -61,6 +61,20 @@ uveljavlja korak za korakom. Predloga za kopiranje je v `templates/tab-module/`.
    `apps/web/tests/unit/icons.spec.ts`. Neregistrirana ikona se izriše kot prazen prostor;
    ta test je edina mreža pod tem, ker ime ikone pride s strežnika.
 
+7. **Podatke omeji z `req.auth.subjectId` — nikoli z `req.actor`.**
+
+   Vsaka poizvedba modula MORA nositi `userId: req.auth!.subjectId`. To je po 004 edina
+   podatkovna izolacija med uporabniki (poimenovani obsegi admina od navadnega uporabnika ne
+   ločijo, glej `platform/keycloak/role-mapping.ts`), po 012 pa hkrati edino, kar zavihku
+   zastonj prinese "administrator dela v imenu drugega uporabnika": `req.auth` je zamenjan v
+   skupnem middlewaru pred moduli, zato tvoj modul o prevzemu imena ne rabi vedeti ničesar.
+
+   `req.actor` je resnični klicatelj in v modulu praktično nikoli ni prava izbira. Uporabi ga
+   samo, če zapis pripada FIZIČNI osebi ali napravi za tipkovnico in ne lastniku podatkov —
+   edina taka primera v celem zaledju sta seje (`modules/auth/router.ts`) in naprave za
+   obvestila (`platform/notifications/router.ts`). Podrobno v
+   [`docs/acting-as-another-user.md`](acting-as-another-user.md).
+
 ## Kaj se NE sme spremeniti
 
 Nič drugega. Če popravljaš datoteko zunaj novega modula in vpisov iz korakov 2–6, je nekaj

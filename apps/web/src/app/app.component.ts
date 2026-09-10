@@ -2,6 +2,7 @@ import { Component, effect, inject } from '@angular/core';
 import { IonApp, IonRouterOutlet, IonSplitPane, IonMenu } from '@ionic/angular/standalone';
 import { SideMenuComponent } from './shared/navigation/side-menu.component.js';
 import { BottomTabsComponent } from './shared/navigation/bottom-tabs.component.js';
+import { ActingUserBannerComponent } from './shared/navigation/acting-user-banner.component.js';
 import { AuthService } from './core/auth/auth.service.js';
 import { ThemeService } from './core/theme/theme.service.js';
 import { DeepLinkHandler } from './core/notifications/deep-link.handler.js';
@@ -35,6 +36,7 @@ import { PermissionRationaleComponent } from './core/notifications/permission-ra
     IonMenu,
     SideMenuComponent,
     BottomTabsComponent,
+    ActingUserBannerComponent,
     PermissionRationaleComponent,
   ],
   template: `
@@ -45,6 +47,10 @@ import { PermissionRationaleComponent } from './core/notifications/permission-ra
             <app-side-menu></app-side-menu>
           </ion-menu>
           <div class="ion-page" id="main-content">
+            <!-- 012: pas mora biti NAD .outlet-host in ne v njem — outlet je absolutno
+                 pozicioniran (glej opombo pri .outlet-host spodaj), zato bi ga pas znotraj
+                 prekril namesto odrinil. -->
+            <app-acting-user-banner></app-acting-user-banner>
             <div class="outlet-host">
               <ion-router-outlet></ion-router-outlet>
             </div>
@@ -79,6 +85,9 @@ import { PermissionRationaleComponent } from './core/notifications/permission-ra
       contain: layout size style;
     }
     app-bottom-tabs {
+      flex: none;
+    }
+    app-acting-user-banner {
       flex: none;
     }
   `,

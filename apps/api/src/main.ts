@@ -12,6 +12,7 @@ import { idempotencyMiddleware } from './platform/idempotency/middleware.js';
 import { apiKeyGuard } from './platform/apikeys/guard.js';
 import { apiKeysRouter } from './platform/apikeys/router.js';
 import { accessTokenGuard } from './modules/auth/services/access-token.service.js';
+import { actingUserMiddleware } from './platform/auth/acting-user.js';
 import { authRouter } from './modules/auth/router.js';
 import { dashboardRouter } from './modules/dashboard/router.js';
 import { dashboardPluginsRouter } from './modules/dashboard/plugins.router.js';
@@ -64,6 +65,11 @@ export async function createApp() {
   apiV1Router.use(healthRouter);
   apiV1Router.use(apiKeyGuard());
   apiV1Router.use(accessTokenGuard(env));
+  // 012: takoj za vratarjema in PRED vsemi moduli. Tu se odloči, v čigavem imenu teče zahteva
+  // (`req.auth`) in kdo jo je poslal (`req.actor`) — glej platform/auth/acting-user.ts. Vrstni
+  // red ni poljuben: pred vratarjema `req.auth` še ne obstaja, za idempotentnostjo pa bi bil
+  // shranjen odgovor lahko vezan na napačnega lastnika.
+  apiV1Router.use(actingUserMiddleware());
   apiV1Router.use(idempotencyMiddleware());
   apiV1Router.use(apiKeysRouter);
   apiV1Router.use(authRouter);

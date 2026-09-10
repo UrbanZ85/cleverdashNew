@@ -249,6 +249,30 @@ izbrane postaje pa so osebna nastavitev (`Settings.meteo.stations`). Zato en sam
 je v [`specs/011-meteo-station/contracts/openapi.yaml`](specs/011-meteo-station/contracts/openapi.yaml),
 odločitve v [`nacrt/011-meteo-station/spec.md`](nacrt/011-meteo-station/spec.md).
 
+### Administrator dela v imenu drugega uporabnika (012)
+
+Administrator (Keycloakova vloga `cleverdash-admin`) na dnu menija, pod svojim imenom, izbere
+drugega uporabnika — in **cela aplikacija** se preklopi nanj: nadzorna plošča, nastavitve,
+zavihki, kamere, beležke, beleženje časa, evidenca, opravila, linki, datoteke. Vsaka sprememba
+se shrani izbranemu uporabniku. Skrbnik tako lahko nekomu uredi ploščice ali zabeleži manjkajoč
+prihod, ne da bi potreboval njegovo geslo.
+
+Preklop je **ena glava** (`X-Acting-User`), ki jo strežnik obravnava na **enem mestu** pred
+vsemi moduli ([`apps/api/src/platform/auth/acting-user.ts`](apps/api/src/platform/auth/acting-user.ts)):
+`req.auth` (v čigavem imenu teče zahteva) se zamenja, `req.actor` (kdo jo je poslal) ostane.
+Modulom ni bilo treba spremeniti ničesar in nov zavihek preklop dobi zastonj — dokler filtrira
+po `req.auth.subjectId`, kar mu izolacija po 004 tako ali tako nalaga. Devetdeset neobveznih
+parametrov `?userId=` bi bilo devetdeset priložnosti, da kdo pozabi preveriti dovolilnico.
+
+Adminu ostanejo lastne samo **seje, naprave za obvestila in API ključi** — te pripadajo človeku
+za tipkovnico, ne podatkom, ki jih gleda. Dokler je ime prevzeto, je nad vsebino nezaprtljiv
+opozorilni pas z izhodom iz stanja, vsaka mutacija pa gre v dnevnik kot `auth.acting_as` z
+obema identifikatorjema. Glava je izključno za prijavljenega človeka: `X-API-Key` z njo dobi
+`403` (člen III — veljaven ključ sam po sebi ni admin). Podrobno v
+[`docs/acting-as-another-user.md`](docs/acting-as-another-user.md); pogodba je
+`components/parameters/ActingUser` v
+[`specs/001-app-shell-dashboard/contracts/openapi.yaml`](specs/001-app-shell-dashboard/contracts/openapi.yaml).
+
 ---
 
 **Stack:** Ionic 8 + Angular 20 (web in Android prek Capacitorja), Node.js 22 + Express 5 +
@@ -467,6 +491,7 @@ vzporedni številčenji. Zato je vhodno gradivo v `nacrt/`, ustava pa v
 | `nacrt/011-meteo-station/spec.md` | Odločitve za 011 — zavihek meritev ARSO postaje; nastalo skupaj s kodo, ne pred njo |
 | `docs/legacy-engine.md` | Obratno inženirstvo starega engine-a beleženja časa + napake, ki jih 002 ne sme ponoviti |
 | `docs/env-reference.md` | Vse okoljske spremenljivke: kaj ostane, kaj gre v bazo, kaj je novo |
+| `docs/acting-as-another-user.md` | 012 — kako administrator dela v imenu drugega uporabnika in kaj ostane njegovo |
 | `docs/SECURITY-FIRST.md` | Razkrite skrivnosti iz starega sistema, ki jih je treba zavrteti |
 
 ## Sorodne mape

@@ -51,10 +51,19 @@ function isExempt(path: string): boolean {
   );
 }
 
-/** Klicatelj, na katerega je ključ vezan. `null`, kadar zahteva ni avtenticirana. */
+/** Klicatelj, na katerega je ključ vezan. `null`, kadar zahteva ni avtenticirana.
+ *
+ * 012: bere `req.actor` in ne `req.auth` — ključ pripada tistemu, ki ga je izbral, torej
+ * človeku za tipkovnico. Prevzeto ime je vseeno del identitete ključa, sicer bi ista vrednost
+ * pri delu v imenu DVEH uporabnikov drugemu vrnila shranjen odgovor prvega: tujo beležko kot
+ * njegovo. Z imenom v ključu tak klic pade v isto vejo kot vsako drugo neujemanje klicatelja —
+ * `422` (glej opombo pri indeksu v model.ts) — kar je pravilen izid, ker gre res za napako
+ * klicatelja. Brez prevzema imena je vrednost znakovno enaka prejšnji. */
 function subjectOf(req: Request): string | null {
-  if (!req.auth) return null;
-  return `${req.auth.subjectType}:${req.auth.subjectId}`;
+  const actor = req.actor ?? (req.auth ? { ...req.auth, actingAsUserId: null } : null);
+  if (!actor) return null;
+  const base = `${actor.subjectType}:${actor.subjectId}`;
+  return actor.actingAsUserId ? `${base}>${actor.actingAsUserId}` : base;
 }
 
 function hashBody(body: unknown): string {

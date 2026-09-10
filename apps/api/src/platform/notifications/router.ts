@@ -9,6 +9,12 @@ import { notFound } from '../errors/problem.js';
 
 export const notificationsRouter = Router();
 
+// 012: ta modul je EDINI zunaj `/auth/*`, ki bere `req.actor` in ne `req.auth` (glej
+// platform/auth/acting-user.ts). Naprava za obvestila je fizična naprava človeka za
+// tipkovnico, ne lastnina podatkov, ki jih gleda: če bi admin ob prevzemu tujega imena
+// registriral svoj brskalnik, bi svojo napravo pripisal tujemu računu, testno obvestilo pa bi
+// poslal na tuje telefone. Oboje je bilo mogoče popraviti samo z brisanjem v bazi.
+
 function toDeviceResponse(device: {
   _id: unknown;
   platform: string;
@@ -27,7 +33,7 @@ function toDeviceResponse(device: {
 
 notificationsRouter.get('/devices', requireScopes(), async (req, res, next) => {
   try {
-    const devices = await DeviceModel.find({ userId: req.auth!.subjectId }).lean();
+    const devices = await DeviceModel.find({ userId: req.actor!.subjectId }).lean();
     res.json(devices.map(toDeviceResponse));
   } catch (err) {
     next(err);
@@ -50,7 +56,7 @@ notificationsRouter.post('/devices', requireScopes(), async (req, res, next) => 
     const device = await DeviceModel.findOneAndUpdate(
       { pushToken: body.pushToken },
       {
-        userId: req.auth!.subjectId,
+        userId: req.actor!.subjectId,
         pushToken: body.pushToken,
         platform: body.platform,
         channels: channels.length > 0 ? channels : DEFAULT_CHANNELS,
@@ -67,7 +73,7 @@ notificationsRouter.post('/devices', requireScopes(), async (req, res, next) => 
 
 notificationsRouter.delete('/devices/:deviceId', requireScopes(), async (req, res, next) => {
   try {
-    const result = await DeviceModel.deleteOne({ _id: req.params.deviceId, userId: req.auth!.subjectId });
+    const result = await DeviceModel.deleteOne({ _id: req.params.deviceId, userId: req.actor!.subjectId });
     if (result.deletedCount === 0) {
       next(notFound('Naprava ne obstaja.'));
       return;
@@ -87,8 +93,8 @@ notificationsRouter.post('/notifications/test', requireScopes(), async (req, res
   try {
     const body = testNotificationSchema.parse(req.body ?? {});
     const filter = body.deviceId
-      ? { _id: body.deviceId, userId: req.auth!.subjectId }
-      : { userId: req.auth!.subjectId };
+      ? { _id: body.deviceId, userId: req.actor!.subjectId }
+      : { userId: req.actor!.subjectId };
     const devices = await DeviceModel.find(filter);
 
     let accepted = 0;

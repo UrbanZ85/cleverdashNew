@@ -5,6 +5,7 @@ import { catchError, from, switchMap, throwError } from 'rxjs';
 import { TokenStore } from './token.store.js';
 import { AuthService } from './auth.service.js';
 import { needsRefreshNow } from './token-lifetime.js';
+import { ActingUserService } from '../acting-user/acting-user.service.js';
 
 // Pot za obnovo žetona se izogne temu interceptorju — brez tega bi neuspela obnova sprožila
 // samo sebe v neskončno zanko. Ista izjema, ki jo pozna backend (Idempotency-Key, člen III),
@@ -49,14 +50,25 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // klic na API pa je vračal 401.
   const tokenStore = inject(TokenStore);
   const authService = inject(AuthService);
+  const actingUser = inject(ActingUserService);
   const isExempt = AUTH_EXEMPT.some((p) => req.url.includes(p));
 
   const send = () => {
     // Žeton se prebere ZNOTRAJ te funkcije, ne enkrat zgoraj: med vnaprejšnjo obnovo in
     // ponovnim poskusom se je vrednost spremenila, in poslati je treba novo.
     const token = tokenStore.accessToken();
-    const withAuth = !isExempt && token ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : req;
-    return next(withAuth);
+    const headers: Record<string, string> = {};
+    if (!isExempt && token) headers['Authorization'] = `Bearer ${token}`;
+    // 012: glava gre na VSAKO zahtevo, brez seznama poti, na katerih je pomembna. Seznam bi
+    // moral rasti z vsakim novim modulom in bi bil ob prvi pozabljeni poti tiha napaka —
+    // zaslon bi kazal tuje podatke, en klic v ozadju pa bi pisal v adminove lastne. Katere
+    // poti glavo upoštevajo, odloči strežnik na enem mestu (platform/auth/acting-user.ts);
+    // na `/auth/*` je brez učinka in nikoli ni napaka.
+    if (!isExempt) {
+      const acting = actingUser.current();
+      if (acting) headers['X-Acting-User'] = acting;
+    }
+    return next(Object.keys(headers).length > 0 ? req.clone({ setHeaders: headers }) : req);
   };
 
   /** Reaktivna varovalka: 401 kljub svežemu žetonu (odvzeta vloga, preklicana seja, ura

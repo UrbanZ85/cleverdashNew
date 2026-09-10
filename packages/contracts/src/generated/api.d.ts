@@ -259,17 +259,59 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Podatki o prijavljenem računu */
+        /**
+         * Podatki o prijavljenem računu
+         * @description Vrne PRIJAVLJENEGA človeka, tudi kadar zahteva nosi glavo `X-Acting-User` — z dodanim
+         *     poljem `actingAs`, ki pove, čigavo ime je prevzeto (012).
+         */
         get: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /**
+                     * @description 012 — administrator dela v imenu drugega uporabnika.
+                     *
+                     *     Identifikator (`User.id`) uporabnika, V ČIGAVEM IMENU naj se ta zahteva izvede. Velja za
+                     *     VSAKO avtenticirano pot v VSEH pogodbah CleverDasha (`/settings`, `/dashboard/*`,
+                     *     `/notes*`, `/cameras*`, `/time-tracking/*`, `/timesheet/*`, `/todos*`, `/saved-links*`,
+                     *     `/files*`, `/meteo*`, `/tabs` …), zato je tu naveden le enkrat — parameter je vpet samo
+                     *     na `/auth/me`, ker je tam njegov UČINEK viden v odgovoru.
+                     *
+                     *     Zahteva se izvede natanko tako, kot bi jo poslal izbrani uporabnik sam: bere in piše
+                     *     njegove podatke, in nobena pot ne vrne ničesar, kar bi pripadalo administratorju.
+                     *
+                     *     Dovolilnica je izključno obseg `admin` (Keycloakova vloga `KEYCLOAK_ADMIN_ROLE`), ki se
+                     *     izpelje pri vsaki zahtevi iz žive introspekcije žetona — odvzeta vloga glavo ustavi v
+                     *     nekaj sekundah. Napake:
+                     *
+                     *     - `403` — klicatelj nima obsega `admin`, ALI se je predstavil z `X-API-Key`.
+                     *       Avtomatizacija tega ne sme: veljaven API ključ SAM po sebi ni admin (člen III), svojega
+                     *       lastnika pa določi drugače (glej `docs/file-sharing-automation.md`).
+                     *     - `404` — uporabnika s tem identifikatorjem ni (izbrisan ali napačna vrednost).
+                     *
+                     *     Dve izjemi, obe namerni:
+                     *
+                     *     1. **`/auth/*` glave ne upošteva in nanjo nikoli ne vrne napake.** Te poti govorijo o
+                     *        klicatelju samem — seje, odjava, `/auth/me` — in bi se s prevzemom imena sprevrgle v
+                     *        preklic TUJIH sej. Ker je `/auth/me` (polje `actingAs`) edini vir resnice o prevzemu
+                     *        imena za odjemalca, tam tudi neveljavna glava vrne `200`; drugače bi obvisela izbira
+                     *        odjemalcu vzela vsako pot nazaj.
+                     *     2. **`/devices*` (naprave za potisna obvestila) ostane administratorjeva.** Naprava je
+                     *        fizična naprava človeka za tipkovnico; registrirana tujemu računu bi tja pošiljala
+                     *        njegova obvestila.
+                     */
+                    "X-Acting-User"?: components["parameters"]["ActingUser"];
+                };
                 path?: never;
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description Račun */
+                /**
+                 * @description Račun. `200` je odgovor tudi na NEVELJAVNO glavo `X-Acting-User` (uporabnik
+                 *     izbrisan, obseg `admin` odvzet) — takrat je `actingAs` enak `null`. Glej opis
+                 *     parametra `ActingUser`.
+                 */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1077,6 +1119,7 @@ export interface components {
         /**
          * @description 004: `mustChangePassword` je ODSTRANJEN (FR-017 — ni več lokalnega gesla). Dodan
          *     `displayName` iz Keycloakovega `name`/`preferred_username` claima.
+         *     012: dodan `actingAs`.
          */
         Account: {
             id: string;
@@ -1086,6 +1129,30 @@ export interface components {
             scopes: string[];
             /** Format: date-time */
             lastLoginAt?: string | null;
+            /**
+             * @description 012: uporabnik, v čigavem imenu trenutno tečejo zahteve tega odjemalca, ali `null`.
+             *     Vrednost je izpeljana iz glave `X-Acting-User` na TEJ zahtevi in ni shranjeno stanje
+             *     — glej pogodbo 012.
+             *
+             *     Vsa ostala polja opisujejo PRIJAVLJENEGA človeka, tudi kadar `actingAs` ni `null`.
+             *     Prav to je namen: `/auth/me` je edina pot, ki pove oboje, in edina, ki na neveljavno
+             *     glavo (izbrisan uporabnik, odvzeta admin vloga) NE odgovori z napako, ampak z
+             *     `actingAs: null`. Odjemalec s tem popravi svojo shranjeno izbiro; brez te lastnosti
+             *     bi obvisela izbira aplikacijo pustila v stanju, iz katerega ni izhoda.
+             */
+            actingAs: null | components["schemas"]["ActingAsUser"];
+        };
+        /**
+         * @description 012: uporabnik, katerega ime je prevzeto. Ista projekcija kot imenik `GET /users` —
+         *     e-pošta je ZAMASKIRANA (`a…k@agenda.si`) in cel naslov se ne vrne nikoli. Prevzem imena
+         *     pravice do celega naslova ne prinese; za razločevanje soimenjakov v vmesniku namig
+         *     zadošča.
+         */
+        ActingAsUser: {
+            id: string;
+            displayName: string;
+            initials: string;
+            emailHint: string;
         };
         DeviceSession: {
             id: string;
@@ -1436,6 +1503,39 @@ export interface components {
          *     telesom zahteve vrne `422`.
          */
         IdempotencyKey: string;
+        /**
+         * @description 012 — administrator dela v imenu drugega uporabnika.
+         *
+         *     Identifikator (`User.id`) uporabnika, V ČIGAVEM IMENU naj se ta zahteva izvede. Velja za
+         *     VSAKO avtenticirano pot v VSEH pogodbah CleverDasha (`/settings`, `/dashboard/*`,
+         *     `/notes*`, `/cameras*`, `/time-tracking/*`, `/timesheet/*`, `/todos*`, `/saved-links*`,
+         *     `/files*`, `/meteo*`, `/tabs` …), zato je tu naveden le enkrat — parameter je vpet samo
+         *     na `/auth/me`, ker je tam njegov UČINEK viden v odgovoru.
+         *
+         *     Zahteva se izvede natanko tako, kot bi jo poslal izbrani uporabnik sam: bere in piše
+         *     njegove podatke, in nobena pot ne vrne ničesar, kar bi pripadalo administratorju.
+         *
+         *     Dovolilnica je izključno obseg `admin` (Keycloakova vloga `KEYCLOAK_ADMIN_ROLE`), ki se
+         *     izpelje pri vsaki zahtevi iz žive introspekcije žetona — odvzeta vloga glavo ustavi v
+         *     nekaj sekundah. Napake:
+         *
+         *     - `403` — klicatelj nima obsega `admin`, ALI se je predstavil z `X-API-Key`.
+         *       Avtomatizacija tega ne sme: veljaven API ključ SAM po sebi ni admin (člen III), svojega
+         *       lastnika pa določi drugače (glej `docs/file-sharing-automation.md`).
+         *     - `404` — uporabnika s tem identifikatorjem ni (izbrisan ali napačna vrednost).
+         *
+         *     Dve izjemi, obe namerni:
+         *
+         *     1. **`/auth/*` glave ne upošteva in nanjo nikoli ne vrne napake.** Te poti govorijo o
+         *        klicatelju samem — seje, odjava, `/auth/me` — in bi se s prevzemom imena sprevrgle v
+         *        preklic TUJIH sej. Ker je `/auth/me` (polje `actingAs`) edini vir resnice o prevzemu
+         *        imena za odjemalca, tam tudi neveljavna glava vrne `200`; drugače bi obvisela izbira
+         *        odjemalcu vzela vsako pot nazaj.
+         *     2. **`/devices*` (naprave za potisna obvestila) ostane administratorjeva.** Naprava je
+         *        fizična naprava človeka za tipkovnico; registrirana tujemu računu bi tja pošiljala
+         *        njegova obvestila.
+         */
+        ActingUser: string;
     };
     requestBodies: never;
     headers: never;

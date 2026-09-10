@@ -14,6 +14,7 @@ import {
 import { TabRegistryService } from '../../core/tabs/tab-registry.service.js';
 import { CurrentUserService } from '../../core/user/current-user.service.js';
 import { AuthService } from '../../core/auth/auth.service.js';
+import { ActingUserSwitcherComponent } from './acting-user-switcher.component.js';
 
 // FR-002: meni se sestavi iz razrešenega registra, ne iz trdo napisanega HTML-ja. Stari
 // sistem je ta meni prekopiral v tri strani (belezenje.page.html, urnik.component.html,
@@ -45,6 +46,7 @@ import { AuthService } from '../../core/auth/auth.service.js';
     IonBadge,
     IonButton,
     IonMenuToggle,
+    ActingUserSwitcherComponent,
   ],
   template: `
     <ion-content>
@@ -85,6 +87,7 @@ import { AuthService } from '../../core/auth/auth.service.js';
     </ion-content>
 
     <div class="account">
+      <div class="account-row">
         <div class="avatar" aria-hidden="true">{{ currentUser.initials() }}</div>
         <div class="account-text">
           <span class="account-name">{{ currentUser.user()?.displayName ?? 'Prijavljen uporabnik' }}</span>
@@ -92,9 +95,14 @@ import { AuthService } from '../../core/auth/auth.service.js';
             <span class="account-mail">{{ email }}</span>
           }
         </div>
-      <ion-button fill="clear" size="small" (click)="logout()" aria-label="Odjava" title="Odjava">
-        <ion-icon slot="icon-only" name="log-out-outline"></ion-icon>
-      </ion-button>
+        <ion-button fill="clear" size="small" (click)="logout()" aria-label="Odjava" title="Odjava">
+          <ion-icon slot="icon-only" name="log-out-outline"></ion-icon>
+        </ion-button>
+      </div>
+      <!-- 012: izbirnik uporabnika stoji POD imenom prijavljenega in se izriše samo adminu
+           (komponenta sama preveri obseg). Namenoma NI v ion-menu-toggle: klik odpre modalno
+           okno, ne novega zaslona, in meni se pod njim ne sme zapreti. -->
+      <app-acting-user-switcher></app-acting-user-switcher>
     </div>
   `,
   styles: `
@@ -200,12 +208,16 @@ import { AuthService } from '../../core/auth/auth.service.js';
        bilo — AuthService.logout() je klical le prestreznik ob spodleteli obnovi seje. */
     .account {
       display: flex;
-      align-items: center;
-      gap: var(--cd-space-3);
-      padding: var(--cd-space-3) var(--cd-space-3)
-        calc(var(--cd-space-4) + env(safe-area-inset-bottom));
+      flex-direction: column;
+      padding: var(--cd-space-2) 0 calc(var(--cd-space-3) + env(safe-area-inset-bottom));
       border-top: 1px solid var(--cd-divider);
       background: var(--cd-surface);
+    }
+    .account-row {
+      display: flex;
+      align-items: center;
+      gap: var(--cd-space-3);
+      padding: var(--cd-space-2) var(--cd-space-3);
     }
     .avatar {
       flex: none;
