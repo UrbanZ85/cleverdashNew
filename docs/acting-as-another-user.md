@@ -107,11 +107,16 @@ Brez tega bi bil zapis o spremembi tujih podatkov videti kot uporabnikov lasten 
   (`shared/navigation/acting-user-banner.component.ts`), in nosi izhod iz stanja. Na ozkem
   zaslonu je meni zaprt in vsak zaslon bi izgledal kot lasten — pas je edino, kar loči "gledam
   svoje podatke" od "pišem v tuje".
-- **Preklop stran ponovno naloži.** Podatki uporabnika so razpršeni po kakih dvajsetih storitvah
-  s signali, vsaka s svojim predpomnilnikom. Ročno praznjenje vseh bi bil seznam, ki ga je treba
-  dopolniti ob vsaki novi storitvi; pozabljena bi pomenila, da admin gleda ime enega uporabnika
-  in podatke drugega. Prijava ponovno nalaganje preživi (dostopni žeton se obnovi iz httpOnly
-  sejnega piškotka).
+- **Preklop stran ponovno naloži** z `location.reload()` — torej z isto operacijo kot F5.
+  Podatki uporabnika so razpršeni po kakih dvajsetih storitvah s signali, vsaka s svojim
+  predpomnilnikom. Ročno praznjenje vseh bi bil seznam, ki ga je treba dopolniti ob vsaki novi
+  storitvi; pozabljena bi pomenila, da admin gleda ime enega uporabnika in podatke drugega.
+  Prijava ponovno nalaganje preživi (dostopni žeton se obnovi iz httpOnly sejnega piškotka).
+
+  Prva izvedba je namesto tega uporabila `location.assign('/')` in to je bila napaka: izbira se
+  je shranila, dokument pa se ni zamenjal, zato je zaslon do ročne osvežitve kazal prejšnjega
+  uporabnika. Ostati na trenutni poti je varno tudi, če ima izbrani uporabnik ta zavihek
+  izklopljen — `tabGuard` tak primer že pozna in preusmeri na nadzorno ploščo brez napake.
 - Izbira se hrani v `localStorage` pod `cd.actingUserId`, da preživi osvežitev strani. Je
   **namig**, ne resnica — resnico pove `actingAs` iz `GET /auth/me`.
 

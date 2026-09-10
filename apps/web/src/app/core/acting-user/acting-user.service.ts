@@ -58,15 +58,23 @@ export class ActingUserService {
    *
    * Prijava preživi: dostopni žeton res živi samo v pomnilniku, a `authGuard` ga ob zagonu
    * obnovi iz httpOnly sejnega piškotka (`ensureSession()`).
+   *
+   * `location.reload()` in NE `location.assign('/')`. Prva različica je preklop pošiljala na
+   * koren, in učinka ni bilo videti, dokler uporabnik ni sam osvežil strani: preklop je
+   * shranil izbiro, zaslon pa je še naprej kazal prejšnjega uporabnika. `reload()` je natanko
+   * tisto, kar naredi F5 — edina operacija, o kateri vemo, da v tem primeru zares zamenja
+   * dokument.
+   *
+   * Ostati na TRENUTNI poti je pri tem varno tudi, če ima izbrani uporabnik ta zavihek
+   * izklopljen: `tabGuard` (core/tabs/tab-guard.ts) tak primer že pozna in preusmeri na
+   * nadzorno ploščo brez napake.
    */
   select(userId: string | null): void {
     const normalized = userId?.trim() || null;
     if (normalized === this.idSignal()) return;
     writeStored(normalized);
     this.idSignal.set(normalized);
-    // Vedno na koren: zavihek izbranega uporabnika je lahko izklopljen (`tabGuard`), zato bi
-    // ostanek na trenutni poti pomenil preusmeritev na zaslon z napako namesto na plošči.
-    window.location.assign('/');
+    window.location.reload();
   }
 
   /**
