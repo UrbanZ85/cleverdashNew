@@ -52,6 +52,14 @@ const BASE_USER_SCOPES: readonly string[] = [
   // (docs/adding-a-tab.md, korak 5). Niza sta PREPISANA, ne uvožena iz modula (člen I).
   'saved-links:read',
   'saved-links:write',
+  // 013 — brez teh treh bi zavihek "Recepti" delal samo administratorju
+  // (docs/adding-a-tab.md, korak 5). Nizi so PREPISANI, ne uvoženi iz modula (člen I).
+  // `recipes:share` je namenoma ločen od `recipes:write`: glej modules/recipes/scopes.ts —
+  // pod njim je tudi izdaja JAVNE povezave, torej edina poteza, s katero recept zapusti to
+  // namestitev.
+  'recipes:read',
+  'recipes:write',
+  'recipes:share',
   // 011 — brez tega bi zavihek "Meritve postaj" delal samo administratorju
   // (docs/adding-a-tab.md, korak 5). Niz je PREPISAN, ne uvožen iz modula (člen I).
   'meteo:read',

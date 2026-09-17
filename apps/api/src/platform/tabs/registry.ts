@@ -107,6 +107,25 @@ export const TAB_REGISTRY: TabDefinition[] = [
     order: 8,
     enabled: true,
   },
+  // 013: kuharica. Drugi zavihek, katerega zapisi so lahko vidni več kot enemu uporabniku (glej
+  // `todos` zgoraj) in PRVI, ki ima ob tem javno stran za nekoga BREZ računa — za register to ni
+  // razlika, je pa razlog, da modul nosi tri obsege.
+  //
+  // Javna stran (`/r/:token`) tu NAMENOMA ni: ni zavihek, ni v meniju in ne sme biti odvisna od
+  // tega, ali ima lastnik zavihek vklopljen (FR-071) — enako kot `/d/:token` pri 009.
+  {
+    id: 'recipes',
+    title: 'Recepti',
+    icon: 'restaurant-outline',
+    route: '/recipes',
+    // `order: 1` je edina PROSTA vrednost v registru (0 in 2–10 so zasedene). Izbrana je zato, da
+    // dodajanje tega zavihka ne premakne nobenega obstoječega — enak `order` pri dveh vnosih bi
+    // njun medsebojni vrstni red prepustil razvrščanju, ki ni stabilno določeno, in bi meni ob
+    // vsakem zagonu lahko izrisal drugače.
+    order: 1,
+    requiredScopes: ['recipes:read'],
+    enabled: true,
+  },
   {
     id: 'settings',
     title: 'Nastavitve',

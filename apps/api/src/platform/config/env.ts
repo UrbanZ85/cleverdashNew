@@ -241,6 +241,34 @@ const envSchema = z.object({
   SAVED_LINKS_METADATA_TIMEOUT_MS: z.coerce.number().int().positive().default(2500),
   SAVED_LINKS_METADATA_MAX_BYTES: z.coerce.number().int().positive().default(131_072),
   SAVED_LINKS_FAVICON_TTL_SECONDS: z.coerce.number().int().positive().default(604_800),
+
+  // 013 — Recepti. Vse ima privzetek, zato modul deluje brez dopolnjevanja `.env` (kakovostna
+  // vrata, točka 4).
+  //
+  // Slike so v BAZI kot `Buffer` (specs/013-recipes/research.md §4), ne na nosilcu — zato tu ni
+  // spremenljivke za imenik, za razliko od `FILE_SHARE_DIR`. 8 MB je fotografija s telefona po
+  // običajnem stiskanju; nad tem gre skoraj gotovo za nestisnjen zajem, ki ga je ceneje zavrniti
+  // kot shraniti stokrat.
+  RECIPES_IMAGE_MAX_MB: z.coerce.number().int().positive().max(50).default(8),
+  /** Pomanjšava, ki jo izračuna ODJEMALEC (research.md §5). Svoja, nižja meja: pomanjšava je
+   * nepreverjen vnos in meja izvirnika bi zanjo pomenila, da je `thumb` odprta vrata za vse, kar
+   * `data` ne dovoli. 512 kB je z veliko rezervo dovolj za stranico 600 px. */
+  RECIPES_THUMB_MAX_KB: z.coerce.number().int().positive().max(5_000).default(512),
+  /** Zgornja meja slik na recept (FR-023). Recept s petnajstimi fotografijami je album, ne
+   * recept; meja varuje velikost zbirke in čas izpisa. */
+  RECIPES_MAX_IMAGES: z.coerce.number().int().positive().max(100).default(12),
+
+  // Uvoz po schema.org (research.md §9). Proračun je daljši kot pri branju `<title>` v modulu 008
+  // (2500 ms), ker uvoz teče ob IZRECNI potezi uporabnika, ki nanj čaka in ve, zakaj — ne v
+  // ozadju. Meja branja je iz istega razloga višja: blok `ld+json` je pogosto na DNU dokumenta,
+  // za vsem besedilom in komentarji, zato bi 128 kB vrnilo prazno na straneh, ki recept pravilno
+  // označujejo.
+  RECIPES_IMPORT_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
+  RECIPES_IMPORT_MAX_BYTES: z.coerce.number().int().positive().default(1_048_576),
+  /** Dušenje javne poti `/shared-recipes/{token}` po izvornem naslovu (FR-047) — brez tega bi
+   * bilo mogoče žetone ugibati. Prevzeto po vzorcu javnih poti modula 009. */
+  RECIPES_PUBLIC_RATE_LIMIT: z.coerce.number().int().positive().default(60),
+  RECIPES_PUBLIC_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
 });
 
 export type Env = z.infer<typeof envSchema>;

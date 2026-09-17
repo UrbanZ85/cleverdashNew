@@ -1,0 +1,170 @@
+// Oblike, ki jih vrača `/api/v1/recipes*`. Prepisane iz pogodbe
+// (specs/013-recipes/contracts/openapi.yaml), ne generirane — enak dogovor kot pri modulih 008 in
+// 010.
+
+export const MEMBER_ROLES = ['view', 'edit'] as const;
+export type MemberRole = (typeof MEMBER_ROLES)[number];
+
+/** Besedilo ob vlogi v izbirniku. Loči, kaj vloga DA, ne kako se imenuje — "ogled" in "urejanje"
+ * sama po sebi ne povesta, ali sme soudeleženec označiti recept za skuhanega. */
+export const ROLE_LABELS: Record<MemberRole, string> = {
+  view: 'Samo ogled',
+  edit: 'Urejanje',
+};
+
+export const ROLE_HINTS: Record<MemberRole, string> = {
+  view: 'Recept vidi in ga lahko skuha, ne more pa spremeniti ničesar.',
+  edit: 'Lahko popravi vsebino, doda slike in označi, da je bilo skuhano. Deljenja in brisanja ne.',
+};
+
+export interface PersonSummary {
+  id: string;
+  displayName: string;
+  initials: string;
+}
+
+export interface RecipeMember extends PersonSummary {
+  role: MemberRole;
+  addedAt: string;
+  seenAt: string | null;
+}
+
+/** Kaj klicatelj sme. Prihaja s STREŽNIKA in se NE izpeljuje iz vloge na odjemalcu (člen XI):
+ * vmesnik, ki bi sklepal sam, bi se prej ali slej zmotil v smer, ki pokaže gumb, ki vrne 403. */
+export interface RecipeCapabilities {
+  readRecipe: boolean;
+  editRecipe: boolean;
+  manageImages: boolean;
+  markCooked: boolean;
+  rateRecipe: boolean;
+  deleteRecipe: boolean;
+  manageSharing: boolean;
+  managePublicLink: boolean;
+  leaveRecipe: boolean;
+}
+
+/** Izid branja izvorne strani. `none` = recept nima naslova, in to NI napaka. */
+export type SourceStatus = 'none' | 'ok' | 'skipped' | 'failed';
+
+export interface Recipe {
+  id: string;
+  title: string;
+  url: string | null;
+  sourceHost: string | null;
+  description: string | null;
+  ingredients: string[];
+  steps: string[];
+  prepMinutes: number | null;
+  servings: number | null;
+  tags: string[];
+  rating: number | null;
+  lastCookedAt: string | null;
+  cookCount: number;
+  coverImageId: string | null;
+  imageCount: number;
+  sourceStatus: SourceStatus;
+  sourceFetchedAt: string | null;
+  isOwn: boolean;
+  owner: PersonSummary | null;
+  members: RecipeMember[];
+  /** Soudeleženec recepta še ni odprl (FR-038). Za lastnika vedno `false`. */
+  isNew: boolean;
+  publicLink: { url: string; createdAt: string } | null;
+  lastModifiedBy: PersonSummary | null;
+  capabilities: RecipeCapabilities;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecipeImage {
+  id: string;
+  mimeType: string;
+  byteSize: number;
+  width: number | null;
+  height: number | null;
+  hasThumb: boolean;
+  caption: string | null;
+  isCover: boolean;
+  createdAt: string;
+}
+
+export interface RecipeDraft {
+  title: string;
+  url?: string | null;
+  description?: string | null;
+  ingredients?: string[];
+  steps?: string[];
+  prepMinutes?: number | null;
+  servings?: number | null;
+  tags?: string[];
+  rating?: number | null;
+  importFromUrl?: boolean;
+}
+
+export type RecipeSort = 'recent' | 'title' | 'rating' | 'cooked';
+export type RecipeScope = 'all' | 'own' | 'shared';
+
+export const SORT_LABELS: Record<RecipeSort, string> = {
+  recent: 'Nazadnje spremenjeni',
+  title: 'Po imenu',
+  rating: 'Po oceni',
+  cooked: 'Že dolgo ne',
+};
+
+/** Kaj pomeni izid branja izvorne strani — za uporabnika, ne za dnevnik (člen VI).
+ * `null` pomeni "ni česa povedati" in vmesnik takrat ne izriše ničesar. */
+export function describeSourceStatus(status: SourceStatus): string | null {
+  switch (status) {
+    case 'none':
+    case 'ok':
+      return null;
+    case 'skipped':
+      return 'Strani nismo obiskali — njen naslov ni prestal varnostne preverbe (npr. ni https).';
+    case 'failed':
+      return 'Strani ni bilo mogoče prebrati. Vsebino lahko vpišeš ročno ali poskusiš znova.';
+  }
+}
+
+/** "1 h 30 min" iz minut. Prazno za `null`, ker je "brez podatka" veljavno stanje in bi "0 min"
+ * bilo trditev, ki je nihče ni vpisal. */
+export function formatDuration(minutes: number | null): string {
+  if (minutes === null || minutes <= 0) return '';
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest} min`;
+  if (rest === 0) return `${hours} h`;
+  return `${hours} h ${rest} min`;
+}
+
+/**
+ * "Nazadnje: pred 3 tedni" oz. "Še nikoli".
+ *
+ * "Še nikoli" je POUDAREK in ne pomanjkljivost: razvrstitev "Že dolgo ne" postavi prav te na vrh
+ * (FR-053), ker je recept, ki ga človek shrani in nikoli ne skuha, natanko tisti, ki ga je vredno
+ * predlagati.
+ */
+export function formatLastCooked(iso: string | null): string {
+  if (!iso) return 'Še nikoli';
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return 'Danes';
+  if (days === 1) return 'Včeraj';
+  if (days < 7) return `Pred ${days} dnevi`;
+  if (days < 31) {
+    const weeks = Math.floor(days / 7);
+    return weeks === 1 ? 'Pred tednom' : `Pred ${weeks} tedni`;
+  }
+  const months = Math.floor(days / 30);
+  if (months < 12) return months === 1 ? 'Pred mesecem' : `Pred ${months} meseci`;
+  const years = Math.floor(days / 365);
+  return years === 1 ? 'Pred letom' : `Pred ${years} leti`;
+}
+
+/** Večvrstični vnos v seznam vnosov. Isto pravilo kot na strežniku (`splitLines`), tu zato, da
+ * urejevalnik pokaže, kaj bo shranjeno, še preden shrani. Strežnik ga vseeno uveljavi znova —
+ * odjemalčeva različica je udobje, ne varovalo. */
+export function splitLines(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*(?:[-*•‣·]|\d+[.)])\s+/, '').trim())
+    .filter((line) => line.length > 0);
+}

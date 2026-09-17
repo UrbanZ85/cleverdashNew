@@ -84,6 +84,25 @@ export const APP_ROUTES: Routes = [
     canActivate: [authGuard, tabGuard],
   },
   {
+    path: 'recipes',
+    loadComponent: () => import('./features/recipes/recipes.page.js').then((m) => m.RecipesPage),
+    canActivate: [authGuard, tabGuard],
+  },
+  // Urejevalnik je podstran zavihka `recipes` — dosegljiv samo prek seznama, ki je sam tab-gated
+  // (tabGuard preverja TOČNO ujemanje poti z registrom), enako kot podstrani "notes" in "cameras".
+  //
+  // `recipes/new` NIMA svojega vnosa, ampak se ujame kot `:recipeId = 'new'`. To ni varčevanje z
+  // vrsticami: ob prvem shranjevanju se naslov zamenja na `recipes/<id>`, in če bi bila to DRUGA
+  // definicija poti, bi Angular urejevalnik zavrgel in ustvaril novega — slika, ki bi se ravno
+  // nalagala, bi se pripela receptu, ki ga novi primerek še ne prikazuje. Ista odločitev in isti
+  // razlog kot pri `notes/:noteId` zgoraj.
+  {
+    path: 'recipes/:recipeId',
+    loadComponent: () =>
+      import('./features/recipes/recipe-editor.page.js').then((m) => m.RecipeEditorPage),
+    canActivate: [authGuard],
+  },
+  {
     path: 'timesheet',
     loadComponent: () => import('./features/timesheet/timesheet.page.js').then((m) => m.TimesheetPage),
     canActivate: [authGuard, tabGuard],
@@ -133,6 +152,18 @@ export const APP_ROUTES: Routes = [
   {
     path: 'u/:token',
     loadComponent: () => import('./features/file-sharing/upload/file-drop.page.js').then((m) => m.FileDropPage),
+  },
+  // 013: TRETJA javna pot v tej aplikaciji. Zanjo velja vse, kar je zapisano pri `d/:token` in
+  // `u/:token` zgoraj — brez `authGuard`, brez `tabGuard`, pred lovilcem `**`. Pot je svoja (`/r/`)
+  // namenoma: to so trije različni zasloni s tremi različnimi posledicami, in nihče, ki bere naslov
+  // v pogovoru ali v dnevniku, ne sme biti v dvomu, kateri je bil v igri.
+  //
+  // Za razliko od `/d/` in `/u/` ta stran NE more spremeniti ničesar — je izključno bralna
+  // (FR-043), zato je od vseh treh javnih poti najmanj nevarna.
+  {
+    path: 'r/:token',
+    loadComponent: () =>
+      import('./features/recipes/public/recipe-public.page.js').then((m) => m.RecipePublicPage),
   },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
   { path: '**', redirectTo: 'dashboard' },

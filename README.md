@@ -275,6 +275,59 @@ obema identifikatorjema. Glava je izključno za prijavljenega človeka: `X-API-K
 
 ---
 
+### Recepti (013)
+
+Kuharica, v kateri je recept lahko **povezava, prepis z babičinega lista ali oboje**. Naslov
+(URL) je namenoma **neobvezen** — obvezno je samo ime — in prav to loči modul od Shranjenih
+linkov (008), kjer je naslov edino obvezno polje. Poleg imena, opisa in oznak nosi recept
+sestavine, postopek, čas priprave, porcije, oceno in zgodovino kuhanja, k njemu pa je mogoče
+pripeti slike.
+
+Ko uporabnik prilepi naslov, strežnik stran obišče in iz nje poskusi prebrati recept, označen
+po `schema.org/Recipe` — sestavine in korake torej v najboljšem primeru ni treba prepisovati.
+Uvoz je **predlog, ne dejstvo**: izpolni samo prazna polja in nikoli ne prepiše tistega, kar je
+vpisal človek.
+
+Recept se **deli na dva načina**, ki sta v vmesniku strogo ločena:
+
+- **Z uporabnikom te namestitve** — v vlogi *ogled* ali *urejanje*. Soudeleženec z urejanjem sme
+  popraviti vsebino, dodati slike in označiti, da je bilo skuhano; deljenja, brisanja in
+  **ocene** ne. Ocena je lastnikova, ker bi ocena na članstvu odprla povprečja in s tem
+  recenzijski sistem, ki ga nihče ni naročil.
+- **Z javno povezavo** za nekoga, ki **računa nima in ga ne bo dobil** — tretja javna pot v tej
+  aplikaciji, ob `/d/` in `/u/` iz 009. Stran na `/r/<žeton>` je **izključno bralna** in pokaže
+  samo ime, opis, sestavine, postopek, čas, porcije, oznake in slike. Ne pokaže lastnika,
+  soudeležencev, ocene, zgodovine kuhanja ne katerega koli drugega recepta. Povezavo je mogoče
+  kadar koli preklicati; preklic je takojšen in nepovraten, nova izdaja pa dobi nov naslov.
+
+Štiri odločitve, ki jih je vredno poznati, preden se kdo loti sprememb:
+
+- **Slike so v bazi, ne na disku.** Nasprotno od deljenja datotek (009) in enako kot zvok pri
+  beležkah (007): fotografija s telefona je nekaj MB, odločilno pa ni prostor, ampak to, da se
+  slika in recept ne smeta raziti — na disku bi bila slika zunaj varnostne kopije baze in bi
+  lahko preživela svoj recept. Seznam nikoli ne prenese izvirnikov: ob nalaganju nastane
+  pomanjšava, ki jo izračuna **brskalnik** (`<canvas>`), ker bi `sharp` na strežniku pomenil
+  izvorni gradnik s prevajanjem ob vsaki namestitvi.
+- **Vrsta slike se ugotovi iz vsebine, ne iz imena.** Preveri se podpis datoteke; glava
+  `Content-Type`, ki jo pošlje odjemalec, je izjava in ne dejstvo. Brez tega bi bil HTML, ki bi
+  se naložil kot "slika" in se pozneje postregel z naše domene, shranjen XSS. Isto preverbo
+  prestane tudi pomanjšava, ki pride od odjemalca.
+- **Trije obsegi, ne dva.** `recipes:share` je ločen od `recipes:write`, ker je deljenje edina
+  skupina operacij, ki odpre dostop nekomu drugemu — pri javni povezavi komur koli. Z enim
+  obsegom bi "n8n sme shraniti recept" nujno pomenilo tudi "n8n sme recept razobesiti na
+  internet".
+- **Zavrnitvi sta dve in vsaka ima svoj status.** Tujec dobi 404 (obstoja tujega zapisa ne
+  razkrijemo), soudeleženec s premajhno vlogo pa 403 — recept vidi in mora izvedeti, da naj za
+  urejanje prosi lastnika.
+
+Zavihek zna tudi **kuhati**: v načinu kuhanja so sestavine in koraki v veliki pisavi, brez menija
+in brez orodnih vrstic, zaslon pa ne ugasne, dokler je odprt. Odkljukani koraki so stanje tistega
+kuhanja in se v recept ne shranijo. Razvrstitev *"Že dolgo ne"* postavi na vrh recepte, ki še
+nikoli niso bili skuhani — ti so navadno prav tisti, ki jih je vredno predlagati.
+
+Pogodba je v [`specs/013-recipes/contracts/openapi.yaml`](specs/013-recipes/contracts/openapi.yaml),
+obsegi so `recipes:read`, `recipes:write` in `recipes:share`.
+
 **Stack:** Ionic 8 + Angular 20 (web in Android prek Capacitorja), Node.js 22 + Express 5 +
 Mongoose 8, MongoDB 7, Puppeteer (headless Chromium za 002), Docker Compose + Caddy
 (samodejni TLS).

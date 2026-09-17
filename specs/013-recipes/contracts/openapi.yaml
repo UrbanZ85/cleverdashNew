@@ -1,0 +1,908 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash — Recepti
+  version: 1.0.0
+  description: |
+    REST pogodba za zavihek Recepti (013). Samostojna pogodba pod `/recipes` in
+    `/shared-recipes`, po istem vzorcu kot 003, 007, 009 in 010 — ne podvaja poti iz 001
+    (`/auth/*`, `/devices`, `/api-keys`, `/settings`, `/health`) ne `/users` iz 010, ki se v
+    produkciji strežejo iz istega Express app-a.
+
+    ## Kaj je pri tem modulu drugače
+
+    Dve lastnosti, ki ju noben prejšnji modul nima hkrati:
+
+    1. **Zapis bere več kot en uporabnik** (kot 010): lastništvo (`ownerId`) in vidnost
+       (`members`) sta dvoje.
+    2. **Del pogodbe je JAVEN** (kot 009): `/shared-recipes/*` ne zahteva nobenih poverilnic.
+
+    ### Statusi, ki iz tega sledijo
+
+    - **`404`** — klicatelj ni ne lastnik ne soudeleženec. Obstoj tujega recepta ni podatek, ki
+      bi ga API razkril (vzorec 004). Isti status vrne neveljaven identifikator.
+    - **`403`** — klicatelj JE soudeleženec, a njegova stopnja tega dejanja ne dovoli. Tu `404`
+      ne bi skril ničesar (recept ima v svojem prikazu), samo zavajal bi.
+    - **`409`** — recept je dosegel zgornjo mejo slik. STANJE zapisa, ki mine, ne lastnost
+      klicatelja: odjemalec kontrole ne skrije, ampak pove, naj se katera slika najprej izbriše.
+    - **`413`** — slika presega `RECIPES_IMAGE_MAX_MB`. Ločen od `400`, ker je odziv drugačen:
+      pomanjšaj, ne izberi druge datoteke.
+
+    ## Dve stopnji soudeleženca
+
+    | stopnja | sme |
+    |---|---|
+    | `view` | brati |
+    | `edit` | brati, urejati vsebino in slike, označiti "skuhano" |
+
+    Lastnik sme vse razen zapustiti svoj recept — tega ne more, lahko ga samo izbriše.
+
+    **Ocena je LASTNIKOVA** in je ne sme spremeniti niti `edit`. Ocena na članstvu bi odprla
+    povprečja in s tem recenzijski sistem, ki ni v obsegu (research.md §3).
+
+    Stopnji sta DVE in ne tri kot v 010: vmesna stopnja `check` tam obstaja, ker je odkljukanje
+    opravila smiselno ločeno od urejanja besedila. Pri receptu take vmesne poteze ni.
+
+    ## Trije obsegi
+
+    | obseg | pokriva |
+    |---|---|
+    | `recipes:read` | branje receptov in slik |
+    | `recipes:write` | pisanje vsebine, slike, "skuhano", uvoz, odhod z recepta |
+    | `recipes:share` | soudeleženci IN izdaja/preklic javne povezave |
+
+    `recipes:share` je ločen od `recipes:write` namerno: to je edina skupina operacij, ki odpre
+    dostop človeku, ki ni klicatelj — pri javni povezavi celo komur koli. Z enim obsegom bi
+    "n8n sme shraniti recept" nujno pomenilo tudi "n8n sme recept razobesiti na internet".
+
+    Odhod z recepta (`/leave`) je pod `write` in ne `share`: dostopa nikomur ne odpre, ampak ga
+    samemu sebi zapre.
+
+    ## Naslov (URL) je NEOBVEZEN
+
+    To je glavna pomenska razlika do modula 008, kjer je `url` edino obvezno polje. Recept z
+    babičinega lista nima naslova in ga ne bo imel; obvezno je samo `title`.
+
+    V telesih zahtev zato veljajo TRI različne vrednosti in se ne smejo zliti:
+    izpuščeno polje = "ne spreminjaj", `null` ali `""` = "pobriši", niz = "nastavi".
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: recipes
+    description: Recepti — prijavljeni dostop
+  - name: images
+    description: Slike receptov
+  - name: sharing
+    description: Deljenje med uporabniki in javna povezava
+  - name: public
+    description: JAVNE poti — brez poverilnic
+
+security:
+  - bearerAuth: []
+
+paths:
+  /recipes:
+    get:
+      tags: [recipes]
+      summary: Seznam receptov — lastnih in deljenih
+      description: |
+        Privzeto (`scope=all`) vrne LASTNE in DELJENE skupaj, z `isOwn` kot razliko. Uporabnik,
+        ki mu je nekdo ravno delil recept, ga mora videti brez tega, da bi vedel za obstoj
+        filtra.
+
+        Iskanje (`q`) teče čez ime, opis, SESTAVINE in oznake hkrati in je neobčutljivo na
+        velike črke in šumnike: `buca` najde `buča`. Korakov ne zajame — ti bi prinesli besede
+        kot "peci" in "premešaj", po katerih bi iskanje vrnilo vse.
+      operationId: listRecipes
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 200 } }
+        - { name: tag, in: query, schema: { type: string, maxLength: 40 } }
+        - name: scope
+          in: query
+          schema: { type: string, enum: [all, own, shared], default: all }
+        - name: sort
+          in: query
+          description: |
+            `cooked` postavi NIKOLI kuhane na vrh, za njimi najdlje nekuhane — recept, ki ga
+            človek shrani in nikoli ne skuha, je natanko tisti, ki ga je vredno predlagati.
+          schema: { type: string, enum: [recent, title, rating, cooked], default: recent }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses:
+        '200':
+          description: Seznam
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recipes]
+                properties:
+                  recipes:
+                    type: array
+                    items: { $ref: '#/components/schemas/Recipe' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      tags: [recipes]
+      summary: Nov recept
+      description: |
+        `title` je EDINO obvezno polje.
+
+        Kadar je podan `url` in `importFromUrl` ni `false`, strežnik po nastanku zapisa obišče
+        stran in iz nje poskusi prebrati recept (schema.org/Recipe). **Zapis nastane PRED
+        branjem in se ob neuspehu NE razveljavi** — izid je v `sourceStatus`, ne v statusu
+        odgovora. `201` velja tudi, kadar strani ni bilo mogoče prebrati.
+
+        Uvoz ob nastanku izpolni samo PRAZNA polja: uvožena vrednost nikoli ne prepiše tiste, ki
+        jo je vpisal uporabnik.
+      operationId: createRecipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecipeInput' }
+      responses:
+        '201':
+          description: Nastal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /recipes/{recipeId}:
+    parameters:
+      - $ref: '#/components/parameters/RecipeId'
+    get:
+      tags: [recipes]
+      summary: En recept
+      description: |
+        **Ima stranski učinek**: odprtje pobriše oznako "novo" za klicatelja (`isNew`), zato je
+        v TEM odgovoru `isNew` vedno `false`. Oznaka je vidna v seznamu, ki je ne briše.
+      operationId: getRecipe
+      responses:
+        '200':
+          description: Recept
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    patch:
+      tags: [recipes]
+      summary: Delna posodobitev
+      description: |
+        Izpuščeno polje ostane, `null` ga pobriše.
+
+        `rating` zahteva LASTNIŠTVO in ne le pravice urejanja — soudeleženec `edit` dobi `403`
+        samo za to polje.
+
+        Sprememba `url` NE sproži uvoza: popravek naslova ne sme pomeniti tihega odhodnega
+        klica. Za to je `POST /recipes/{recipeId}/import`.
+      operationId: updateRecipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecipePatch' }
+      responses:
+        '200':
+          description: Posodobljen
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      tags: [recipes]
+      summary: Izbriši recept
+      description: |
+        Samo lastnik. Izbriše tudi vse slike recepta in ubije njegovo javno povezavo.
+
+        Pri deljenem receptu recept izgine VSEM — kopij ni. To je posledica deljenja, ne napaka,
+        in odjemalec mora na to opozoriti pred potrditvijo.
+      operationId: deleteRecipe
+      responses:
+        '204': { description: Izbrisan }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{recipeId}/seen:
+    parameters:
+      - $ref: '#/components/parameters/RecipeId'
+    post:
+      tags: [recipes]
+      summary: Pobriši oznako "novo" za klicatelja
+      description: Za lastnika prazno dejanje in NE napaka — lastnik med soudeleženci ni.
+      operationId: markRecipeSeen
+      responses:
+        '200':
+          description: Recept
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{recipeId}/cooked:
+    parameters:
+      - $ref: '#/components/parameters/RecipeId'
+    post:
+      tags: [recipes]
+      summary: Označi, da je bilo skuhano
+      description: |
+        Edina pot, ki spremeni `lastCookedAt` in `cookCount`. Urejanje recepta ju NE spremeni:
+        recept, ki bi se ob vsakem popravku tipkarske napake označil za skuhanega, bi
+        razvrstitev "že dolgo ne" naredil neuporabno.
+
+        Vnos za nazaj (`cookedAt` v preteklosti) NE pomakne datuma nazaj, če je bilo med tem
+        kuhano pozneje; števec se poveča v obeh primerih. Datum v prihodnosti je `400`.
+      operationId: markRecipeCooked
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cookedAt: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Recept
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{recipeId}/import:
+    parameters:
+      - $ref: '#/components/parameters/RecipeId'
+    post:
+      tags: [recipes]
+      summary: Ponovno preberi izvorno stran
+      description: |
+        EDINI način, da se vsebina uvozi po nastanku zapisa. Samodejnega ponovnega branja ni,
+        ker bi pomenilo klicanje tujih strani brez povoda.
+
+        **`200` tudi ob neuspehu**: spodletelo branje NI napaka zahteve. Klicatelj je klical, da
+        izve izid, in `502` bi mu vzel prav tisti podatek — izid je v `sourceStatus`.
+
+        `overwrite: false` (privzeto) izpolni samo prazna polja. `overwrite: true` prepiše tudi
+        izpolnjena, RAZEN tistih, ki jih na strani ni: prazna uvožena vrednost nikoli ne izbriše
+        obstoječe.
+      operationId: importRecipe
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                overwrite: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Recept z novim `sourceStatus`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '400':
+          description: Recept nima naslova, s katerega bi bilo mogoče uvažati
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────────── slike ───────────────────────────
+
+  /recipes/{recipeId}/images:
+    parameters:
+      - $ref: '#/components/parameters/RecipeId'
+    get:
+      tags: [images]
+      summary: Seznam slik recepta
+      description: Bajtov NE vrne — samo opis. Za bajte je pot z `{imageId}`.
+      operationId: listRecipeImages
+      responses:
+        '200':
+          description: Seznam
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [images]
+                properties:
+                  images:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecipeImage' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    post:
+      tags: [images]
+      summary: Naloži sliko
+      description: |
+        Telo je SUROVA slika (ne multipart, ne JSON) — ena datoteka na zahtevo ne potrebuje
+        ovoja, ki bi mu na strežniku sledila nova odvisnost.
+
+        **Vrsta se ugotovi iz VSEBINE** (podpis datoteke), ne iz glave `Content-Type` in ne iz
+        imena. Glava, ki je v nasprotju z vsebino, ne pomeni napake — vsebina zmaga. Dokument,
+        ki ni JPEG/PNG/WebP, je `400`, tudi če je glava `image/jpeg`.
+
+        Prva slika recepta postane NASLOVNA sama od sebe.
+      operationId: uploadRecipeImage
+      parameters:
+        - { name: caption, in: query, schema: { type: string, maxLength: 200 } }
+        - name: width
+          in: query
+          description: Mere izmeri odjemalec; strežnik slike NE dekodira.
+          schema: { type: integer, minimum: 1 }
+        - { name: height, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: cover, in: query, schema: { type: boolean } }
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+      responses:
+        '201':
+          description: Naložena
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeImage' }
+        '400':
+          description: Vsebina ni slika dovoljene vrste
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Recept je dosegel zgornjo mejo slik
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '413':
+          description: Slika presega `RECIPES_IMAGE_MAX_MB`
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /recipes/{recipeId}/images/{imageId}:
+    parameters:
+      - $ref: '#/components/parameters/RecipeId'
+      - $ref: '#/components/parameters/ImageId'
+    get:
+      tags: [images]
+      summary: Bajti slike
+      description: |
+        `variant=thumb` postreže pomanjšavo, kadar obstaja, SICER IZVIRNIK — odjemalcu ni treba
+        vedeti, katero je dobil, in seznam deluje v obeh primerih.
+
+        Odgovor nosi `Content-Type` IZ ZAPISA (iz podpisa datoteke ob nalaganju),
+        `X-Content-Type-Options: nosniff` in `Cache-Control: private`.
+      operationId: getRecipeImage
+      parameters:
+        - { name: variant, in: query, schema: { type: string, enum: [thumb] } }
+      responses:
+        '200':
+          description: Slika
+          headers:
+            X-Content-Type-Options: { schema: { type: string }, description: Vedno `nosniff` }
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    patch:
+      tags: [images]
+      summary: Podnapis ali nastavi kot naslovno
+      operationId: updateRecipeImage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                caption: { type: [string, 'null'], maxLength: 200 }
+                cover: { type: boolean }
+      responses:
+        '200':
+          description: Recept
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      tags: [images]
+      summary: Izbriši sliko
+      description: |
+        Brisanje NASLOVNE prenese naslovno na najstarejšo preostalo ali jo postavi na `null`.
+        Recept brez naslovne slike je veljaven recept.
+      operationId: deleteRecipeImage
+      responses:
+        '204': { description: Izbrisana }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{recipeId}/images/{imageId}/thumb:
+    parameters:
+      - $ref: '#/components/parameters/RecipeId'
+      - $ref: '#/components/parameters/ImageId'
+    put:
+      tags: [images]
+      summary: Pomanjšava za seznam
+      description: |
+        Pomanjšavo izračuna ODJEMALEC (`<canvas>`) in jo pošlje v LOČENI zahtevi, ker je telo
+        surovo in dveh teles ena zahteva nima.
+
+        Pomanjšava je za strežnik NEPREVERJEN VNOS in gre skozi isto preverbo podpisa kot
+        izvirnik, le z nižjo mejo (`RECIPES_THUMB_MAX_KB`).
+
+        Neobvezna: brez nje `variant=thumb` postreže izvirnik.
+      operationId: uploadRecipeThumb
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+      responses:
+        '204': { description: Shranjena }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────────── deljenje ───────────────────────────
+
+  /recipes/{recipeId}/members/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/RecipeId'
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [sharing]
+      summary: Dodaj soudeleženca ali mu spremeni vlogo
+      description: |
+        Idempotentno: ponovni klic za istega človeka spremeni vlogo in NE doda drugega vnosa.
+
+        `400`, kadar je `userId` lastnik (lastništvo ni stopnja soudeleženca) ali kadar tak
+        uporabnik ne obstaja oziroma se še nikoli ni prijavil — ponudili bi dostop, ki ga
+        prejemnik ne more uporabiti.
+      operationId: setRecipeMember
+      security:
+        - bearerAuth: [recipes:share]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [view, edit] }
+      responses:
+        '200':
+          description: Recept
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      tags: [sharing]
+      summary: Odvzemi dostop
+      description: Takojšen. Idempotenten — odstranitev nekoga, ki ni soudeleženec, ni napaka.
+      operationId: removeRecipeMember
+      security:
+        - bearerAuth: [recipes:share]
+      responses:
+        '200':
+          description: Recept
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{recipeId}/leave:
+    parameters:
+      - $ref: '#/components/parameters/RecipeId'
+    post:
+      tags: [sharing]
+      summary: Zapusti deljen recept
+      description: |
+        Pod `recipes:write` in NE `recipes:share`: odhod dostopa nikomur ne odpre, ampak ga
+        samemu sebi zapre.
+
+        Lastnik dobi `403` — svojega recepta ne more zapustiti, lahko ga samo izbriše.
+
+        Vrne `204` in ne recepta: klicatelj ga po tem ne sme več videti.
+      operationId: leaveRecipe
+      responses:
+        '204': { description: Zapuščen }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{recipeId}/public-link:
+    parameters:
+      - $ref: '#/components/parameters/RecipeId'
+    post:
+      tags: [sharing]
+      summary: Izdaj javno povezavo
+      description: |
+        Samo lastnik, pod `recipes:share`.
+
+        Ponovni klic pri ŽIVI povezavi vrne OBSTOJEČO in ne izda druge: dva naslova do istega
+        recepta bi pomenila, da preklic enega pusti drugega pri življenju, lastnik pa bi mislil,
+        da je zaprl dostop. Za nov žeton je treba starega najprej preklicati.
+      operationId: createRecipePublicLink
+      security:
+        - bearerAuth: [recipes:share]
+      responses:
+        '201':
+          description: Recept z `publicLink`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      tags: [sharing]
+      summary: Prekliči javno povezavo
+      description: |
+        Takojšen in NEPOVRATEN. Nova izdaja dobi NOV žeton; stari ne oživi.
+      operationId: revokeRecipePublicLink
+      security:
+        - bearerAuth: [recipes:share]
+      responses:
+        '200':
+          description: Recept brez `publicLink`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────────── JAVNE poti ───────────────────────────
+
+  /shared-recipes/{token}:
+    parameters:
+      - $ref: '#/components/parameters/ShareToken'
+    get:
+      tags: [public]
+      summary: Deljen recept — BREZ prijave
+      description: |
+        Odpre ga kdor koli, ki ima naslov. Poverilnic ne zahteva in jih ne sme dobiti.
+
+        **Odgovor je strogo omejen** (glej `PublicRecipe`): ne razkrije lastnika,
+        soudeležencev, ocene, zgodovine kuhanja, identifikatorja recepta ne žetona samega.
+
+        **Neveljaven, preklican, neobstoječ in izbrisan žeton dajo ENAK `404` z istim
+        besedilom.** Različni odgovori bi povedali, da je žeton nekoč obstajal.
+
+        Odgovor nosi `Cache-Control: no-store` — predpomnjen odgovor bi pomenil, da preklic ne
+        učinkuje takoj — in `X-Frame-Options: DENY`.
+
+        Dušeno po izvornem naslovu (`429`).
+      operationId: getSharedRecipe
+      security: []
+      responses:
+        '200':
+          description: Recept
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicRecipe' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /shared-recipes/{token}/images/{imageId}:
+    parameters:
+      - $ref: '#/components/parameters/ShareToken'
+      - $ref: '#/components/parameters/ImageId'
+    get:
+      tags: [public]
+      summary: Bajti slike deljenega recepta — BREZ prijave
+      description: |
+        Slika mora pripadati natanko temu receptu; žeton enega recepta NE odpre slik drugega.
+
+        Pot je vezana na ŽETON in ne na identifikator recepta: pot brez žetona bi bila odprta pot
+        do vsake slike v bazi, ki bi jo bilo mogoče preiskati z ugibanjem `ObjectId` — ta pa nosi
+        časovni žig in števec in zato ni naključen.
+      operationId: getSharedRecipeImage
+      security: []
+      parameters:
+        - { name: variant, in: query, schema: { type: string, enum: [thumb] } }
+      responses:
+        '200':
+          description: Slika
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Keycloakov dostopni žeton (relay, preverjen v živo), ali API ključ prek `X-Api-Key`.
+        Klicatelj z API ključem nima osebe — lastnik se razreši enako kot pri 009/010.
+
+  parameters:
+    RecipeId:
+      name: recipeId
+      in: path
+      required: true
+      schema: { type: string }
+    ImageId:
+      name: imageId
+      in: path
+      required: true
+      schema: { type: string }
+    ShareToken:
+      name: token
+      in: path
+      required: true
+      description: 22 znakov `base64url` = 16 naključnih bajtov.
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{22}$' }
+
+  responses:
+    BadRequest:
+      description: Neveljavna zahteva
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Klicatelj recept vidi, a mu vloga tega dejanja ne dovoli
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Recepta ni ALI klicatelj ni ne lastnik ne soudeleženec
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: Dušenje javne poti
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457. `detail` je namenjen UPORABNIKU in pove, kaj storiti.
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        correlationId: { type: string }
+
+    Person:
+      type: object
+      description: |
+        Ime se bere iz imenika ob izpisu in se NE hrani v receptu — preimenovanje v Keycloaku ne
+        sme pustiti zamrznjene kopije. E-pošte tu NI: pri že dodanih soudeležencih bi bila le
+        naslov, razdan vsem, ki recept vidijo.
+      required: [id, displayName, initials]
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        initials: { type: string }
+
+    RecipeMember:
+      allOf:
+        - $ref: '#/components/schemas/Person'
+        - type: object
+          required: [role, addedAt]
+          properties:
+            role: { type: string, enum: [view, edit] }
+            addedAt: { type: string, format: date-time }
+            seenAt:
+              type: [string, 'null']
+              format: date-time
+              description: '`null` = soudeleženec recepta še ni odprl.'
+
+    Capabilities:
+      type: object
+      description: |
+        Kaj sme TA klicatelj. Vmesnik iz tega izriše kontrole in ničesar ne ugiba — kontrola, ki
+        ob kliku vrne `403`, je napaka vmesnika, ne strežnika.
+      required:
+        [readRecipe, editRecipe, manageImages, markCooked, rateRecipe, deleteRecipe, manageSharing, managePublicLink, leaveRecipe]
+      properties:
+        readRecipe: { type: boolean }
+        editRecipe: { type: boolean }
+        manageImages: { type: boolean }
+        markCooked: { type: boolean }
+        rateRecipe: { type: boolean }
+        deleteRecipe: { type: boolean }
+        manageSharing: { type: boolean }
+        managePublicLink: { type: boolean }
+        leaveRecipe: { type: boolean }
+
+    Recipe:
+      type: object
+      required: [id, title, ingredients, steps, tags, cookCount, imageCount, sourceStatus, isOwn, members, isNew, capabilities, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        title: { type: string, maxLength: 200 }
+        url: { type: [string, 'null'], maxLength: 2048 }
+        sourceHost:
+          type: [string, 'null']
+          description: Gostitelj brez `www.`, izpeljan iz `url`. Ni shranjen — naslov je resnica.
+        description: { type: [string, 'null'], maxLength: 5000 }
+        ingredients:
+          type: array
+          maxItems: 100
+          items: { type: string, maxLength: 200 }
+          description: Besedilo, ne razčlenjene količine — "400 g buče" je en vnos.
+        steps:
+          type: array
+          maxItems: 100
+          items: { type: string, maxLength: 2000 }
+        prepMinutes: { type: [integer, 'null'], minimum: 1, maximum: 10080 }
+        servings: { type: [integer, 'null'], minimum: 1, maximum: 100 }
+        tags:
+          type: array
+          maxItems: 20
+          items: { type: string, maxLength: 40 }
+          description: Prikazna oblika, kot jo je vpisal uporabnik. Filter se ujema neobčutljivo.
+        rating:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 5
+          description: LASTNIKOVA ocena. Soudeleženec je ne spreminja.
+        lastCookedAt:
+          type: [string, 'null']
+          format: date-time
+          description: '`null` = nikoli. Pri `sort=cooked` se uvrsti PRED najstarejši datum.'
+        cookCount: { type: integer, minimum: 0 }
+        coverImageId: { type: [string, 'null'] }
+        imageCount: { type: integer, minimum: 0 }
+        sourceStatus:
+          type: string
+          enum: [none, ok, skipped, failed]
+          description: |
+            `none` = recept nima naslova (NI napaka). `skipped` = naslova nismo obiskali, ker ni
+            prestal varovala odhodnih naslovov. `failed` = poskusili smo in ni šlo. `ok` = stran
+            smo prebrali — tudi kadar v njej ni bilo označenega recepta.
+        sourceFetchedAt: { type: [string, 'null'], format: date-time }
+        isOwn: { type: boolean }
+        owner: { oneOf: [{ $ref: '#/components/schemas/Person' }, { type: 'null' }] }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/RecipeMember' }
+        isNew:
+          type: boolean
+          description: Soudeleženec recepta še ni odprl. Za lastnika vedno `false`.
+        publicLink:
+          oneOf:
+            - type: object
+              required: [url, createdAt]
+              properties:
+                url: { type: string }
+                createdAt: { type: string, format: date-time }
+            - type: 'null'
+          description: Sestavljen iz `PUBLIC_BASE_URL` ob branju, ne shranjen.
+        lastModifiedBy: { oneOf: [{ $ref: '#/components/schemas/Person' }, { type: 'null' }] }
+        capabilities: { $ref: '#/components/schemas/Capabilities' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    RecipeImage:
+      type: object
+      required: [id, mimeType, byteSize, hasThumb, isCover, createdAt]
+      properties:
+        id: { type: string }
+        mimeType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+          description: Iz PODPISA datoteke, nikoli iz glave, ki jo je poslal odjemalec.
+        byteSize: { type: integer }
+        width: { type: [integer, 'null'] }
+        height: { type: [integer, 'null'] }
+        hasThumb: { type: boolean }
+        caption: { type: [string, 'null'], maxLength: 200 }
+        isCover: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    LinesInput:
+      description: |
+        Seznam nizov ALI en niz z novimi vrsticami. Vmesnik pošlje seznam, n8n in prilepljeno
+        besedilo pogosto en niz; oboje je isti podatek. Prazne vrstice in vodilne oznake seznama
+        (`-`, `*`, `1.`) se odstranijo.
+      oneOf:
+        - type: string
+        - type: array
+          items: { type: string }
+
+    RecipeInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        url: { type: [string, 'null'], maxLength: 2048 }
+        description: { type: [string, 'null'], maxLength: 5000 }
+        ingredients: { $ref: '#/components/schemas/LinesInput' }
+        steps: { $ref: '#/components/schemas/LinesInput' }
+        prepMinutes: { type: [integer, 'null'], minimum: 1, maximum: 10080 }
+        servings: { type: [integer, 'null'], minimum: 1, maximum: 100 }
+        tags:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        rating: { type: [integer, 'null'], minimum: 1, maximum: 5 }
+        importFromUrl:
+          type: boolean
+          default: true
+          description: |
+            Ali naj strežnik ob nastanku obišče stran. Izklopljivo, ker odhodni klic ne sme biti
+            neizogiben. Brez `url` nima učinka.
+
+    RecipePatch:
+      type: object
+      description: Vsa polja neobvezna. Izpuščeno = "ne spreminjaj", `null` = "pobriši".
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        url: { type: [string, 'null'], maxLength: 2048 }
+        description: { type: [string, 'null'], maxLength: 5000 }
+        ingredients: { $ref: '#/components/schemas/LinesInput' }
+        steps: { $ref: '#/components/schemas/LinesInput' }
+        prepMinutes: { type: [integer, 'null'] }
+        servings: { type: [integer, 'null'] }
+        tags:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        rating:
+          type: [integer, 'null']
+          description: Zahteva LASTNIŠTVO — soudeleženec `edit` dobi `403` samo za to polje.
+
+    PublicRecipe:
+      type: object
+      description: |
+        Kar vidi kdor koli z javno povezavo. **Seznam polj je izčrpen in normativen.**
+
+        Česa tu NI in nikoli ne sme biti: `id`, `ownerId`, `owner`, `members`, `rating`,
+        `lastCookedAt`, `cookCount`, `lastModifiedBy`, `capabilities`, `publicLink` in
+        `searchText`. Prvi trije bi razkrili ljudi, naslednji trije navade, `publicLink` pa bi
+        žeton vrnil v telesu odgovora, od koder bi ga pobral vsak posrednik in vsak dnevnik.
+      required: [title, ingredients, steps, tags, images, updatedAt]
+      properties:
+        title: { type: string }
+        url: { type: [string, 'null'] }
+        description: { type: [string, 'null'] }
+        ingredients: { type: array, items: { type: string } }
+        steps: { type: array, items: { type: string } }
+        prepMinutes: { type: [integer, 'null'] }
+        servings: { type: [integer, 'null'] }
+        tags: { type: array, items: { type: string } }
+        coverImageId: { type: [string, 'null'] }
+        images:
+          type: array
+          items:
+            type: object
+            required: [id]
+            properties:
+              id: { type: string }
+              caption: { type: [string, 'null'] }
+        updatedAt: { type: string, format: date-time }

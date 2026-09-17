@@ -34,6 +34,8 @@ import { startFileShareCleanup } from './modules/file-sharing/services/cleanup.s
 import { todosRouter } from './modules/todos/router.js';
 import { savedLinksRouter, savedLinkGroupsRouter } from './modules/saved-links/router.js';
 import { meteoRouter } from './modules/meteo/router.js';
+import { recipesRouter } from './modules/recipes/router.js';
+import { recipesPublicRouter } from './modules/recipes/public.router.js';
 import { usersRouter } from './platform/users/router.js';
 import { registerTodosTabDetail } from './modules/todos/tab-detail.js';
 
@@ -100,6 +102,11 @@ export async function createApp() {
   // (`/saved-links*` in `/saved-link-groups*`) — enako kot `camerasRouter`/`cameraGroupsRouter`.
   apiV1Router.use(savedLinksRouter);
   apiV1Router.use(savedLinkGroupsRouter);
+  // 013: kuharica. Dva usmerjevalnika iz istega razloga kot pri 009 — prijavljena polovica pod
+  // `requireScopes` in JAVNA polovica (`/shared-recipes/*`), ki ga ne kliče. Javni je vpet tu in
+  // ne pred vratarji: tako gre še vedno skozi korelacijo, idempotentnost in obravnavo napak.
+  apiV1Router.use(recipesRouter);
+  apiV1Router.use(recipesPublicRouter);
   // 010: imenik uporabnikov je SKUPNA zmogljivost, ne del modula opravil — izbira osebe ni
   // pojem opravil in mora preživeti odstranitev katerega koli modula (člen I). Zato živi v
   // platform/users/, tako kot `/tabs` in `/devices`.

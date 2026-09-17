@@ -19,6 +19,7 @@ const TAB_REGISTRY_ICONS = [
   'cloud-upload-outline', // file-sharing — Deljenje datotek (009, privzeto izklopljen)
   'checkbox-outline', // todos — Opravila (010)
   'bookmarks-outline', // saved-links — Shranjeni linki (008)
+  'restaurant-outline', // recipes — Recepti (013)
   'settings-outline', // settings — Nastavitve
 ];
 
@@ -76,6 +77,33 @@ const ACTING_USER_ICONS = [
   'checkmark', // trenutna izbira v seznamu
 ];
 
+// 013: ikone, ki jih zavihek "Recepti" uporablja v svojih predlogah. Del jih je registriranih že
+// za druge zavihke (`time-outline`, `people-outline`, `image-outline`, `link-outline`,
+// `refresh-outline`) — tu so naštete vse, ki jih predloge dejansko omenjajo, ker je ta test edina
+// mreža pod imenom ikone, ki je v predlogi navaden niz.
+const RECIPES_ICONS = [
+  'restaurant-outline', // zavihek in nadomestek za recept brez slike
+  'flame-outline', // "skuhano" in števec kuhanj
+  'star', // polna zvezdica v oceni
+  'star-outline', // prazna zvezdica v oceni
+  'share-social-outline', // javna povezava
+  'copy-outline', // kopiranje javne povezave
+  'people-outline', // deljenje in število porcij
+  'time-outline', // čas priprave
+  'image-outline', // slike
+  'link-outline', // izvorna stran
+  'open-outline', // "odpri izvorno stran"
+  'refresh-outline', // ponovni uvoz s strani
+  'add-outline',
+  'create-outline',
+  'trash-outline',
+  'close-outline',
+  'search-outline',
+  'arrow-back-outline', // izhod iz načina kuhanja
+  'checkmark-circle-outline', // odkljukan korak v načinu kuhanja
+  'square-outline', // neodkljukan korak v načinu kuhanja
+];
+
 describe('register-icons', () => {
   it('registrira vsako ikono, ki jo uporablja strežniški register zavihkov', () => {
     for (const name of TAB_REGISTRY_ICONS) {
@@ -108,6 +136,14 @@ describe('register-icons', () => {
   it('registrira vsako ikono izbirnika uporabnika in opozorilnega pasu (012)', () => {
     for (const name of ACTING_USER_ICONS) {
       expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz izbirnika uporabnika ni registrirana`).toContain(
+        name,
+      );
+    }
+  });
+
+  it('registrira vsako ikono, ki jo uporablja zavihek Recepti (013)', () => {
+    for (const name of RECIPES_ICONS) {
+      expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz zavihka Recepti ni registrirana`).toContain(
         name,
       );
     }

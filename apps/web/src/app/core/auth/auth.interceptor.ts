@@ -38,7 +38,18 @@ import { ActingUserService } from '../acting-user/acting-user.service.js';
 //     dokler je bil zavihek odprt, in je bila v dnevniku strežnika videti kot neskončen niz
 //     "Zahtevana je avtentikacija." na `/api/v1/auth/logout`, prepleten z "Obnovitev seje ni
 //     uspela." na `/api/v1/auth/refresh`.
-const AUTH_EXEMPT = ['/auth/login', '/auth/refresh', '/auth/logout', '/api/v1/share/', '/api/v1/drop/'];
+// 013: `/api/v1/shared-recipes/` je tu iz ISTEGA razloga kot `/share/` in `/drop/` — javna
+// stran `/r/:token` jo odpre človek brez računa. Brez te izjeme bi POTEKEL žeton v brskalniku
+// (npr. lastnikov, ki si je povezavo odprl sam) vratar zavrnil s 401, še preden bi zahteva
+// dosegla usmerjevalnik, in javna stran bi se podrla zaradi seje, s katero nima nobene zveze.
+const AUTH_EXEMPT = [
+  '/auth/login',
+  '/auth/refresh',
+  '/auth/logout',
+  '/api/v1/share/',
+  '/api/v1/drop/',
+  '/api/v1/shared-recipes/',
+];
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // OBE odvisnosti se morata vzeti TUKAJ, v telesu interceptorja. Angular postavi
