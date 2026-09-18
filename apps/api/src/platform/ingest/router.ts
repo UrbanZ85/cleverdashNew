@@ -4,6 +4,7 @@ import { resolveAutomationOwnerUserId } from '../auth/automation-owner.js';
 import { ADMIN_SCOPE } from '../auth/scopes.js';
 import { loadEnv } from '../config/env.js';
 import { badRequest, forbidden, notFound, unauthorized } from '../errors/problem.js';
+import { buildIngestInstructions } from './instructions.js';
 import { buildIngestOpenApi } from './openapi.js';
 import {
   findIngestTarget,
@@ -141,6 +142,37 @@ ingestRouter.get('/ingest/targets', (req, res, next) => {
   try {
     if (!req.auth) throw unauthorized('Zahtevana je avtentikacija.');
     res.json(allowedTargets(req).map(describeTarget));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Navodilo za agenta, ki JSON samo PRIPRAVI in ga ne pošlje (`mode: 'paste'`).
+ *
+ * To je pot za navadni pogovorni ChatGPT: POST-a ne zna poslati, JSON pa sestavi brez težav.
+ * Človek ga kopira in prilepi na stran za uvoz, kjer je že prijavljen — zato tu NI ključa in ga
+ * ta pot tudi ne izda. Prav v tem je razlika do `/ingest/keys`: v tuj klepet ne gre nobena
+ * poverilnica, torej je tudi ni mogoče pozabiti preklicati.
+ *
+ * Cilji so KLICATELJEVI (`allowedTargets`), ne vsi — navodilo ne sme opisovati cilja, v katerega
+ * ta človek ne sme pisati.
+ */
+ingestRouter.get('/ingest/prompt', (req, res, next) => {
+  try {
+    if (!req.auth) throw unauthorized('Zahtevana je avtentikacija.');
+    const permitted = allowedTargets(req);
+    if (permitted.length === 0) throw forbidden('Ni cilja, za katerega bi bilo mogoče sestaviti navodilo.');
+    const { PUBLIC_BASE_URL } = loadEnv();
+    res.json({
+      prompt: buildIngestInstructions({
+        baseUrl: PUBLIC_BASE_URL,
+        secret: null,
+        targets: permitted,
+        expiresAt: null,
+        mode: 'paste',
+      }),
+    });
   } catch (err) {
     next(err);
   }

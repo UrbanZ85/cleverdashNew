@@ -175,6 +175,14 @@ export const APP_ROUTES: Routes = [
     loadComponent: () =>
       import('./features/recipes/public/recipe-public.page.js').then((m) => m.RecipePublicPage),
   },
+  // 015: stran za lepljenje zapisa, ki ga je pripravil agent. `authGuard` BREZ `tabGuard` —
+  // enako kot podstrani modula 002: ni zavihek in je namenoma ni v registru, ker ne pripada
+  // nobenemu modulu (piše v recepte, povezave IN beleźke). Dosegljiva je iz Nastavitev → Agent.
+  {
+    path: 'uvoz',
+    loadComponent: () => import('./features/ingest/ingest.page.js').then((m) => m.IngestPage),
+    canActivate: [authGuard],
+  },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
   { path: '**', redirectTo: 'dashboard' },
 ];

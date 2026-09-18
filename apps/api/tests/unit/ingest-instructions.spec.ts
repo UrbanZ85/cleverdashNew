@@ -141,6 +141,75 @@ describe('navodilo za agenta', () => {
   });
 });
 
+describe('način "paste" — agent JSON samo pripravi', () => {
+  // To je pot, ki jo lahko uporabi NAVADNI pogovorni ChatGPT: POST-a ne zna poslati, JSON pa
+  // sestavi. Vse, kar je tu preverjeno, je posledica ene zahteve: v tuj klepet ne sme iti nobena
+  // poverilnica in noben naslov, ki ga tam nihče ne potrebuje.
+  function pasteText() {
+    return buildIngestInstructions({
+      baseUrl: BASE,
+      secret: 'cd_tajni',
+      targets: targets('recipes', 'notes'),
+      expiresAt: new Date('2026-12-31T12:00:00+01:00'),
+      mode: 'paste',
+    });
+  }
+
+  it('NE vsebuje ključa, tudi če je podan', () => {
+    const text = pasteText();
+    expect(text).not.toContain('cd_tajni');
+    expect(text).not.toContain('X-API-Key');
+    expect(text).not.toContain('<TVOJ-KLJUC>');
+  });
+
+  it('NE vsebuje naslova strežnika — agent nima kam pošiljati', () => {
+    const text = pasteText();
+    expect(text).not.toContain('POST ');
+    expect(text).not.toContain('/api/v1/ingest');
+  });
+
+  it('NE vsebuje roka veljavnosti — ključa, ki bi potekel, tu ni', () => {
+    expect(pasteText()).not.toContain('VELJAVNOST');
+  });
+
+  it('agentu naroči, naj IZPIŠE in ničesar ne pošilja', () => {
+    const text = pasteText();
+    expect(text).toContain('NIČESAR NE POŠILJAJ');
+    expect(text).toContain('Ne pošiljaj ničesar nikamor');
+  });
+
+  it('blok kode je tu ZAŽELEN, v načinu "request" pa prepovedan', () => {
+    // Nasprotni pravili, obe pravilni: pri lepljenju človek blok kopira z enim klikom, v telesu
+    // zahteve pa bi ga ograja pokvarila.
+    expect(pasteText()).toContain('v ENEM bloku kode');
+    const request = buildIngestInstructions({
+      baseUrl: BASE,
+      secret: 'cd_x',
+      targets: targets('recipes'),
+      expiresAt: null,
+    });
+    expect(request).toContain('brez ovojnice ```json');
+  });
+
+  it('obdrži obliko zapisa, opise polj in pravilo o slovenščini', () => {
+    // Način spremeni POT, ne pogodbe: brez teh treh bi bil JSON, ki ga agent pripravi, neuporaben.
+    const text = pasteText();
+    expect(text).toContain('"target": "notes"');
+    expect(text).toContain('Ime jedi, kot piše na strani.');
+    expect(text).toContain('VSE ZAPIŠI V SLOVENŠČINI');
+  });
+
+  it('privzeti način ostane "request" — klicatelj brez navedbe dobi staro vedenje', () => {
+    const text = buildIngestInstructions({
+      baseUrl: BASE,
+      secret: 'cd_tajni',
+      targets: targets('recipes'),
+      expiresAt: null,
+    });
+    expect(text).toContain('X-API-Key: cd_tajni');
+  });
+});
+
 describe('jezik zapisa', () => {
   it('agentu naroči, naj vse zapiše v slovenščini in tuje strani prevede', () => {
     // Lastnik namestitve je slovenski; recept, uvožen iz angleškega PDF-ja, mora v kuharici biti

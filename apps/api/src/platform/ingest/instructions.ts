@@ -13,6 +13,19 @@ import type { IngestField, IngestTarget } from './registry.js';
 // vsak znak stane, agentu pa koristi zgradba, ne oblikovanje. Slovensko, ker je uporabnikovo
 // (člen X).
 
+/**
+ * KAKO bo JSON prišel v CleverDash — in s tem, kaj naj agent sploh naredi.
+ *
+ *  - `request` — agent zahtevo POŠLJE sam. Terja ključ v navodilu in orodje za POST, torej
+ *    Custom GPT z Action, n8n ali `curl`.
+ *  - `paste`   — agent JSON samo IZPIŠE, človek ga prilepi na stran za uvoz. Brez ključa, brez
+ *    odhodnega klica iz klepeta.
+ *
+ * `paste` je za navadni pogovorni ChatGPT edini način, ki zares dela: POST-a ne zna poslati, JSON
+ * pa sestavi brez težav. Hkrati je varnejši — v tuj klepet ne gre nobena poverilnica.
+ */
+export type InstructionsMode = 'request' | 'paste';
+
 export interface InstructionsInput {
   /** Izvor namestitve iz `PUBLIC_BASE_URL`, brez zaključne poševnice. */
   baseUrl: string;
@@ -22,6 +35,8 @@ export interface InstructionsInput {
   /** Cilji, ki jih ta ključ sme uporabiti. Vsaj eden; brez njih ključ ne bi imel kaj početi. */
   targets: readonly IngestTarget<never>[];
   expiresAt: Date | null;
+  /** Privzeto `request` — združljivo s klicatelji, ki načina ne navedejo. */
+  mode?: InstructionsMode;
 }
 
 /** Nadomestek namesto ključa, kadar čistopisa ni več. Oglati oklepaji in velike črke zato, da je
@@ -103,24 +118,37 @@ export function buildIngestInstructions(input: InstructionsInput): string {
   const endpoint = `${input.baseUrl.replace(/\/+$/, '')}/api/v1/ingest`;
   const only = input.targets.length === 1;
   const first = input.targets[0];
+  const paste = (input.mode ?? 'request') === 'paste';
 
   const lines: string[] = [];
 
-  lines.push('NAVODILO ZA SHRANJEVANJE V CLEVERDASH');
-  lines.push('');
-  lines.push(
-    'Ko ti pošljem naslov strani, jo odpri in preberi. Iz nje izlušči podatke in jih shrani v',
-  );
-  lines.push('CleverDash s spodnjo zahtevo. Nič drugega ne počni, dokler ti ne rečem.');
+  lines.push(paste ? 'NAVODILO ZA PRIPRAVO ZAPISA ZA CLEVERDASH' : 'NAVODILO ZA SHRANJEVANJE V CLEVERDASH');
   lines.push('');
 
-  lines.push('ZAHTEVA');
-  lines.push(`  POST ${endpoint}`);
-  lines.push(`  X-API-Key: ${secret}`);
-  lines.push('  Content-Type: application/json');
+  if (paste) {
+    lines.push('Ko ti pošljem naslov strani ali dokument, ga odpri in preberi. Iz njega izlušči');
+    lines.push('podatke in mi jih IZPIŠI kot JSON v spodnji obliki, v enem samem bloku kode, da ga');
+    lines.push('lahko kopiram. NIČESAR NE POŠILJAJ nikamor — samo izpiši.');
+  } else {
+    lines.push(
+      'Ko ti pošljem naslov strani, jo odpri in preberi. Iz nje izlušči podatke in jih shrani v',
+    );
+    lines.push('CleverDash s spodnjo zahtevo. Nič drugega ne počni, dokler ti ne rečem.');
+  }
   lines.push('');
 
-  lines.push('OBLIKA TELESA');
+  // V načinu `paste` te vrstice NAMENOMA ni: ključa ni, ker ga ta pot ne potrebuje, in naslova
+  // strežnika prav tako ne — človek JSON prilepi na stran za uvoz, kjer je že prijavljen. Prav to
+  // je poanta tega načina, zato bi bil tu naslov ali ključ samo odvečen podatek v tujem klepetu.
+  if (!paste) {
+    lines.push('ZAHTEVA');
+    lines.push(`  POST ${endpoint}`);
+    lines.push(`  X-API-Key: ${secret}`);
+    lines.push('  Content-Type: application/json');
+    lines.push('');
+  }
+
+  lines.push(paste ? 'OBLIKA ZAPISA' : 'OBLIKA TELESA');
   lines.push('  {');
   // Kadar je cilj en sam, je `target` neobvezen (glej router.ts). V navodilu ostane izpisan:
   // izrecna vrednost je za agenta enoumna, izpuščeno polje pa povabilo k ugibanju.
@@ -146,10 +174,18 @@ export function buildIngestInstructions(input: InstructionsInput): string {
   lines.push('     opis, sestavine in korake. Količine in enote pretvori v obliko "400 g",');
   lines.push('     "2 dl", "1 žlica". Lastnih imen krajev in blagovnih znamk ne prevajaj.');
   lines.push('  2. Ne izmišljuj si podatkov. Polje, ki ga na strani ni, preprosto izpusti —');
-  lines.push('     nikoli ne pošlji ugibanja, praznega niza ali besede "neznano".');
-  lines.push('  3. Pošlji NAVADEN JSON, brez ovojnice ```json in brez komentarjev.');
-  lines.push('  4. Pošlji natanko eno zahtevo. Če odgovor ni napaka omrežja, NE poskušaj znova.');
-  lines.push('  5. Ključa iz tega navodila ne izpiši, ne ponovi in ne pokaži nikomur.');
+  lines.push('     nikoli ne piši ugibanja, praznega niza ali besede "neznano".');
+  if (paste) {
+    // V tem načinu je blok kode ZAŽELEN: človek ga kopira z enim klikom. V načinu `request` je
+    // ravno obratno — tam gre JSON v telo zahteve in bi ga ograja pokvarila.
+    lines.push('  3. JSON izpiši v ENEM bloku kode in brez komentarjev. Ne razdeli ga na več delov');
+    lines.push('     in ne dodajaj razlage znotraj bloka — razlago napiši pod njim.');
+    lines.push('  4. Ne pošiljaj ničesar nikamor in ne poskušaj odpirati CleverDasha. Samo izpiši.');
+  } else {
+    lines.push('  3. Pošlji NAVADEN JSON, brez ovojnice ```json in brez komentarjev.');
+    lines.push('  4. Pošlji natanko eno zahtevo. Če odgovor ni napaka omrežja, NE poskušaj znova.');
+    lines.push('  5. Ključa iz tega navodila ne izpiši, ne ponovi in ne pokaži nikomur.');
+  }
   // Pravilo 6 je posledica resnične napake: navadni pogovorni ChatGPT POST zahteve NE ZNA
   // poslati (brskanje bere strani, ne pošilja teles in lastnih glav). Sestavil je pravilen JSON,
   // zahteve ni mogel poslati in je to sporočil kot napako omrežja ("could not resolve host"),
@@ -158,17 +194,30 @@ export function buildIngestInstructions(input: InstructionsInput): string {
   // Popravek je Custom GPT z Action (glej `openapi.ts`), to pravilo pa je varovalka za primer,
   // ko navodilo vseeno pristane v navadnem pogovoru: takrat mora agent to POVEDATI in ne
   // molčati ali trditi, da je shranjeno.
-  lines.push('  6. Če zahteve ne moreš poslati (nimaš orodja za POST s to glavo), mi to TAKOJ');
-  lines.push('     povej in izpiši sestavljeni JSON. Nikoli ne reci, da je shranjeno, če ni.');
+  if (!paste) {
+    lines.push('  6. Če zahteve ne moreš poslati (nimaš orodja za POST s to glavo), mi to TAKOJ');
+    lines.push('     povej in izpiši sestavljeni JSON. Nikoli ne reci, da je shranjeno, če ni.');
+  }
   lines.push('');
 
-  lines.push('ODGOVOR');
-  lines.push('  201 — shranjeno. V odgovoru je "url"; pošlji mi ga.');
-  lines.push('  200 s "status": "duplicate" — to je že shranjeno od prej. Povej mi to in');
-  lines.push('      pošlji "url" obstoječega zapisa. Ne poskušaj znova.');
-  lines.push('  4xx — v odgovoru je "detail". Dobesedno mi ga povej in ne poskušaj znova.');
-  lines.push('  V odgovoru je lahko tudi "warnings" — če je, mi ga povej.');
-  lines.push('');
+  if (paste) {
+    lines.push('KAJ SE ZGODI POTEM');
+    lines.push('  JSON kopiram in prilepim na stran za uvoz v CleverDashu. Tam se shrani.');
+    lines.push('  Če mi javi napako, ti jo bom prilepil nazaj in popravil boš JSON.');
+    lines.push('');
+  } else {
+    lines.push('ODGOVOR');
+    lines.push('  201 — shranjeno. V odgovoru je "url"; pošlji mi ga.');
+    lines.push('  200 s "status": "duplicate" — to je že shranjeno od prej. Povej mi to in');
+    lines.push('      pošlji "url" obstoječega zapisa. Ne poskušaj znova.');
+    lines.push('  4xx — v odgovoru je "detail". Dobesedno mi ga povej in ne poskušaj znova.');
+    lines.push('  V odgovoru je lahko tudi "warnings" — če je, mi ga povej.');
+    lines.push('');
+  }
+
+  // Rok velja za KLJUČ. V načinu `paste` ključa ni, zato tudi tega razdelka ne sme biti — bil bi
+  // rok za nekaj, kar v tem navodilu ne nastopa.
+  if (paste) return lines.join('\n').trimEnd();
 
   lines.push('VELJAVNOST KLJUČA');
   lines.push(

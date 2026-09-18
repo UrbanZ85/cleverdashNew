@@ -544,6 +544,59 @@ describe('cilji, ki jih klicatelj sme uporabiti', () => {
   });
 });
 
+describe('lepljenje brez ključa (stran /uvoz)', () => {
+  // Cela poanta te poti: človek, ki je PRIJAVLJEN, shrani zapis brez ene same poverilnice v
+  // tujem klepetu. Zaledje je isto kot za agenta — ločenega endpointa ni in ne sme biti.
+  it('prijavljen človek shrani recept BREZ API ključa', async () => {
+    const app = await boot();
+    const user = await login(app, 'kc-ingest-paste');
+
+    const res = await request(app)
+      .post('/api/v1/ingest')
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .send({ target: 'recipes', data: { title: 'Prilepljen recept' } });
+
+    expect(res.status).toBe(201);
+    const recipe = await RecipeModel.findById(res.body.id).lean();
+    expect(String(recipe?.ownerId)).toBe(user.userId);
+  });
+
+  it('navodilo za pripravo JSON ne vsebuje nobene poverilnice', async () => {
+    const app = await boot();
+    const user = await login(app, 'kc-ingest-prompt');
+
+    const res = await request(app)
+      .get('/api/v1/ingest/prompt')
+      .set('Authorization', `Bearer ${user.accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toContain('NIČESAR NE POŠILJAJ');
+    expect(res.body.prompt).not.toContain('X-API-Key');
+    expect(res.body.prompt).not.toContain('cd_');
+    // Opisuje cilje, ki jih ta človek sme — vse tri, ker ima obsege navadnega uporabnika.
+    expect(res.body.prompt).toContain('"recipes"');
+    expect(res.body.prompt).toContain('"notes"');
+  });
+
+  it('navodila brez prijave ni', async () => {
+    const app = await boot();
+    const res = await request(app).get('/api/v1/ingest/prompt');
+    expect(res.status).toBe(401);
+  });
+
+  it('ključ opisuje samo SVOJE cilje tudi v tem navodilu', async () => {
+    const app = await boot();
+    const user = await login(app, 'kc-ingest-prompt-key');
+    const key = await issueKey(app, user.accessToken, { label: 'gpt', targets: ['notes'] });
+
+    const res = await request(app).get('/api/v1/ingest/prompt').set('X-API-Key', key.body.secret);
+
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toContain('Beležke');
+    expect(res.body.prompt).not.toContain('Recepti');
+  });
+});
+
 describe('navodilo za obstoječ ključ', () => {
   it('se da prebrati znova, a brez ključa', async () => {
     const app = await boot();

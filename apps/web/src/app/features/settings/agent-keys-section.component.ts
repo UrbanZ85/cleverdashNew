@@ -83,9 +83,18 @@ const EXPIRY_CHOICES: { minutes: number | null; label: string }[] = [
     FormsModule,
   ],
   template: `
+    <!-- Najprej pot BREZ ključa. Ključ je močnejše orodje in ga potrebuje manjšina primerov;
+         človek, ki pride sem samo zato, da bi shranil recept iz ChatGPT, mora najprej videti
+         rešitev, pri kateri mu ni treba ničesar lepiti v tuj klepet. -->
+    <ion-note color="medium" class="no-key">
+      <strong>Ne rabiš ključa, če ti ChatGPT JSON samo pripravi.</strong>
+      Odpri <a href="/uvoz">stran za uvoz</a>, kopiraj navodilo za ChatGPT in prilepi, kar ti
+      odgovori. Tako v klepet ne gre nobena poverilnica.
+    </ion-note>
+
     <p class="cd-section-hint">
-      Ključ pove ChatGPT-ju (ali n8n-u), kam sme shranjevati. Ob izdaji dobiš navodilo, ki ga
-      samo prilepiš v pogovor — nato mu pošlješ naslov strani in ta se shrani sem.
+      Ključ rabiš samo, kadar naj agent zahtevo POŠLJE sam — n8n, lasten skript ali Custom GPT z
+      Action. Navadni ChatGPT zahteve POST ne zna poslati.
     </p>
 
     @if (keys().length > 0) {
@@ -219,6 +228,10 @@ const EXPIRY_CHOICES: { minutes: number | null; label: string }[] = [
     `
       .issued {
         margin-top: 1rem;
+      }
+      .no-key {
+        display: block;
+        margin-bottom: 0.75rem;
       }
       /* Navodilo je poravnano besedilo s stolpci (glej platform/ingest/instructions.ts) —
          sorazmerna pisava bi poravnavo razbila in bi bilo v prilepljenem besedilu težje brati,
