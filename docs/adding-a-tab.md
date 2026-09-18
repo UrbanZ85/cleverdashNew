@@ -75,9 +75,22 @@ uveljavlja korak za korakom. Predloga za kopiranje je v `templates/tab-module/`.
    obvestila (`platform/notifications/router.ts`). Podrobno v
    [`docs/acting-as-another-user.md`](acting-as-another-user.md).
 
+8. **Neobvezno: cilj uvoza za agente (ChatGPT, n8n).**
+
+   Če naj v tvoj modul piše tudi agent, dodaj `apps/api/src/modules/<modul>/ingest.ts` z eno
+   funkcijo `register<Modul>Ingest()`, ki pokliče `registerIngestTarget(...)`
+   (`platform/ingest/registry.ts`), in eno vrstico v `main.ts` — poleg ostalih registracij.
+
+   Cilj nosi SVOJ obseg za pisanje (isti kot `POST /<modul>`), svojo Zod shemo, opise polj in
+   primer telesa. Opisi in primer gredo dobesedno v navodilo, ki ga uporabnik prilepi agentu, zato
+   so pisani agentu in ne razvijalcu. `tests/unit/ingest-registry.spec.ts` preveri, da primer
+   prestane lastno shemo — brez tega bi navodilo učilo obliko, ki jo strežnik zavrne.
+
+   Več v [`docs/agent-ingest.md`](agent-ingest.md).
+
 ## Kaj se NE sme spremeniti
 
-Nič drugega. Če popravljaš datoteko zunaj novega modula in vpisov iz korakov 2–6, je nekaj
+Nič drugega. Če popravljaš datoteko zunaj novega modula in vpisov iz korakov 2–6 in 8, je nekaj
 narobe zasnovano — preveri, ali modul poskuša uvoziti iz drugega
 modula namesto iz `platform/`, `domain/`, `core/` ali `shared/`. Lint pravilo v
 `eslint.config.js` tak uvoz zavrne kot napako, ne kot opozorilo.
@@ -89,5 +102,5 @@ resolverja, usmerjevalnika ali frontend komponent menija.
 ## Odstranitev zavihka
 
 Obratno: izbriši mapo modula na obeh straneh, odstrani vnos iz `TAB_REGISTRY`, odstrani
-vrstico v `main.ts` in pot v `app.routes.ts`. `npm run typecheck`, `npm run lint` in testi
+vrstico (oz. vrstici, če ima modul cilj uvoza) v `main.ts` in pot v `app.routes.ts`. `npm run typecheck`, `npm run lint` in testi
 morajo po tem ostati čisti — to je SC-005.

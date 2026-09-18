@@ -17,6 +17,7 @@ import { WebhooksSettingsComponent } from './webhooks-section.component.js';
 import { CamerasSettingsComponent } from './cameras-section.component.js';
 import { NotesSettingsComponent } from './notes-section.component.js';
 import { MeteoSettingsComponent } from './meteo-section.component.js';
+import { AgentKeysSettingsComponent } from './agent-keys-section.component.js';
 
 interface SettingsGroup {
   id: string;
@@ -36,6 +37,10 @@ const GROUPS: SettingsGroup[] = [
   { id: 'sources', title: 'Viri podatkov', icon: 'server-outline' },
   { id: 'menu', title: 'Meni', icon: 'list-outline' },
   { id: 'modules', title: 'Moduli', icon: 'settings-outline' },
+  // 015: SVOJ sklop in ne razdelek pod "Moduli". Agentski ključ ni nastavitev enega modula —
+  // en ključ piše v recepte, povezave IN beleźke hkrati, zato pod katerim koli modulom ne bi
+  // bil na pravem mestu, pod vsemi tremi pa bi bil trikrat.
+  { id: 'agent', title: 'Agent', icon: 'sparkles-outline' },
 ];
 
 // Sklop "Moduli" je razdeljen po MODULIH, po en zavihek na modul (člen I: zavihek je modul).
@@ -78,6 +83,7 @@ const MODULE_TABS: SettingsGroup[] = [
     CamerasSettingsComponent,
     NotesSettingsComponent,
     MeteoSettingsComponent,
+    AgentKeysSettingsComponent,
   ],
   template: `
     <app-page-header title="Nastavitve" [subtitle]="currentUser.user()?.displayName ?? null"></app-page-header>
@@ -232,6 +238,13 @@ const MODULE_TABS: SettingsGroup[] = [
                 </section>
               }
             }
+          }
+
+          @case ('agent') {
+            <section>
+              <h2 class="cd-section-title">Ključi za ChatGPT in n8n</h2>
+              <app-agent-keys-settings></app-agent-keys-settings>
+            </section>
           }
         }
       </div>

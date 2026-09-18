@@ -204,7 +204,11 @@ import {
                   }
 
                   @if (recipe.tags.length > 0) {
-                    <p class="tags">{{ recipe.tags.join(' · ') }}</p>
+                    <p class="tags">
+                      @for (tag of recipe.tags; track tag) {
+                        <span class="tag">{{ tag }}</span>
+                      }
+                    </p>
                   }
                 </div>
               </button>
@@ -313,6 +317,22 @@ import {
         align-items: center;
         gap: 6px;
         flex-wrap: wrap;
+      }
+      /* Oznake na kartici so bile kot navadno besedilo skoraj nevidne, zato dobijo obarvane žetone. */
+      .tags {
+        margin-top: 6px;
+        gap: 4px;
+      }
+      .tags .tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 500;
+        line-height: 1.5;
+        background: rgba(var(--ion-color-primary-rgb), 0.18);
+        color: var(--ion-color-primary);
       }
       .meta span {
         display: inline-flex;

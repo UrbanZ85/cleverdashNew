@@ -41,6 +41,11 @@ import { usersRouter } from './platform/users/router.js';
 import { usageRouter } from './platform/usage/router.js';
 import { analyticsRouter } from './modules/analytics/router.js';
 import { registerTodosTabDetail } from './modules/todos/tab-detail.js';
+import { ingestRouter } from './platform/ingest/router.js';
+import { ingestKeysRouter } from './platform/ingest/keys.router.js';
+import { registerRecipesIngest } from './modules/recipes/ingest.js';
+import { registerSavedLinksIngest } from './modules/saved-links/ingest.js';
+import { registerNotesIngest } from './modules/notes/ingest.js';
 
 // Ta datoteka je edino mesto, ki poveže module z `/api/v1`. Dodajanje modula (dashboard,
 // settings, tabs — 004+ v tej funkcionalnosti) pomeni en nov `apiV1Router.use(...)` klic
@@ -126,6 +131,15 @@ export async function createApp() {
   // kjer preživi odstranitev zavihka Analitika, prikaz pa v modulu, ki se briše kot vsak drug.
   apiV1Router.use(usageRouter);
   apiV1Router.use(analyticsRouter);
+  // 015: vstopna točka za agente (ChatGPT, n8n). SKUPNA zmogljivost kot `/users` in `/tabs`
+  // — ne modul: preživeti mora odstranitev katerega koli cilja, v katerega piše. Sama ne ve
+  // za noben modul; cilje ji prispevajo moduli sami prek registra (glej registracije spodaj).
+  //
+  // `ingestKeysRouter` je LOČEN od `apiKeysRouter` zgoraj in to ni podvojitev: tam gre za
+  // administratorsko izdajo ključa s poljubnim obsegom, tu za uporabnikov lasten agentski
+  // ključ, ki si obsegov ne izbere. Glej platform/ingest/keys.router.ts.
+  apiV1Router.use(ingestKeysRouter);
+  apiV1Router.use(ingestRouter);
 
   app.use('/api/v1', apiV1Router);
   app.use(problemErrorHandler());
@@ -135,6 +149,13 @@ export async function createApp() {
   // katera lokacija se beleži, tudi kadar je samodejno izvajanje izklopljeno.
   registerTimeTrackingTabDetail();
   registerTodosTabDetail();
+
+  // 015: cilji uvoza. ENA vrstica na modul, točno tako kot `registerTodosTabDetail()` zgoraj
+  // — brisanje mape modula pomeni brisanje njegove vrstice tukaj in nič drugega (člen I).
+  // Vrstni red ni pomemben: register se bere ob zahtevi, ne ob zagonu.
+  registerRecipesIngest();
+  registerSavedLinksIngest();
+  registerNotesIngest();
 
   // 009: hramba deljenih datotek je na disku (nosilec `shared-files`), ne v bazi. Imenika
   // `tmp/` in `blobs/` morata obstajati, preden pride prvo nalaganje. Pometač teče takoj ob
