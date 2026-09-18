@@ -132,6 +132,14 @@ izdati drugega ključa (sicer bi eno uhajanje rodilo neomejeno nadaljnjih).
 prineslo dva obiska namesto enega (člen VIII). Zato je `sourceStatus`/`metadataStatus` uvoženega
 zapisa `skipped` — to pomeni "strežnik strani ni obiskal", ne "ni uspelo".
 
+**Slika je edina izjema.** Pri receptih `imageUrl` sproži EN prenos: fotografije ni mogoče dobiti
+drugače, ker agent bajtov nima in jih ne more imeti. Prenos teče skozi isto varovalo odhodnih
+naslovov kot vse ostalo (samo `https`, brez zasebnih in link-local gostiteljev, ročne preusmeritve
+z novo preverbo na vsakem skoku), vrsta slike pa se ugotovi iz **podpisa datoteke** in ne iz glave
+`Content-Type` — dokument HTML, postrežen kot slika z naše domene, bi bil shranjen XSS. Neuspeh
+slike recepta NE razveljavi: pride v `warnings`. Prva slika postane naslovna, obstoječe naslovne
+pa uvoz nikoli ne prepiše.
+
 **Dvojnik ne nastane.** V vmesniku je podvojen zapis odločitev človeka, ki jo vidi; agent je ne
 vidi in bi ob vsaki ponovitvi dodal še eno vrstico. Recept in povezavo enolično določa naslov
 strani — beležke ne določa nič, zato pri beležkah te preverbe **ni** (dve enaki beležki sta dve
@@ -166,3 +174,4 @@ modula ostane brisanje mape in ene vrstice (člen I). Kako dodati cilj: korak 8 
 | `platform/ingest/instructions.ts` | Besedilo, ki ga uporabnik prilepi agentu. |
 | `platform/apikeys/model.ts` | `ownerId` in `targets` na ključu. |
 | `modules/<modul>/ingest.ts` | Prispevek modula. |
+| `modules/recipes/services/image-fetch.service.ts` | Prenos slike z naslova (`imageUrl`). |

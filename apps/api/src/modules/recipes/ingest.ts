@@ -18,6 +18,7 @@ import {
   splitLines,
 } from './domain/recipe-input.js';
 import { MAX_RECIPE_URL_LENGTH, normalizeOptionalRecipeUrl } from './domain/recipe-url.js';
+import { fetchRecipeImageFromUrl } from './services/image-fetch.service.js';
 import { buildSearchText } from './domain/search-text.js';
 import { RecipeModel } from './models/recipe.model.js';
 import { ensureCategories } from './services/category.service.js';
@@ -35,6 +36,11 @@ import { RECIPE_SCOPES } from './scopes.js';
 //  1. STREŽNIK STRANI NE OBIŠČE. Agent jo je pravkar prebral — to je cel smisel te poti. Drugo
 //     branje iste strani bi bilo odveč in bi tujemu strežniku prineslo dva obiska namesto enega
 //     (člen VIII). Zato ni `importFromUrl` in `sourceStatus` ostane `skipped`.
+//
+//     EDINA IZJEMA je `imageUrl`: fotografije ni mogoče dobiti drugače kot s prenosom, ker agent
+//     bajtov nima in jih ne more imeti. Gre za en omejen prenos ob nastanku recepta, ne za
+//     ponavljajoče branje, in teče skozi isto varovalo odhodnih naslovov kot vse ostalo
+//     (`services/image-fetch.service.ts`).
 //  2. DVOJNIK NE NASTANE. Agent isti naslov pošlje večkrat pogosteje kot človek (ponovi klic,
 //     uporabnik prilepi isto stran drugič). V vmesniku je dvojnik odločitev človeka pred
 //     zaslonom; tu ga nihče ne vidi, dokler knjižnica ni polna podvojenih receptov.
@@ -50,6 +56,14 @@ const ingestSchema = z.object({
   prepMinutes: z.coerce.number().int().min(1).max(MAX_PREP_MINUTES).nullish(),
   servings: z.coerce.number().int().min(1).max(MAX_SERVINGS).nullish(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
+  /**
+   * Naslov FOTOGRAFIJE jedi. Edina stvar, zaradi katere strežnik pri uvozu sploh naredi odhodni
+   * klic — in edini način, da recept dobi sliko še ob nastanku: agent bajtov nima, pozna kvečjemu
+   * naslov (glej `services/image-fetch.service.ts`).
+   *
+   * Neuspeh NE razveljavi recepta: izid pride v `warnings`.
+   */
+  imageUrl: z.string().max(MAX_RECIPE_URL_LENGTH).nullish(),
   categories: z.union([z.string(), z.array(z.string())]).optional(),
   /** Izhod v sili, kadar je dvojnik NAMEREN (dve različici iste jedi z istega naslova).
    * Privzeto `false`: agent te možnosti ne pozna iz navodila in je ne bo uporabil sam. */
@@ -127,6 +141,16 @@ async function handle(input: RecipeIngestInput, ctx: IngestContext): Promise<Ing
   // besednjaku.
   await ensureCategories(ctx.userId, categories);
 
+  // Slika je ZADNJA in po tem, ko recept že obstaja — isto pravilo kot pri branju izvorne strani
+  // (FR-012): zapis ne sme biti odvisen od dosegljivosti tujega strežnika, in če slike ni, recept
+  // ostane. Izid je opozorilo, ne napaka.
+  if (input.imageUrl) {
+    const image = await fetchRecipeImageFromUrl(String(created._id), ctx.userId, input.imageUrl);
+    if (image.status !== 'ok') {
+      warnings.push(`Slike ni bilo mogoče shraniti (${image.reason}). Recept je shranjen brez nje.`);
+    }
+  }
+
   return {
     status: 'created',
     id: String(created._id),
@@ -156,6 +180,7 @@ export function registerRecipesIngest(): void {
       { name: 'servings', type: 'number', required: false, description: 'Za koliko oseb je recept.' },
       { name: 'tags', type: 'string[]', required: false, description: 'Proste oznake ("vegi", "hitro"). Največ 20.' },
       { name: 'categories', type: 'string[]', required: false, description: 'Vrsta jedi ali obrok ("Juhe", "Kosila"). Največ 8.' },
+      { name: 'imageUrl', type: 'string', required: false, description: 'Neposreden naslov FOTOGRAFIJE jedi (končnica .jpg, .png ali .webp, obvezno https). Postane naslovna slika recepta.' },
     ],
     example: {
       title: 'Bučna juha z ingverjem',
@@ -167,6 +192,7 @@ export function registerRecipesIngest(): void {
       servings: 4,
       tags: ['vegi', 'jesen'],
       categories: ['Juhe'],
+      imageUrl: 'https://okusno.si/slike/bucna-juha.jpg',
     },
   });
 }
