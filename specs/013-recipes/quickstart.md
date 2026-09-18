@@ -49,10 +49,23 @@ V pogledu recepta **Dodaj sliko** (mogoče je izbrati več naenkrat).
 
 Kaj se zgodi v ozadju:
 
-1. Brskalnik sliko izmeri in ji naredi pomanjšavo (`<canvas>`, daljša stranica 600 px).
-2. Izvirnik gre v eni zahtevi, pomanjšava v drugi.
-3. Strežnik **vrsto ugotovi iz vsebine**, ne iz imena — preimenovan `.pdf` v `.jpg` ne pomaga.
-4. Prva slika postane naslovna sama od sebe.
+1. Brskalnik sliko dekodira **z upoštevanjem zasuka iz EXIF** (sicer bi bila pokončna fotografija
+   shranjena obrnjena).
+2. Pomanjša jo na 1600 px po daljši stranici in stisne v **WebP** (kjer ga brskalnik zna zakodirati;
+   sicer JPEG). 5 MB → tipično 150–350 kB.
+3. Naredi še pomanjšavo 600 px za seznam. Slika gre v eni zahtevi, pomanjšava v drugi.
+4. Strežnik **vrsto ugotovi iz vsebine**, ne iz imena — preimenovan `.pdf` v `.jpg` ne pomaga.
+5. Prva slika postane naslovna sama od sebe.
+
+**Klik na sliko** jo pokaže čez cel zaslon; pri več slikah sta levo in desno puščici. Povečava
+prenese polno sliko (seznam ima le pomanjšavo), zato se za hip pokaže mehkejša različica.
+
+Kako preveriti, da stiskanje res deluje: naloži fotografijo s telefona in poglej velikost v
+`GET /api/v1/recipes/{id}/images` — `byteSize` mora biti nekaj sto kB, `mimeType` pa `image/webp`.
+
+> **Že naložene slike ostanejo, kakršne so.** Stiskanje teče ob nalaganju; strežnik starih slik ne
+> pretvarja, ker za to nima dekodirnika (research.md §5). Če je v bazi nekaj velikih slik iz prvih
+> poskusov, jih je najhitreje izbrisati in naložiti znova.
 
 Za preizkus zavrnitve: preimenuj katero koli besedilno datoteko v `.jpg` in jo poskusi naložiti —
 odgovor je `400` s pojasnilom, da vrsto ugotavljamo iz same datoteke.

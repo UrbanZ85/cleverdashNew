@@ -65,23 +65,38 @@ Ločena zbirka in ne polje v receptu: bajti se ne smejo brati ob izpisu seznama 
 razlog, ki je v modulu 010 opravila PUSTIL v dokumentu (majhna, brana vedno) in zvok iz beležke
 VZEL ven (velik, bran redko). Slike so na strani zvoka.
 
-## §5 — Pomanjšava se izračuna ob nalaganju, ne ob izpisu (FR-027)
+## §5 — Slika se pomanjša in stisne PRED nalaganjem (FR-027, FR-028)
 
-Seznam stotih receptov s stotimi naslovnimi slikami po 3 MB je 300 MB na izris. Nesprejemljivo.
+Fotografija s telefona je 4–6 MB pri 4000 px. Recept je ne potrebuje: prikaže se največ čez širino
+zaslona. Shranjevanje izvirnika je zato zapravljanje, ki ga je dobro videti šele čez čas — pri sto
+receptih s po tremi slikami je razlika ~1,5 GB proti ~100 MB v bazi.
 
-Pomanjšava se zato naredi ENKRAT, ob nalaganju, in shrani ob izvirniku (`thumb`, isti dokument).
-Izračun ob izpisu bi pomenil dekodiranje slike ob vsakem izrisu seznama.
+**Kaj se naloži**: slika, pomanjšana na 1600 px po daljši stranici in stisnjena v **WebP** (kakovost
+0,82), ter ločena pomanjšava 600 px za seznam. Tipično 150–350 kB namesto 5 MB, brez vidne razlike
+na zaslonu.
 
 **Brez nove odvisnosti**: `sharp` bi bil običajen odgovor, a je izvorni gradnik (`node-gyp`,
 prevajanje ob namestitvi, drugačen paket za `linux/arm64` in `linux/amd64`) — v tem vsebniku je to
-strošek, ki ga ena pomanjšana slika ne opraviči. Uporabljen je **odjemalec**: brskalnik pomanjša
-sliko v `<canvas>` in pošlje OBOJE, izvirnik in pomanjšavo, v dveh poljih.
+strošek, ki ga stiskanje slik ne opraviči. Delo opravi **odjemalec** v `<canvas>`
+(`features/recipes/image-resize.ts`).
 
-Iz tega sledi varnostna zahteva, ki jo koda uveljavlja: pomanjšava, ki pride od odjemalca, je
-**nepreverjen vnos**. Zato gre skozi ISTO preverbo podpisa in velikosti kot izvirnik
-(`domain/image-type.ts`), in ima svojo, nižjo mejo. Odjemalec, ki pomanjšave ne pošlje, ni napaka —
-takrat je `thumb: null` in seznam postreže izvirnik. Tiste poti nihče ne uporablja, a mora obstajati,
-sicer bi bil `<canvas>` v brskalniku pogoj za shranjevanje slike.
+Tri pasti, ki jih koda uveljavlja in brez katerih bi bila ta odločitev slaba:
+
+1. **`toBlob` z nepodprto vrsto NE javi napake — tiho vrne PNG.** Pri fotografiji je PNG lahko večji
+   od izvirnega JPEG, torej bi "optimizacija" sliko napihnila. Vrsta nastalega bloba se zato vedno
+   preveri (`blob.type`); kjer WebP ne gre (Safari pred 16.4), se uporabi JPEG.
+2. **Risanje na `<canvas>` odvrže EXIF.** Fotografija, zapisana ležeče z zastavico za zasuk, bi se
+   po pretvorbi prikazala obrnjena. Zato `createImageBitmap(file, { imageOrientation: 'from-image' })`.
+   To je napaka, ki se pokaže šele pri pravi fotografiji, ne pri testni sliki.
+3. **Rezultat je lahko VEČJI od izvirnika** (majhna, že stisnjena slika). Takrat se naloži izvirnik.
+
+Iz tega sledi varnostna zahteva, ki ostaja nespremenjena: kar pride od odjemalca — tako slika kot
+pomanjšava — je **nepreverjen vnos**. Oboje gre skozi ISTO preverbo podpisa in velikosti
+(`domain/image-type.ts`), pomanjšava s svojo, nižjo mejo.
+
+**Česa strežnik NE počne**: ne pretvarja in ne pomanjšuje. Slika, naložena mimo vmesnika (n8n prek
+API-ja), gre v bazo taka, kot je bila poslana — omejena je samo z `RECIPES_IMAGE_MAX_MB`. Stiskanje
+je lastnost vmesnika, meja je lastnost strežnika, in ti dve stvari se ne smeta zamenjati.
 
 ## §6 — Vrsta slike se ugotovi iz VSEBINE, ne iz `Content-Type` (FR-021)
 

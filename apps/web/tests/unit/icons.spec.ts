@@ -101,6 +101,8 @@ const RECIPES_ICONS = [
   'close-outline',
   'search-outline',
   'arrow-back-outline', // izhod iz načina kuhanja
+  'chevron-back', // prejšnja slika v povečavi
+  'chevron-forward-outline', // naslednja slika v povečavi; tudi vrstica Deljenje
   'checkmark-circle-outline', // odkljukan korak v načinu kuhanja
   'square-outline', // neodkljukan korak v načinu kuhanja
 ];

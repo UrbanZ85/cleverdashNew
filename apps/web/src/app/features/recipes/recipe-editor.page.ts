@@ -24,7 +24,7 @@ import {
 } from '@ionic/angular/standalone';
 import { RecipeShareDialogComponent } from './recipe-share-dialog.component.js';
 import { RecipesApi } from './recipes.api.js';
-import { makeThumbnail, measureImage } from './image-resize.js';
+import { prepareImage } from './image-resize.js';
 import {
   asText,
   describeSourceStatus,
@@ -246,7 +246,11 @@ import {
             @for (image of images(); track image.id) {
               <div class="shot" [class.cover]="image.isCover">
                 @if (imageUrl(image); as src) {
-                  <img [src]="src" [alt]="image.caption ?? current.title" />
+                  <!-- Klik odpre povečavo. Gumb in ne gola slika, ker je to kontrola: tako jo
+                       doseže tudi tipkovnica in bralnik zaslona jo prebere kot dejanje. -->
+                  <button type="button" class="shot-open" (click)="openViewer(image)">
+                    <img [src]="src" [alt]="image.caption ?? current.title" />
+                  </button>
                 }
                 @if (current.capabilities.manageImages) {
                   <div class="shot-actions">
@@ -404,6 +408,53 @@ import {
       }
     </ion-content>
 
+    <!-- ─────────── povečana slika ─────────── -->
+    @if (viewer(); as shown) {
+      <div class="viewer" (click)="closeViewer()">
+        <div class="viewer-bar">
+          @if (images().length > 1) {
+            <span class="viewer-count">{{ viewerIndex() + 1 }} / {{ images().length }}</span>
+          }
+          <ion-button fill="clear" color="light" (click)="closeViewer()" aria-label="Zapri">
+            <ion-icon slot="icon-only" name="close-outline"></ion-icon>
+          </ion-button>
+        </div>
+
+        @if (images().length > 1) {
+          <!-- stopPropagation je tu nujen: brez njega bi klik na puščico prišel tudi do ozadja,
+               ki povečavo zapira — puščica bi torej sliko zamenjala in jo takoj zaprla. -->
+          <ion-button
+            class="viewer-nav prev"
+            fill="clear"
+            color="light"
+            (click)="step(-1); $event.stopPropagation()"
+            aria-label="Prejšnja slika"
+          >
+            <ion-icon slot="icon-only" name="chevron-back"></ion-icon>
+          </ion-button>
+          <ion-button
+            class="viewer-nav next"
+            fill="clear"
+            color="light"
+            (click)="step(1); $event.stopPropagation()"
+            aria-label="Naslednja slika"
+          >
+            <ion-icon slot="icon-only" name="chevron-forward-outline"></ion-icon>
+          </ion-button>
+        }
+
+        @if (viewerUrl(); as src) {
+          <img class="viewer-image" [src]="src" [alt]="shown.caption ?? ''" />
+        } @else {
+          <ion-spinner color="light"></ion-spinner>
+        }
+
+        @if (shown.caption; as caption) {
+          <p class="viewer-caption">{{ caption }}</p>
+        }
+      </div>
+    }
+
     <!-- ─────────── način kuhanja ─────────── -->
     @if (cooking(); as current) {
       <div class="cook">
@@ -486,11 +537,74 @@ import {
       .shot.cover {
         outline: 2px solid var(--ion-color-primary);
       }
+      .shot-open {
+        display: block;
+        padding: 0;
+        border: none;
+        background: none;
+        cursor: zoom-in;
+      }
       .shot img {
         width: 160px;
         height: 120px;
         object-fit: cover;
         display: block;
+      }
+
+      /* Povečana slika je prekrivalo čez vse, brez okvirjev: slika je vsebina, ne predmet v oknu. */
+      .viewer {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.92);
+        cursor: zoom-out;
+        padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
+      }
+      .viewer-image {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+      }
+      .viewer-bar {
+        position: absolute;
+        top: env(safe-area-inset-top, 0);
+        right: 0;
+        left: 0;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 4px 8px;
+        color: #fff;
+      }
+      .viewer-count {
+        font-size: 0.85rem;
+        opacity: 0.8;
+      }
+      .viewer-nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        --padding-start: 8px;
+        --padding-end: 8px;
+      }
+      .viewer-nav.prev {
+        left: 4px;
+      }
+      .viewer-nav.next {
+        right: 4px;
+      }
+      .viewer-caption {
+        position: absolute;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        left: 16px;
+        right: 16px;
+        text-align: center;
+        color: #fff;
+        font-size: 0.85rem;
       }
       .shot-actions {
         display: flex;
@@ -652,6 +766,10 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
   readonly shareOpen = signal(false);
   readonly cooking = signal<Recipe | null>(null);
   readonly categories = signal<RecipeCategory[]>([]);
+  readonly viewer = signal<RecipeImage | null>(null);
+  /** `objectURL` POLNE slike (ne pomanjšave) — nalaga se šele ob odprtju povečave, ker je to
+   * edino mesto, kjer je večja slika res potrebna. */
+  private readonly viewerSrc = signal<string | null>(null);
   readonly stars = [1, 2, 3, 4, 5];
 
   private readonly doneSteps = signal<Set<number>>(new Set());
@@ -705,6 +823,7 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.releaseViewer();
     this.releaseImages();
     void this.releaseWakeLock();
   }
@@ -887,6 +1006,79 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
     return this.imageUrls()[image.id] ?? null;
   }
 
+  // ── povečana slika ───────────────────────────────────────────────────────────────────────
+
+  viewerUrl(): string | null {
+    return this.viewerSrc();
+  }
+
+  viewerIndex(): number {
+    const shown = this.viewer();
+    return shown ? this.images().findIndex((image) => image.id === shown.id) : -1;
+  }
+
+  /**
+   * Odpre povečavo in naloži POLNO sliko.
+   *
+   * Do tu je bila v prikazu pomanjšava (600 px), ki je za čez cel zaslon premalo. Polna slika se
+   * prenese šele zdaj in ne ob izrisu seznama — sicer bi vsak obisk recepta prenesel vse slike v
+   * polni velikosti, kar je natanko to, čemur se seznam s pomanjšavami izogiba.
+   *
+   * Dokler se prenaša, je v prekrivalu vrtavka; ob neuspehu obvelja pomanjšava, ker je boljša od
+   * praznega zaslona.
+   */
+  async openViewer(image: RecipeImage): Promise<void> {
+    const recipeId = this.recipe()?.id;
+    if (!recipeId) return;
+
+    this.releaseViewer();
+    this.viewer.set(image);
+    // Pomanjšava je že v pomnilniku in se pokaže takoj — polna jo zamenja, ko prispe.
+    this.viewerSrc.set(this.imageUrl(image));
+
+    try {
+      const blob = await this.api.imageBlob(recipeId, image.id);
+      // Med prenosom je uporabnik morda že zaprl povečavo ali šel na drugo sliko.
+      if (this.viewer()?.id !== image.id) {
+        return;
+      }
+      this.setViewerSrc(URL.createObjectURL(blob));
+    } catch {
+      // Brez polne slike ostane pomanjšava — povečana in mehkejša, a vidna.
+    }
+  }
+
+  /** Premik na prejšnjo/naslednjo sliko; seznam se ovije, ker je pri treh slikah to hitreje od
+   * iskanja roba. */
+  async step(delta: number): Promise<void> {
+    const all = this.images();
+    if (all.length < 2) return;
+    const index = this.viewerIndex();
+    if (index < 0) return;
+    const next = all[(index + delta + all.length) % all.length];
+    if (next) await this.openViewer(next);
+  }
+
+  closeViewer(): void {
+    this.viewer.set(null);
+    this.releaseViewer();
+  }
+
+  /** Zamenja naslov in sprosti prejšnjega — a NIKOLI tistega, ki pripada galeriji: te sprošča
+   * `releaseImages()` in dvojni `revokeObjectURL` bi pustil prazno sličico v seznamu. */
+  private setViewerSrc(url: string | null): void {
+    this.releaseViewer();
+    this.viewerSrc.set(url);
+  }
+
+  private releaseViewer(): void {
+    const current = this.viewerSrc();
+    if (current && !Object.values(this.imageUrls()).includes(current)) {
+      URL.revokeObjectURL(current);
+    }
+    this.viewerSrc.set(null);
+  }
+
   /**
    * Naloži izbrane slike, eno za drugo.
    *
@@ -909,16 +1101,24 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
     this.error.set(null);
     try {
       for (const file of files) {
-        const size = await measureImage(file);
-        const image = await this.api.uploadImage(recipeId, file, {
-          width: size?.width,
-          height: size?.height,
+        // Slika se PRED nalaganjem pomanjša na 1600 px in stisne v WebP (image-resize.ts).
+        // Fotografija s telefona gre s 5 MB na ~250 kB, kar je razlika med bazo, ki zraste v
+        // gigabajte, in tako, ki ne. `null` pomeni, da je brskalnik ni znal dekodirati — takrat
+        // gre gor izvirnik, ker je sliko morda vseeno mogoče prikazati.
+        const prepared = await prepareImage(file);
+        const body = prepared?.full ?? file;
+
+        const image = await this.api.uploadImage(recipeId, body, {
+          width: prepared?.width,
+          height: prepared?.height,
         });
-        try {
-          const thumb = await makeThumbnail(file);
-          if (thumb) await this.api.uploadThumb(recipeId, image.id, thumb);
-        } catch {
-          // Brez pomanjšave je seznam počasnejši, ne pokvarjen.
+
+        if (prepared?.thumb) {
+          try {
+            await this.api.uploadThumb(recipeId, image.id, prepared.thumb);
+          } catch {
+            // Brez pomanjšave je seznam počasnejši, ne pokvarjen — slika je že naložena.
+          }
         }
       }
       await this.refresh();

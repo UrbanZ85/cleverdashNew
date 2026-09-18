@@ -154,12 +154,37 @@ Prijavljeno ob uporabi: "ne morem shraniti novega recepta".
 > smereh: pretvorba je čista funkcija s testi, obravnava napak pa loči hrošča od zavrnitve
 > strežnika, da naslednja taka napaka ne bo spet neslišna.
 
+## Faza 10 — Stiskanje slik in povečava
+
+Prijavljeno ob uporabi: ena slika 5 MB je občutno preveč.
+
+- [x] **T058** `image-resize.ts` — prepisan: `prepareImage()` pomanjša na 1600 px in stisne v WebP,
+      z zaznavanjem podpore (`blob.type`), zasukom iz EXIF in vrnitvijo k izvirniku, kadar bi bil
+      rezultat večji. Pomanjšava za seznam je zdaj prav tako WebP.
+- [x] **T059** `recipe-editor.page.ts` — naloži se PRIPRAVLJENA slika, ne izvirnik; mere v zapisu so
+      mere shranjene slike.
+- [x] **T060** `recipe-editor.page.ts` — povečava ob kliku: prekrivalo s polno sliko, premikanje med
+      slikami, sproščanje `objectURL`.
+- [x] **T061** `public/recipe-public.page.ts` — povečava tudi na javni strani.
+- [x] **T062** `tests/unit/recipes-image-resize.spec.ts` — 8 testov nad čistima funkcijama
+      (`fitWithin`, `shouldUseEncoded`); kodiranja v jsdom ni mogoče pokriti.
+- [x] **T063** `icons.spec.ts`, `research.md` §5, `spec.md` (FR-028…FR-030a), pogodba, `README.md`,
+      `quickstart.md`.
+
+> **Zakaj je bilo treba paziti:** `canvas.toBlob` z nepodprto vrsto ne javi napake, ampak tiho vrne
+> PNG — pri fotografiji večji od izvirnega JPEG, torej bi se "optimizacija" obrnila v napihovanje.
+> In risanje na `<canvas>` odvrže EXIF, zato bi se pokončna fotografija s telefona shranila obrnjena.
+> Obe napaki bi se pokazali šele pri pravi rabi, ne v testih.
+
 ## Kaj NI bilo narejeno (in je tako prav)
 
 - **Ploščica na nadzorni plošči** — terja vpis zunaj modula; podatki zanjo v API-ju že so.
 - **Preračun na porcije, nakupovalni seznam** — terja razčlenjene sestavine (research.md §12).
 - **Zaklep recepta** — vse odločitve gredo skozi eno funkcijo, zato bo to vrstica v tabeli.
 - **Hierarhija kategorij** (podkategorije) — ena raven, enako kot mape v modulu 008.
+- **Naknadno stiskanje ŽE naloženih slik.** Strežnik dekodirnika nima (research.md §5), zato bi
+  to pomenilo prenos vsake slike v brskalnik, pretvorbo in ponovno nalaganje. Izvedljivo, a je
+  svoja odločitev; do takrat je najhitreje stare slike izbrisati in naložiti znova.
 - **Samodejno razvrščanje v kategorije ob uvozu s strani** — `recipeCategory` iz schema.org gre
   med OZNAKE, ne med kategorije: besednjak je uporabnikova razvrstitev in tuja stran vanj ne sme
   pisati.

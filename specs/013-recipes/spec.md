@@ -83,6 +83,11 @@ ki ga besedilo ne nadomesti.
    **Then** je zavrnjena po DEJANSKI vrsti vsebine, ne po končnici imena.
 5. **Given** recept z naslovno sliko, **When** naslovno sliko izbrišem, **Then** recept ostane in
    naslovna postane katera od preostalih ali nobena.
+6. **Given** fotografija s telefona (4–6 MB), **When** jo naložim, **Then** se shrani pomanjšana in
+   stisnjena — reda 150–350 kB — in na zaslonu ni videti razlike.
+7. **Given** fotografija, posneta pokončno, **When** jo naložim, **Then** ni obrnjena.
+8. **Given** sličica v receptu, **When** kliknem nanjo, **Then** se pokaže čez cel zaslon; pri več
+   slikah se je mogoče premikati naprej in nazaj.
 
 ### User Story 4 - Delim recept s sodelavcem (Priority: P2)
 
@@ -268,6 +273,13 @@ seznamu klikni čip in dobi samo recepte te kategorije.
 - **FR-026**: Brisanje recepta MORA izbrisati njegove slike.
 - **FR-027**: Sistem MORA k vsaki sliki hraniti pomanjšavo za seznam, da izpis ne prenaša
   izvirnikov.
+- **FR-028**: Vmesnik MORA sliko pred nalaganjem pomanjšati (daljša stranica največ 1600 px) in
+  stisniti v WebP, kjer ga brskalnik zna zakodirati; sicer v JPEG. Kadar bi bil rezultat večji od
+  izvirnika in pomanjšave ni bilo, se naloži izvirnik.
+- **FR-029**: Zasuk iz EXIF MORA preživeti pretvorbo — fotografija s telefona se ne sme shraniti
+  obrnjena.
+- **FR-030a**: Klik na sliko jo MORA prikazati povečano čez cel zaslon; pri več slikah je mogoče
+  med njimi premikati. Povečava prenese POLNO sliko, seznam pa pomanjšavo.
 
 #### Deljenje med uporabniki
 
@@ -378,6 +390,7 @@ seznamu klikni čip in dobi samo recepte te kategorije.
 - **SC-006**: Brisanje mape modula in petih vpisov pusti `typecheck`, `lint` in teste čiste.
 - **SC-007**: Soudeleženec `view` v vmesniku nima nobene kontrole, ki bi ob kliku vrnila 403.
 - **SC-008**: Izbris kategorije s tremi recepti pusti vse tri recepte.
+- **SC-009**: Fotografija s telefona zasede po nalaganju manj kot desetino izvirne velikosti.
 
 ## Assumptions
 

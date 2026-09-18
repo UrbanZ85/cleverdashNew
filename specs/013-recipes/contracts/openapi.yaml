@@ -362,6 +362,11 @@ paths:
         ki ni JPEG/PNG/WebP, je `400`, tudi če je glava `image/jpeg`.
 
         Prva slika recepta postane NASLOVNA sama od sebe.
+
+        **Strežnik slike NE pretvarja in NE pomanjšuje.** Vmesnik jo pred nalaganjem pomanjša na
+        1600 px in stisne v WebP (glej research.md §5); klicatelj prek API-ja tega ne počne in
+        njegova slika se shrani taka, kot jo pošlje — omejena samo z `RECIPES_IMAGE_MAX_MB`.
+        Stiskanje je lastnost vmesnika, meja je lastnost strežnika.
       operationId: uploadRecipeImage
       parameters:
         - { name: caption, in: query, schema: { type: string, maxLength: 200 } }

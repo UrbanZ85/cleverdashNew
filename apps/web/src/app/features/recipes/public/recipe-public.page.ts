@@ -71,7 +71,9 @@ interface PublicRecipe {
       } @else if (recipe(); as current) {
         <article class="recipe">
           @if (current.coverImageId; as cover) {
-            <img class="cover" [src]="imageSrc(cover)" [alt]="current.title" />
+            <button type="button" class="open" (click)="zoom(cover)">
+              <img class="cover" [src]="imageSrc(cover)" [alt]="current.title" />
+            </button>
           }
 
           <h1>{{ current.title }}</h1>
@@ -126,7 +128,9 @@ interface PublicRecipe {
           @if (otherImages(current).length > 0) {
             <div class="gallery">
               @for (image of otherImages(current); track image.id) {
-                <img [src]="imageSrc(image.id)" [alt]="image.caption ?? current.title" loading="lazy" />
+                <button type="button" class="open" (click)="zoom(image.id)">
+                  <img [src]="imageSrc(image.id)" [alt]="image.caption ?? current.title" loading="lazy" />
+                </button>
               }
             </div>
           }
@@ -142,6 +146,15 @@ interface PublicRecipe {
 
           <ion-note class="footer">Recept je bil s teboj deljen prek CleverDasha.</ion-note>
         </article>
+      }
+
+      <!-- Povečana slika. Tu ni prenosa prek HttpClienta kot na prijavljenih zaslonih: pot je javna,
+           zato naslov v src deluje neposredno in ni objectURL-ov, ki bi jih bilo treba
+           sproščati. -->
+      @if (zoomed(); as id) {
+        <div class="viewer" (click)="closeZoom()">
+          <img class="viewer-image" [src]="imageSrc(id)" alt="" />
+        </div>
       }
     </ion-content>
   `,
@@ -200,6 +213,30 @@ interface PublicRecipe {
         aspect-ratio: 4 / 3;
         object-fit: cover;
         border-radius: 8px;
+        display: block;
+      }
+      .open {
+        display: block;
+        width: 100%;
+        padding: 0;
+        border: none;
+        background: none;
+        cursor: zoom-in;
+      }
+      .viewer {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.92);
+        cursor: zoom-out;
+      }
+      .viewer-image {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
       }
       .source {
         font-size: 0.85rem;
@@ -220,6 +257,7 @@ export class RecipePublicPage implements OnInit {
   readonly recipe = signal<PublicRecipe | null>(null);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
+  readonly zoomed = signal<string | null>(null);
 
   private token = '';
 
@@ -243,6 +281,14 @@ export class RecipePublicPage implements OnInit {
    * do vsake slike v bazi. */
   imageSrc(imageId: string): string {
     return apiUrl(`/shared-recipes/${this.token}/images/${imageId}`);
+  }
+
+  zoom(imageId: string): void {
+    this.zoomed.set(imageId);
+  }
+
+  closeZoom(): void {
+    this.zoomed.set(null);
   }
 
   otherImages(recipe: PublicRecipe): { id: string; caption: string | null }[] {

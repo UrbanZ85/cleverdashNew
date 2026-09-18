@@ -315,11 +315,15 @@ Recept se **deli na dva načina**, ki sta v vmesniku strogo ločena:
 Štiri odločitve, ki jih je vredno poznati, preden se kdo loti sprememb:
 
 - **Slike so v bazi, ne na disku.** Nasprotno od deljenja datotek (009) in enako kot zvok pri
-  beležkah (007): fotografija s telefona je nekaj MB, odločilno pa ni prostor, ampak to, da se
-  slika in recept ne smeta raziti — na disku bi bila slika zunaj varnostne kopije baze in bi
-  lahko preživela svoj recept. Seznam nikoli ne prenese izvirnikov: ob nalaganju nastane
-  pomanjšava, ki jo izračuna **brskalnik** (`<canvas>`), ker bi `sharp` na strežniku pomenil
-  izvorni gradnik s prevajanjem ob vsaki namestitvi.
+  beležkah (007): odločilno ni prostor, ampak to, da se slika in recept ne smeta raziti — na disku
+  bi bila slika zunaj varnostne kopije baze in bi lahko preživela svoj recept.
+- **Slika se pomanjša in stisne, preden se naloži.** Fotografija s telefona (4–6 MB) gre na 1600 px
+  in v **WebP** — tipično 150–350 kB, brez vidne razlike na zaslonu. Delo opravi **brskalnik**
+  (`<canvas>`), ker bi `sharp` na strežniku pomenil izvorni gradnik s prevajanjem ob vsaki
+  namestitvi. Poleg tega nastane še pomanjšava 600 px za seznam, da izpis nikoli ne prenaša
+  velikih slik. Klik na sliko jo pokaže čez cel zaslon. Strežnik sam ne pretvarja ničesar: slika,
+  poslana prek API-ja, se shrani taka, kot je — stiskanje je lastnost vmesnika, meja velikosti pa
+  lastnost strežnika.
 - **Vrsta slike se ugotovi iz vsebine, ne iz imena.** Preveri se podpis datoteke; glava
   `Content-Type`, ki jo pošlje odjemalec, je izjava in ne dejstvo. Brez tega bi bil HTML, ki bi
   se naložil kot "slika" in se pozneje postregel z naše domene, shranjen XSS. Isto preverbo
