@@ -4,6 +4,7 @@ import { createApp } from '../../../src/main.js';
 import { clearTestDb, startTestDb, stopTestDb } from '../../setup/mongo-memory.js';
 import { setTestEnv } from '../../setup/test-env.js';
 import { AUTH, jpegBytes, loginAs, loginTwo, seedRecipe } from './_helpers.js';
+import { RecipeModel } from '../../../src/modules/recipes/models/recipe.model.js';
 import { resetPublicRateLimiter } from '../../../src/modules/recipes/services/public-throttle.service.js';
 
 // US5 — FR-040 do FR-048.
@@ -48,6 +49,28 @@ describe('izdaja in preklic', () => {
 
     expect(javna.status).toBe(200);
     expect(javna.body).toMatchObject({ title: 'Bučna juha', ingredients: ['1 buča'], steps: ['Popeci.'] });
+  });
+
+  it('javni odgovor VSEBUJE kategorije — te so lastnost jedi, ne podatek o lastniku (FR-088)', async () => {
+    // Ta test obstaja, ker preverjanje "česa v odgovoru NE sme biti" te napake ne ujame: pogodba je
+    // kategorije obljubila, projekcija v public.router.ts pa jih sprva ni vračala.
+    const app = (await createApp()).app;
+    const user = await loginAs(app, 'a');
+    const token = 'k'.repeat(22);
+    await seedRecipe({
+      ownerId: user.userId,
+      title: 'Ričet',
+      tags: ['vegi'],
+      publicShare: { token },
+    });
+    await RecipeModel.updateOne(
+      { 'publicShare.token': token },
+      { $set: { categories: ['Juhe', 'Kosila'], categoryKeys: ['juhe', 'kosila'] } },
+    );
+
+    const res = await request(app).get(`/api/v1/shared-recipes/${token}`);
+    expect(res.body.categories).toEqual(['Juhe', 'Kosila']);
+    expect(res.body.tags).toEqual(['vegi']);
   });
 
   it('javni odgovor NE razkrije lastnika, soudeležencev, ocene ne žetona (FR-042)', async () => {

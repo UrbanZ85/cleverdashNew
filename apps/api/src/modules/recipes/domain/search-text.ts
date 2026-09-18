@@ -36,6 +36,7 @@ export function buildSearchText(parts: {
   description?: string | null;
   ingredients?: readonly string[];
   tags?: readonly string[];
+  categories?: readonly string[];
 }): string {
   return foldForSearch(
     [
@@ -43,6 +44,9 @@ export function buildSearchText(parts: {
       parts.description ?? '',
       (parts.ingredients ?? []).join(' '),
       (parts.tags ?? []).join(' '),
+      // Kategorije so tu, čeprav imajo SVOJ filter (FR-082): človek, ki v iskalnik vpiše "juhe",
+      // pričakuje juhe — ne praznega seznama z nasvetom, naj namesto tega uporabi čip.
+      (parts.categories ?? []).join(' '),
     ].join(' '),
   )
     .replace(/\s+/g, ' ')

@@ -68,6 +68,7 @@ import {
   squareOutline,
   star,
   starOutline,
+  statsChartOutline,
   stopCircleOutline,
   settingsOutline,
   thermometerOutline,
@@ -170,6 +171,8 @@ export const REGISTERED_ICONS = {
   star: star,
   // 013: prazna zvezdica v ocenjevalniku — polna je zgoraj.
   'star-outline': starOutline,
+  // 014: zavihek Analitika — edini zavihek, ki ga vidi samo administrator.
+  'stats-chart-outline': statsChartOutline,
   'stop-circle-outline': stopCircleOutline,
   'thermometer-outline': thermometerOutline,
   'time-outline': timeOutline,

@@ -36,7 +36,10 @@ import { savedLinksRouter, savedLinkGroupsRouter } from './modules/saved-links/r
 import { meteoRouter } from './modules/meteo/router.js';
 import { recipesRouter } from './modules/recipes/router.js';
 import { recipesPublicRouter } from './modules/recipes/public.router.js';
+import { recipeCategoriesRouter } from './modules/recipes/categories.router.js';
 import { usersRouter } from './platform/users/router.js';
+import { usageRouter } from './platform/usage/router.js';
+import { analyticsRouter } from './modules/analytics/router.js';
 import { registerTodosTabDetail } from './modules/todos/tab-detail.js';
 
 // Ta datoteka je edino mesto, ki poveže module z `/api/v1`. Dodajanje modula (dashboard,
@@ -106,11 +109,23 @@ export async function createApp() {
   // `requireScopes` in JAVNA polovica (`/shared-recipes/*`), ki ga ne kliče. Javni je vpet tu in
   // ne pred vratarji: tako gre še vedno skozi korelacijo, idempotentnost in obravnavo napak.
   apiV1Router.use(recipesRouter);
+  // Besednjak kategorij je LOČENA korenina (`/recipe-categories*`) in zato svoj usmerjevalnik —
+  // enako kot `cameraGroupsRouter` in `savedLinkGroupsRouter`. Del istega modula je in se z njim
+  // briše.
+  apiV1Router.use(recipeCategoriesRouter);
   apiV1Router.use(recipesPublicRouter);
   // 010: imenik uporabnikov je SKUPNA zmogljivost, ne del modula opravil — izbira osebe ni
   // pojem opravil in mora preživeti odstranitev katerega koli modula (člen I). Zato živi v
   // platform/users/, tako kot `/tabs` in `/devices`.
   apiV1Router.use(usersRouter);
+  // 014: telemetrija je SKUPNA zmogljivost (kot `/users` zgoraj), pregled nad njo pa modul.
+  //
+  // Delitev ni okrasna. Prijavo lahko prešteje samo tisti, ki jo vidi — to je
+  // `modules/auth/router.ts`, in klic iz modula v modul je lint napaka (člen I). Ogled zavihka
+  // prav tako ni pojem analitike, ampak pojem zavihkov. Zato zbiranje živi v `platform/usage/`,
+  // kjer preživi odstranitev zavihka Analitika, prikaz pa v modulu, ki se briše kot vsak drug.
+  apiV1Router.use(usageRouter);
+  apiV1Router.use(analyticsRouter);
 
   app.use('/api/v1', apiV1Router);
   app.use(problemErrorHandler());

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  asText,
   describeSourceStatus,
   formatDuration,
   formatLastCooked,
@@ -7,6 +8,7 @@ import {
   ROLE_LABELS,
   MEMBER_ROLES,
   splitLines,
+  toOptionalCount,
 } from '../../src/app/features/recipes/recipes.model.js';
 
 // 013: čiste funkcije vmesnika. Izris komponent ni pokrit tu — pokrite so odločitve, ki jih je
@@ -41,6 +43,59 @@ describe('formatLastCooked', () => {
     expect(formatLastCooked(daysAgo(8))).toBe('Pred tednom');
     expect(formatLastCooked(daysAgo(40))).toBe('Pred mesecem');
     expect(formatLastCooked(daysAgo(400))).toBe('Pred letom');
+  });
+});
+
+
+// ── Kar ngModel dejansko vrne ───────────────────────────────────────────────────────────────
+//
+// Ta razdelek je nastal iz PRAVE napake: urejevalnik je predpostavljal, da so vse vrednosti iz
+// ngModel nizi, in klical .trim(). IonInput s type="number" sporoči ŠTEVILO (ali null za prazno
+// polje), zato je (45).trim() vrgel TypeError znotraj try bloka v save() — gumb je pokazal
+// "Recepta ni bilo mogoče shraniti", zahteva pa ni šla nikoli ven.
+//
+// Ista napaka se je v tem repozitoriju zgodila že pri krajih ploščice "Pot" (commute-form.ts).
+// Dvakrat je enkrat preveč, zato je pokrita tu.
+
+describe('asText', () => {
+  it('prenese niz, ŠTEVILO in prazno vrednost', () => {
+    expect(asText('  Juha  ')).toBe('Juha');
+    expect(asText(45)).toBe('45');
+    expect(asText(null)).toBe('');
+    expect(asText(undefined)).toBe('');
+  });
+});
+
+describe('toOptionalCount', () => {
+  it('sprejme ŠTEVILO, kot ga vrne ion-input type=number', () => {
+    expect(toOptionalCount(45)).toBe(45);
+    expect(toOptionalCount(4)).toBe(4);
+  });
+
+  it('prazno polje je null in NE napaka', () => {
+    // null pride iz ion-inputa, ko uporabnik polje izprazni; prazen niz je stanje pred prvim
+    // vnosom, undefined pa polje, ki ga ngModel še ni nastavil.
+    expect(toOptionalCount(null)).toBeNull();
+    expect(toOptionalCount(undefined)).toBeNull();
+    expect(toOptionalCount('')).toBeNull();
+    expect(toOptionalCount('   ')).toBeNull();
+  });
+
+  it('sprejme niz, ker ngModel pri type=text vrne niz', () => {
+    expect(toOptionalCount('45')).toBe(45);
+  });
+
+  it('dovoli decimalno vejico in zaokroži', () => {
+    // Slovenska tipkovnica ponudi vejico prva; Number('1,5') je NaN.
+    expect(toOptionalCount('1,6')).toBe(2);
+    expect(toOptionalCount(3.4)).toBe(3);
+  });
+
+  it('nesmiselno vrednost prevede v null, ne v NaN', () => {
+    expect(toOptionalCount('pet')).toBeNull();
+    expect(toOptionalCount(0)).toBeNull();
+    expect(toOptionalCount(-3)).toBeNull();
+    expect(toOptionalCount(Number.NaN)).toBeNull();
   });
 });
 

@@ -134,4 +134,22 @@ export const TAB_REGISTRY: TabDefinition[] = [
     order: 10,
     enabled: true,
   },
+  // 014: PRVI zavihek, ki ga ne vidi vsak uporabnik. `requiredScopes: ['admin']` pomeni v
+  // `resolveTabs` (coversRequiredScopes) točno to, kar piše: kdor obsega nima, zavihka v `GET
+  // /tabs` NE DOBI — ni izklopljen, ni ga. Razlika do `meteo` in `recipes` je, da tam obseg
+  // razlikuje med "modul obstaja" in "uporabnik ga sme", tu pa med dvema vrstama ljudi.
+  //
+  // `order: 11` in ne nižje: 0–10 so zasedene in enak `order` pri dveh vnosih bi njun medsebojni
+  // vrstni red prepustil nestabilnemu razvrščanju (glej opombo pri `recipes`). Mesto za
+  // Nastavitvami je ob tem tudi pravo: orodje, ki ga vidi en človek in ne vsak dan, ne sodi med
+  // zavihke, ki se uporabljajo.
+  {
+    id: 'analytics',
+    title: 'Analitika',
+    icon: 'stats-chart-outline',
+    route: '/analytics',
+    order: 11,
+    requiredScopes: ['admin'],
+    enabled: true,
+  },
 ];

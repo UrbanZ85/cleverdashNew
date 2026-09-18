@@ -17,6 +17,7 @@ import {
   MAX_STEPS,
   MAX_STEP_LENGTH,
   memberRoleSchema,
+  normalizeCategories,
   normalizeTags,
   recipePatchSchema,
   recipeWriteSchema,
@@ -35,6 +36,7 @@ import {
   requireRecipe,
   upsertMember,
 } from './services/recipe-access.service.js';
+import { ensureCategories } from './services/category.service.js';
 import { importRecipeFromUrl } from './services/recipe-import.service.js';
 import { RECIPE_SCOPES } from './scopes.js';
 
@@ -65,6 +67,7 @@ interface RecipeLean {
   prepMinutes: number | null;
   servings: number | null;
   tags: string[];
+  categories: string[];
   rating: number | null;
   lastCookedAt: Date | null;
   cookCount: number;
@@ -124,6 +127,7 @@ function toRecipeResponse(
     prepMinutes: doc.prepMinutes ?? null,
     servings: doc.servings ?? null,
     tags: doc.tags ?? [],
+    categories: doc.categories ?? [],
     rating: doc.rating ?? null,
     lastCookedAt: doc.lastCookedAt ?? null,
     cookCount: doc.cookCount ?? 0,
@@ -224,6 +228,7 @@ recipesRouter.get('/recipes', requireScopes(RECIPE_SCOPES.read), async (req, res
       userId,
       query: params.q,
       tag: params.tag,
+      category: params.category,
       scope: params.scope,
     });
 
@@ -269,6 +274,7 @@ recipesRouter.post('/recipes', requireScopes(RECIPE_SCOPES.write), async (req, r
     });
     const steps = splitLines(body.steps ?? [], { maxItems: MAX_STEPS, maxLength: MAX_STEP_LENGTH });
     const { tags, tagKeys } = normalizeTags(body.tags);
+    const { categories, categoryKeys } = normalizeCategories(body.categories);
 
     // ZAPIS NASTANE PRED BRANJEM STRANI (FR-012). To ni optimizacija, ampak zahteva: shranjevanje
     // ne sme biti odvisno od dosegljivosti tuje strani, in ob neuspehu se zapis NE razveljavi.
@@ -284,16 +290,24 @@ recipesRouter.post('/recipes', requireScopes(RECIPE_SCOPES.write), async (req, r
       servings: body.servings ?? null,
       tags,
       tagKeys,
+      categories,
+      categoryKeys,
       rating: body.rating ?? null,
       searchText: buildSearchText({
         title: body.title,
         description: body.description,
         ingredients: ingredients.items,
         tags,
+        categories,
       }),
       sourceStatus: 'none',
       lastModifiedBy: userId,
     });
+
+    // Besednjak se dopolni PO nastanku recepta in njegov neuspeh recepta ne razveljavi: imena
+    // kategorij so zapisana v receptu in so veljavna tudi brez vnosa v besednjaku
+    // (services/category.service.ts). Besednjak je udobje izbirnika, ne pogoj zapisa.
+    await ensureCategories(userId, categories);
 
     // Šele zdaj branje strani, znotraj proračuna. Izid je v `sourceStatus` in ne v statusu
     // odgovora — 201 velja tudi, kadar strani ni bilo mogoče prebrati.
@@ -378,12 +392,25 @@ recipesRouter.patch('/recipes/:recipeId', requireScopes(RECIPE_SCOPES.write), as
       update.tags = normalized.tags;
       update.tagKeys = normalized.tagKeys;
     }
+    if (body.categories !== undefined) {
+      const normalized = normalizeCategories(body.categories);
+      update.categories = normalized.categories;
+      update.categoryKeys = normalized.categoryKeys;
+      // Besednjak KLICATELJA, tudi kadar ureja tuj deljen recept — glej ensureCategories().
+      await ensureCategories(userId, normalized.categories);
+    }
 
     // `searchText` se izpelje iz STANJA PO posodobitvi, zato je treba poznati tudi polja, ki jih
     // to telo ni poslalo. Branje je zato tu in ne prej: brati je treba natanko enkrat.
     const current = await RecipeModel.findById(access.recipeId)
-      .select('title description ingredients tags')
-      .lean<{ title: string; description: string | null; ingredients: string[]; tags: string[] } | null>();
+      .select('title description ingredients tags categories')
+      .lean<{
+        title: string;
+        description: string | null;
+        ingredients: string[];
+        tags: string[];
+        categories: string[];
+      } | null>();
     if (!current) throw notFound('Recept ne obstaja.');
 
     update.searchText = buildSearchText({
@@ -391,6 +418,7 @@ recipesRouter.patch('/recipes/:recipeId', requireScopes(RECIPE_SCOPES.write), as
       description: (update.description as string | null) ?? current.description,
       ingredients: (update.ingredients as string[]) ?? current.ingredients,
       tags: (update.tags as string[]) ?? current.tags,
+      categories: (update.categories as string[]) ?? current.categories,
     });
 
     await RecipeModel.updateOne({ _id: access.recipeId }, { $set: update });
@@ -552,6 +580,9 @@ async function applyImport(
       description,
       ingredients: update.ingredients as string[],
       tags,
+      // Uvoz s strani kategorij NE postavlja — te so uporabnikova razvrstitev, ne podatek strani.
+      // V izračun gredo obstoječe, sicer bi jih osvežitev vira tiho vrgla iz iskanja.
+      categories: current.categories,
     });
   }
 

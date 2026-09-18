@@ -57,6 +57,9 @@ export interface Recipe {
   prepMinutes: number | null;
   servings: number | null;
   tags: string[];
+  /** Kategorije ("Juhe", "Kosila") kot IMENA, ne identifikatorji — recept vidita dva uporabnika
+   * z dvema različnima besednjakoma, zato bi identifikator za soudeleženca kazal v tujo zbirko. */
+  categories: string[];
   rating: number | null;
   lastCookedAt: string | null;
   cookCount: number;
@@ -97,8 +100,21 @@ export interface RecipeDraft {
   prepMinutes?: number | null;
   servings?: number | null;
   tags?: string[];
+  categories?: string[];
   rating?: number | null;
   importFromUrl?: boolean;
+}
+
+/** Vnos v uporabnikovem besednjaku kategorij. Besednjak je ZASEBEN in ločen od imen, zapisanih v
+ * receptih — recept lahko nosi kategorijo, ki je v besednjaku ni (npr. jo je dodal soudeleženec). */
+export interface RecipeCategory {
+  id: string;
+  name: string;
+  key: string;
+  order: number;
+  /** Koliko LASTNIH receptov nosi to kategorijo — vmesnik iz tega pove, kaj bo izgubljeno ob
+   * izbrisu. */
+  recipeCount: number;
 }
 
 export type RecipeSort = 'recent' | 'title' | 'rating' | 'cooked';
@@ -159,11 +175,54 @@ export function formatLastCooked(iso: string | null): string {
   return years === 1 ? 'Pred letom' : `Pred ${years} leti`;
 }
 
+/**
+ * Kar `ngModel` na `ion-input` DEJANSKO vrne: niz (besedilo), število (`type="number"`), ali nič
+ * (prazno polje `type="number"`, in stanje pred prvim vnosom).
+ *
+ * ZAKAJ TO OBSTAJA. Prva različica urejevalnika je predpostavljala, da so vse vrednosti iz
+ * `ngModel` NIZI, in klicala `value.trim()`. Niso: `IonInput` sam prepiše `registerOnChange` in
+ * pri `type="number"` sporoči `parseFloat(value)` oziroma `null` za prazno polje
+ * (`@ionic/angular`, `ionic-angular-standalone.mjs`). `(45).trim()` vrže `TypeError` — sinhrono,
+ * znotraj `try` bloka v `save()`.
+ *
+ * Posledica je bila natanko taka, kot je bila videti pri uporabi: gumb je pokazal "Recepta ni bilo
+ * mogoče shraniti", zahteva na API pa ni šla nikoli ven. Padlo je vsako shranjevanje, pri katerem
+ * je bil vpisan ČAS PRIPRAVE ali PORCIJE — torej pri vsakem pravem receptu.
+ *
+ * To se je v tem repozitoriju zgodilo že enkrat, pri krajih ploščice "Pot"
+ * (`features/settings/commute-form.ts`). Tam je vzorec zapisan enako; PREPISAN je in ne uvožen,
+ * ker uvoz med funkcionalnostmi pod `features/` prepoveduje člen I.
+ */
+export type FormFieldValue = string | number | null | undefined;
+
+/** Vrednost polja kot obrezan niz — ne glede na to, ali je `ngModel` vrnil niz ali število. */
+export function asText(value: FormFieldValue): string {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+/**
+ * Polje s številom (čas priprave, porcije) kot pozitivno celo število, ali `null`.
+ *
+ * `null` je POMENSKA vrednost ("ni podatka") in ne "ne spreminjaj": uporabnik, ki je čas izbrisal,
+ * ga je izbrisal z namenom, in strežnik prazno vrednost tako tudi razume.
+ *
+ * Decimalna vejica je dovoljena iz istega razloga kot pri koordinatah: slovenska tipkovnica jo
+ * ponudi prva, `Number('1,5')` pa je `NaN`. Vrednost se zaokroži — pol porcije in pol minute pri
+ * receptu nista podatek, ki bi ga bilo vredno hraniti.
+ */
+export function toOptionalCount(value: FormFieldValue): number | null {
+  const parsed = typeof value === 'number' ? value : Number(asText(value).replace(',', '.'));
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  return rounded > 0 ? rounded : null;
+}
+
 /** Večvrstični vnos v seznam vnosov. Isto pravilo kot na strežniku (`splitLines`), tu zato, da
  * urejevalnik pokaže, kaj bo shranjeno, še preden shrani. Strežnik ga vseeno uveljavi znova —
  * odjemalčeva različica je udobje, ne varovalo. */
-export function splitLines(value: string): string[] {
-  return value
+export function splitLines(value: FormFieldValue): string[] {
+  return asText(value)
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s*(?:[-*•‣·]|\d+[.)])\s+/, '').trim())
     .filter((line) => line.length > 0);

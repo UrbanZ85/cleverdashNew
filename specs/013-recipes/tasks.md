@@ -101,11 +101,68 @@ Oznaka `[P]` pomeni, da naloga ne blokira naslednje in bi lahko tekla vzporedno.
 - [x] **T041** `spec.md`, `research.md`, `data-model.md`, `plan.md`, ta datoteka.
 - [x] **T042** `README.md` — odstavek o funkcionalnosti 013.
 
+## Faza 8 — Kategorije (dopolnitev po prvem preizkusu)
+
+Nastala iz dveh ugotovitev pri uporabi: deljenja uporabnik ni našel (ikona brez besedila, in pri
+ustvarjanju ga po naravi stvari ni), oznake pa za razvrstitev po obroku niso zadoščale — prosto
+besedilo se razpiše v različice istega.
+
+- [x] **T043** `models/recipe-category.model.ts` — besednjak, enoličen indeks na `{userId, key}`.
+- [x] **T044** `domain/recipe-input.ts` — `normalizeCategories`, shemi besednjaka, `category` v
+      poizvedbi, kategorija v filtru.
+- [x] **T045** `recipe.model.ts` — `categories` + `categoryKeys` + indeks; `search-text.ts` jih
+      zajame v iskanje.
+- [x] **T046** `services/category.service.ts` — besednjak, samodejno dopolnjevanje ob pisanju
+      recepta, preimenovanje čez recepte, izbris brez izgube receptov.
+- [x] **T047** `categories.router.ts` — CRUD + vrstni red; `/order` PRED `/:categoryId`.
+- [x] **T048** `router.ts` + `public.router.ts` — kategorije v zapisu, odgovoru in javni projekciji.
+- [x] **T049** `main.ts` — tretji `apiV1Router.use(...)`.
+- [x] **T050** `tests/contract/recipes/categories.spec.ts` — 19 testov.
+- [x] **T051** Odjemalec: `category-manager.component.ts`, čipi in filter v seznamu, izbirnik v
+      urejevalniku, kategorije na javni strani.
+- [x] **T052** Odjemalec: **vrstica "Deljenje"** z besedilom in stanjem namesto same ikone.
+- [x] **T053** Pogodba, `spec.md` (US10, FR-080…FR-088), `data-model.md`, `research.md` §15,
+      `README.md`, ta datoteka.
+
+> **Kaj je bilo treba popraviti sproti:** pogodba je kategorije obljubila tudi na javni strani,
+> projekcija v `public.router.ts` pa jih ni vračala. Ujeto pri branju pogodbe vštric kodi, ne s
+> testom — javni test preverja, česa v odgovoru NE sme biti, ne pa česa mora biti.
+
+## Faza 9 — Popravek: shranjevanje recepta je padlo
+
+Prijavljeno ob uporabi: "ne morem shraniti novega recepta".
+
+- [x] **T054** `recipes.model.ts` — `FormFieldValue`, `asText`, `toOptionalCount`; `splitLines`
+      sprejme tudi ne-niz.
+- [x] **T055** `recipe-editor.page.ts` — obrazec uporablja obe pretvorbi; pogoj gumba "Shrani" je
+      metoda in ne izraz v predlogi.
+- [x] **T056** `recipe-editor.page.ts` — `describe()` loči napako ZAHTEVE od napake v naši kodi;
+      druga gre v konzolo in to pove tudi uporabniku.
+- [x] **T057** `tests/unit/recipes-model.spec.ts` (+6) in `tests/contract/recipes/crud.spec.ts` (+1).
+
+> **Vzrok:** `IonInput` s `type="number"` prepiše `registerOnChange` in prek `ngModel` sporoči
+> **število** (`parseFloat`) oziroma `null` za prazno polje — nikoli niza. Urejevalnik je klical
+> `value.trim()`, kar je vrglo `TypeError` **sinhrono, znotraj `try` bloka v `save()`**. Padlo je
+> vsako shranjevanje, pri katerem je bil vpisan čas priprave ali porcije — torej pri vsakem pravem
+> receptu. Zahteva na API ni šla nikoli ven, uporabnik pa je videl le "Recepta ni bilo mogoče
+> shraniti".
+>
+> **Kar to napako dela vredno zapisa:** v tem repozitoriju se je zgodila ŽE ENKRAT, pri krajih
+> ploščice "Pot" (`features/settings/commute-form.ts`), in je bila tam natančno dokumentirana.
+> Ponovila se je, ker je bil vzorec zapisan v tuji funkcionalnosti, uvoz med njimi pa prepoveduje
+> člen I — in ker enotski testi urejevalnika niso pokrivali pretvorbe obrazca. Zdaj jo, v obeh
+> smereh: pretvorba je čista funkcija s testi, obravnava napak pa loči hrošča od zavrnitve
+> strežnika, da naslednja taka napaka ne bo spet neslišna.
+
 ## Kaj NI bilo narejeno (in je tako prav)
 
 - **Ploščica na nadzorni plošči** — terja vpis zunaj modula; podatki zanjo v API-ju že so.
 - **Preračun na porcije, nakupovalni seznam** — terja razčlenjene sestavine (research.md §12).
 - **Zaklep recepta** — vse odločitve gredo skozi eno funkcijo, zato bo to vrstica v tabeli.
+- **Hierarhija kategorij** (podkategorije) — ena raven, enako kot mape v modulu 008.
+- **Samodejno razvrščanje v kategorije ob uvozu s strani** — `recipeCategory` iz schema.org gre
+  med OZNAKE, ne med kategorije: besednjak je uporabnikova razvrstitev in tuja stran vanj ne sme
+  pisati.
 - **Popravek `tests/contract/timesheet/workbook.spec.ts`** — napaka `Buffer<ArrayBufferLike>` je
   starejša od te veje in ni njena. Popravek sodi v svoj PR, sicer bi bila v tej veji sprememba,
   ki je specifikacija ne pokriva.

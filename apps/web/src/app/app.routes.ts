@@ -88,6 +88,16 @@ export const APP_ROUTES: Routes = [
     loadComponent: () => import('./features/recipes/recipes.page.js').then((m) => m.RecipesPage),
     canActivate: [authGuard, tabGuard],
   },
+  // 014: administratorska analitika. `tabGuard` tu opravi VSE delo zapore na odjemalcu — zavihek
+  // `analytics` ima v registru `requiredScopes: ['admin']`, zato ga navaden uporabnik v `GET /tabs`
+  // sploh ne dobi in ta pot zanj ni registrirana. Posebnega "admin guarda" na odjemalcu torej ni in
+  // ga ne sme biti: vratar, ki bi bral vlogo iz žetona v brskalniku, bi bil videti kot varovalo,
+  // pravo varovalo pa je na strežniku (modules/analytics/admin-guard.ts).
+  {
+    path: 'analytics',
+    loadComponent: () => import('./features/analytics/analytics.page.js').then((m) => m.AnalyticsPage),
+    canActivate: [authGuard, tabGuard],
+  },
   // Urejevalnik je podstran zavihka `recipes` — dosegljiv samo prek seznama, ki je sam tab-gated
   // (tabGuard preverja TOČNO ujemanje poti z registrom), enako kot podstrani "notes" in "cameras".
   //

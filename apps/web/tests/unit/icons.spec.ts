@@ -21,6 +21,7 @@ const TAB_REGISTRY_ICONS = [
   'bookmarks-outline', // saved-links — Shranjeni linki (008)
   'restaurant-outline', // recipes — Recepti (013)
   'settings-outline', // settings — Nastavitve
+  'stats-chart-outline', // analytics — Analitika (014, requiredScopes: ['admin'])
 ];
 
 // 010: ikone, ki jih zavihek Opravila uporablja v svojih predlogah. Prevajalnik jih ne

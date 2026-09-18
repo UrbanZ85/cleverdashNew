@@ -31,6 +31,7 @@ interface PublicRecipeLean {
   prepMinutes: number | null;
   servings: number | null;
   tags: string[];
+  categories: string[];
   coverImageId: Types.ObjectId | null;
   updatedAt: Date;
 }
@@ -47,7 +48,7 @@ interface PublicRecipeLean {
  * polje v modelu privzeto RAZKRIJE, dokler se kdo ne spomni nanj. Ta smer mora biti obrnjena.
  */
 const PUBLIC_PROJECTION =
-  '_id title url description ingredients steps prepMinutes servings tags coverImageId updatedAt';
+  '_id title url description ingredients steps prepMinutes servings tags categories coverImageId updatedAt';
 
 function toPublicRecipe(doc: PublicRecipeLean, images: { id: string; caption: string | null }[]) {
   return {
@@ -58,6 +59,9 @@ function toPublicRecipe(doc: PublicRecipeLean, images: { id: string; caption: st
     steps: doc.steps ?? [],
     prepMinutes: doc.prepMinutes ?? null,
     servings: doc.servings ?? null,
+    // Kategorije so lastnost JEDI ("Juhe"), ne podatek o lastniku ne o njegovih navadah, zato
+    // smejo na javno stran. Besednjak sam ostane zaseben — tu so samo imena s TEGA recepta.
+    categories: doc.categories ?? [],
     tags: doc.tags ?? [],
     coverImageId: doc.coverImageId ? String(doc.coverImageId) : null,
     images,

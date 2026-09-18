@@ -1,0 +1,411 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash — Administratorska analitika
+  version: 1.0.0
+  description: |
+    REST pogodba za zavihek Analitika (014) in za zbiranje telemetrije pod njim. Samostojna
+    pogodba, po istem vzorcu kot 003, 007, 009, 010 in 013 — ne podvaja poti iz 001
+    (`/auth/*`, `/devices`, `/api-keys`, `/settings`, `/health`), ki se v produkciji strežejo iz
+    istega Express app-a.
+
+    ## Dve polovici, ki nista simetrični
+
+    | polovica | pot | kdo sme |
+    |---|---|---|
+    | **branje** (pregled) | `/analytics/*` | izključno PRIJAVLJEN uporabnik z obsegom `admin` |
+    | **pisanje** (telemetrija) | `/usage/views` | vsak prijavljen uporabnik, brez posebnega obsega |
+
+    Pisanje je odprto vsem, ker vsak uporabnik beleži **svojo** uporabo; branje je zaprto, ker
+    je pregled podatek o celi namestitvi.
+
+    ## API ključ tu ne pride skozi
+
+    `GET /analytics/*` vrne `403` vsakemu klicatelju, ki ni prijavljen uporabnik — tudi ključu z
+    veljavnim obsegom. Obseg `admin` sicer ključu ni mogoče dodeliti
+    (`platform/apikeys/router.ts`), a je pogoj zapisan posebej in se na to ne zanaša: zapora, ki
+    stoji na tem, da nekdo drugje ni pozabil, ni zapora (isti razlog je zapisan v
+    `platform/auth/acting-user.ts`).
+
+    `POST /usage/views` ključa prav tako ne sprejme: avtomatizacija ne "gleda zaslonov" in vsak
+    zabeležen ogled mora pripadati človeku.
+
+    ## Prevzem imena (012) tu ne velja
+
+    Ogled se pripiše **resničnemu klicatelju** (`req.actor`), ne osebi, katere ime je prevzeto.
+    To je namerna izjema od pravila, po katerem moduli filtrirajo po `req.auth`
+    (`docs/adding-a-tab.md`, korak 7): zapis pripada fizični osebi za tipkovnico, tako kot seje
+    in naprave za obvestila. Brez tega bi administratorjevo pregledovanje tujih podatkov
+    napihnilo prav tiste številke, ki jih administrator bere.
+
+    ## Poraba ni zasedenost diska
+
+    `totalBytes` je vsota zabeleženih velikosti vsebine. `volume` je zasedenost nosilca.
+    Nista isto število in se ne seštevata: na nosilcu so tudi baza in dnevniki, vsota bajtov pa
+    ne pozna ne indeksov ne stiskanja. Odgovor ju zato nosi ločeno in vmesnik ju ne sme zliti.
+
+    ## Osveževanje je GET, ne POST
+
+    `GET /analytics/storage?fresh=true` zavrže predpomnjeno vrednost in izračuna znova. Ostaja
+    GET, ker ponoven izračun ne spremeni nobenega stanja. Kot mutacija bi šla zahteva skozi
+    `Idempotency-Key` in bi lahko vrnila **shranjen** odgovor — kar je nasprotje tega, kar
+    zahteva "daj mi svežega" pomeni.
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: analytics
+    description: Pregledi za administratorja — izključno branje
+  - name: usage
+    description: Zbiranje telemetrije — piše vsak prijavljen uporabnik
+
+security:
+  - bearerAuth: []
+
+paths:
+  /analytics/storage:
+    get:
+      tags: [analytics]
+      summary: Poraba prostora — skupno, po viru in po osebi
+      description: |
+        Izračun je predpomnjen za `ANALYTICS_CACHE_SECONDS` (privzeto 300 s) in je
+        enkraten tudi ob sočasnih zahtevah — trije hkratni obiski zaslona sprožijo en izračun.
+        `computedAt` in `cachedUntil` sta del odgovora, da je iz njega razvidno, ali je bil
+        podatek pravkar izračunan ali postrežen iz predpomnilnika.
+
+        **Viri, ki jih v namestitvi ni, se izpustijo.** Modul se odstrani z brisanjem ene mape
+        in enega vnosa v registru (člen I); analitika zaradi tega ne sme pasti in ne sme
+        pokazati ničle, kot da vsebine ni. Zato je `sources[]` seznam **merjenih** virov in
+        nosi `present`.
+
+        `byUser[]` vsebuje vsako osebo z računom, tudi z ničlo — "kdo ničesar ne hrani" je
+        enako veljavno vprašanje kot "kdo hrani največ". Največ ena vrstica ima `userId: null`:
+        tam so bajti zapisov, katerih lastnika ni mogoče razrešiti, ki se iz skupne vsote ne
+        smejo izgubiti.
+      operationId: getStorageAnalytics
+      parameters:
+        - name: fresh
+          in: query
+          description: Zavrže predpomnjeno vrednost in izračuna znova.
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Pregled porabe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ForbiddenAdminOnly' }
+
+  /analytics/usage:
+    get:
+      tags: [analytics]
+      summary: Prijave in ogledi zavihkov v obdobju
+      description: |
+        Obdobje je **število koledarskih dni nazaj** v coni `Europe/Ljubljana`, ne zadnjih
+        N×24 ur — dnevni števci drugega ne znajo, in "zadnji teden" v pogovoru pomeni prav to.
+
+        `coverage` je obvezen del odgovora in ne okras: `dataSince` pove, od katerega dne
+        meritve sploh obstajajo, `truncated` pa, da izbrano obdobje sega pred ta dan ali pred
+        rok hrambe. Brez tega je prazno obdobje neločljivo od "nihče se ni prijavljal", kar je
+        napačen sklep s posledicami za račune ljudi.
+
+        `lastLoginAt` ne prihaja iz števcev, ampak iz zapisa o uporabniku — obstaja od 004 in
+        pokriva osebe, ki se po uvedbi te funkcionalnosti še niso prijavile.
+
+        `tabs[]` je poln seznam zavihkov iz razrešenega registra, tudi tistih z nič ogledi:
+        zavihek, ki ga nihče ne odpre, je natanko podatek, ki se tu išče.
+      operationId: getUsageAnalytics
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, enum: [7, 30, 90], default: 30 }
+      responses:
+        '200':
+          description: Statistika uporabe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsageSnapshot' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ForbiddenAdminOnly' }
+
+  /usage/views:
+    post:
+      tags: [usage]
+      summary: Zabeleži ogled zavihka
+      description: |
+        Poveča dnevni števec za par (klicatelj, zavihek). **Ne ustvari zapisa o posameznem
+        ogledu** — v zbirki je ena vrstica na osebo, zavihek in dan, s številom in časom
+        zadnjega ogleda. Iz nje poti osebe po aplikaciji ni mogoče sestaviti (člen XII).
+
+        `tabId` MORA biti oznaka iz registra zavihkov. Poljuben niz je zavrnjen z `400`:
+        zbirka, v katero lahko kdor koli vpiše svoj ključ, ni telemetrija, ampak odprt predal.
+
+        **Ponovitev v oknu `USAGE_VIEW_DEDUPE_SECONDS` (privzeto 60 s) ne šteje znova** in ni
+        napaka — odgovor je `200` z `counted: false`. Osvežitev strani ni nov ogled.
+
+        Odjemalec to pot kliče kot "pošlji in pozabi": neuspeh se ne sme videti kot napaka in
+        ne sme zadržati prikaza zaslona (FR-029).
+
+        `Idempotency-Key` je sprejet (člen III). Pri tej poti ni le obveznost: zahteva gre kot
+        pošlji-in-pozabi in ponovitev ob prekinjeni povezavi bi sicer štela dvakrat.
+      operationId: recordTabView
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tabId]
+              properties:
+                tabId:
+                  type: string
+                  maxLength: 64
+                  description: Oznaka zavihka iz registra, npr. `notes`.
+      responses:
+        '200':
+          description: Ogled sprejet
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [counted]
+                properties:
+                  counted:
+                    type: boolean
+                    description: |
+                      `false` pomeni, da je bil isti zavihek štet pred manj kot
+                      `USAGE_VIEW_DEDUPE_SECONDS`. To ni napaka.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Klicatelj ni prijavljen uporabnik (npr. API ključ)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Keycloakov dostopni žeton (relay, preverjen v živo). API ključ (`X-Api-Key`) na nobeni
+        poti te pogodbe ne pride skozi — glej opis zgoraj.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, maxLength: 200 }
+
+  responses:
+    BadRequest:
+      description: Neveljavna zahteva
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Manjka avtentikacija
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ForbiddenAdminOnly:
+      description: |
+        Klicatelj nima obsega `admin` ALI ni prijavljen uporabnik. Isti status za oboje:
+        razlika med "nisi admin" in "si ključ" klicatelju ne koristi.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+
+    StorageSnapshot:
+      type: object
+      required: [computedAt, cachedUntil, totalBytes, sources, byUser, integrity]
+      properties:
+        computedAt: { type: string, format: date-time }
+        cachedUntil: { type: string, format: date-time }
+        totalBytes:
+          type: integer
+          description: Vsota zabeleženih velikosti vsebine. NI zasedenost nosilca — glej `volume`.
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/StorageSource' }
+        byUser:
+          type: array
+          items: { $ref: '#/components/schemas/StorageByUser' }
+        volume:
+          description: |
+            Zasedenost nosilca pod `FILE_SHARE_DIR`. `null`, kadar je ni mogoče prebrati —
+            takrat je razlog v `volumeUnavailableReason`. Tiha ničla bi bila videti kot poln disk.
+          oneOf:
+            - $ref: '#/components/schemas/VolumeStats'
+            - type: 'null'
+        volumeUnavailableReason:
+          oneOf:
+            - type: string
+            - type: 'null'
+        integrity: { $ref: '#/components/schemas/IntegrityReport' }
+
+    StorageSource:
+      type: object
+      required: [id, label, present, totalBytes, recordCount]
+      properties:
+        id:
+          type: string
+          enum: [recipe-images, note-audio, shared-files, shared-files-received, recipes, notes]
+        label: { type: string, description: Slovensko ime za prikaz. }
+        present:
+          type: boolean
+          description: |
+            `false` pomeni, da zbirke tega vira v namestitvi ni (modul je bil odstranjen).
+            Vrstica ostane v odgovoru z ničlami, da je razlika med "ni vsebine" in "ni modula"
+            razvidna.
+        totalBytes: { type: integer }
+        recordCount: { type: integer }
+
+    StorageByUser:
+      type: object
+      required: [userId, displayName, totalBytes, perSource, counts]
+      properties:
+        userId:
+          description: '`null` = zapisi, katerih lastnika ni mogoče razrešiti.'
+          oneOf:
+            - type: string
+            - type: 'null'
+        displayName: { type: string }
+        maskedEmail:
+          description: |
+            `j…k@agenda.si` — ista oblika kot v imeniku oseb (010). Cel naslov bi isto potrebo
+            pokril in povrhu izročil seznam naslovov cele namestitve.
+          oneOf:
+            - type: string
+            - type: 'null'
+        totalBytes: { type: integer }
+        perSource:
+          type: object
+          additionalProperties: { type: integer }
+        counts:
+          type: object
+          additionalProperties: { type: integer }
+
+    VolumeStats:
+      type: object
+      required: [path, totalBytes, freeBytes]
+      properties:
+        path: { type: string }
+        totalBytes: { type: integer }
+        freeBytes: { type: integer }
+
+    IntegrityReport:
+      type: object
+      required: [checkedAt, clean, findings]
+      properties:
+        checkedAt: { type: string, format: date-time }
+        clean:
+          type: boolean
+          description: |
+            Izrecna trditev "razhajanj ni". Prazen `findings` sam po sebi tega ne pove — ne da
+            se ga ločiti od preverbe, ki ni tekla (člen VII).
+        findings:
+          type: array
+          items:
+            type: object
+            required: [kind, recordCount, bytes]
+            properties:
+              kind:
+                type: string
+                enum: [missing-content, orphan-blob, broken-record, stalled-upload]
+              recordCount: { type: integer }
+              bytes:
+                type: integer
+                description: Zabeležena velikost prizadetih zapisov oz. prostor, ki ga zasedajo sirote.
+
+    UsageSnapshot:
+      type: object
+      required: [window, coverage, logins, byUser, tabs]
+      properties:
+        window:
+          type: object
+          required: [days, fromDay, toDay]
+          properties:
+            days: { type: integer, enum: [7, 30, 90] }
+            fromDay: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+            toDay: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        coverage:
+          type: object
+          required: [retentionDays, truncated]
+          properties:
+            dataSince:
+              description: Najstarejši dan, za katerega meritve obstajajo. `null` = zbirka je prazna.
+              oneOf:
+                - type: string
+                - type: 'null'
+            retentionDays: { type: integer }
+            truncated:
+              type: boolean
+              description: Izbrano obdobje sega pred `dataSince` ali pred rok hrambe.
+        logins:
+          type: object
+          required: [total, activeUsers, inactiveUsers]
+          properties:
+            total: { type: integer }
+            activeUsers: { type: integer }
+            inactiveUsers:
+              type: integer
+              description: Osebe z računom, ki se v obdobju niso prijavile.
+        byUser:
+          type: array
+          items:
+            type: object
+            required: [userId, displayName, logins, tabs]
+            properties:
+              userId: { type: string }
+              displayName: { type: string }
+              maskedEmail:
+                oneOf:
+                  - type: string
+                  - type: 'null'
+              logins: { type: integer }
+              lastLoginAt:
+                oneOf:
+                  - type: string
+                    format: date-time
+                  - type: 'null'
+              lastActiveAt:
+                oneOf:
+                  - type: string
+                    format: date-time
+                  - type: 'null'
+              tabs:
+                type: object
+                description: 'Oznaka zavihka → število ogledov v obdobju.'
+                additionalProperties: { type: integer }
+        tabs:
+          type: array
+          description: Lestvica cele namestitve. Vsebuje TUDI zavihke z nič ogledi.
+          items:
+            type: object
+            required: [tabId, title, views, users]
+            properties:
+              tabId: { type: string }
+              title: { type: string }
+              views: { type: integer }
+              users:
+                type: integer
+                description: Koliko različnih oseb je zavihek v obdobju odprlo.

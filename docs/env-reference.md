@@ -284,6 +284,34 @@ uradna pot `/maps/embed/v1/directions` (glej `apps/api/src/domain/map-embed.ts`)
 zahtev na dan; osveževanje teče samo, dokler je zaslon v ospredju (FR-022). Višja vrednost
 pomeni manj stroškov in manj sveže podatke o prometu.
 
+### Administratorska analitika in telemetrija (014)
+
+Neobvezno. Vse štiri imajo privzetek, zato zavihek **Analitika** deluje brez vpisa v `.env`.
+
+| Spremenljivka | Privzeto | Vloga |
+|---|---|---|
+| `USAGE_RETENTION_DAYS` | `400` | Rok hrambe dnevnih števcev uporabe |
+| `USAGE_VIEW_DEDUPE_SECONDS` | `60` | Okno, v katerem ponoven ogled istega zavihka ne šteje |
+| `ANALYTICS_CACHE_SECONDS` | `300` | Veljavnost predpomnjenega pregleda porabe |
+| `ANALYTICS_ORPHAN_GRACE_HOURS` | `24` | Starost, pod katero datoteka brez zapisa ni prijavljena kot sirota |
+
+**Kaj se beleži in kaj ne.** Ena vrstica na (oseba, zavihek, dan) s številom ogledov in časom
+zadnjega, ter ena vrstica na (oseba, dan) za prijave. V zbirki **ni** naslova IP, uporabniškega
+agenta, poti (URL), identifikatorja seje, trajanja ali časovnega žiga posameznega ogleda — poti
+osebe po aplikaciji iz nje ni mogoče sestaviti (člen XII).
+
+**`USAGE_RETENTION_DAYS` se res uveljavlja.** Rok izvaja TTL indeks na `expiresAt`
+(`platform/usage/usage-counter.model.ts`), ne pometač. To ni podrobnost: `SCREENSHOT_RETENTION_DAYS`
+v tem istem dokumentu je razglašen in ga **ne bere nihče** — čiščenja posnetkov ni. Pri TTL indeksu
+se prazen tek ne more zgoditi tiho, ker je indeks bodisi ustvarjen bodisi ga ni.
+
+**400 dni** je 13 mesecev, torej ravno toliko, da je mogoče primerjati z istim mesecem lani. Daljše
+hranjenje na nobeno vprašanje s tega zaslona ne odgovori.
+
+**`ANALYTICS_CACHE_SECONDS`** velja za pregled porabe, ne za statistiko uporabe: prvo je seštevanje
+čez vse zapise namestitve in sprehod po nosilcu, drugo je poizvedba čez indeksirano okno. Zaslon
+vedno pokaže, kdaj je bil izračun narejen, in ponuja gumb za takojšen preračun.
+
 ## 3. E-pošta — ali je še potrebna
 
 Stari sistem pošilja e-pošto ob ustvarjanju urnika in ob napakah, poleg potisnih obvestil.
@@ -408,6 +436,12 @@ FILE_SHARE_UPLOAD_TIMEOUT_MINUTES=360
 FILE_SHARE_INBOX_MAX_FILES=10
 FILE_SHARE_INBOX_MAX_MB=1000
 FILE_SHARE_INBOX_TICKET_MINUTES=60
+
+# ─── Analitika in telemetrija (014; vse neobvezno, privzetki so v kodi) ───
+USAGE_RETENTION_DAYS=400
+USAGE_VIEW_DEDUPE_SECONDS=60
+ANALYTICS_CACHE_SECONDS=300
+ANALYTICS_ORPHAN_GRACE_HOURS=24
 ```
 
 ## 6. Sintaksa — past iz starega `.env`

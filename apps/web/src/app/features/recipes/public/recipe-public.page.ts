@@ -41,6 +41,7 @@ interface PublicRecipe {
   prepMinutes: number | null;
   servings: number | null;
   tags: string[];
+  categories: string[];
   coverImageId: string | null;
   images: { id: string; caption: string | null }[];
   updatedAt: string;
@@ -83,6 +84,14 @@ interface PublicRecipe {
               <span><ion-icon name="people-outline" aria-hidden="true"></ion-icon> {{ current.servings }} porcij</span>
             }
           </p>
+
+          @if (current.categories.length > 0) {
+            <div class="tags">
+              @for (category of current.categories; track category) {
+                <ion-chip color="primary">{{ category }}</ion-chip>
+              }
+            </div>
+          }
 
           @if (current.tags.length > 0) {
             <div class="tags">

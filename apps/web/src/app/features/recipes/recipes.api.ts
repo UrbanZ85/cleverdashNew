@@ -5,6 +5,7 @@ import { apiUrl } from '../../core/api/api-base.js';
 import type {
   MemberRole,
   Recipe,
+  RecipeCategory,
   RecipeDraft,
   RecipeImage,
   RecipeScope,
@@ -29,11 +30,20 @@ export class RecipesApi {
   }
 
   list(
-    params: { q?: string; tag?: string; scope?: RecipeScope; sort?: RecipeSort; limit?: number } = {},
+    params: {
+      q?: string;
+      tag?: string;
+      category?: string;
+      scope?: RecipeScope;
+      sort?: RecipeSort;
+      limit?: number;
+    } = {},
   ): Promise<Recipe[]> {
     const search = new URLSearchParams();
     if (params.q?.trim()) search.set('q', params.q.trim());
     if (params.tag) search.set('tag', params.tag);
+    // Kategorija in oznaka sta LOČENA filtra in ju je mogoče uporabiti hkrati.
+    if (params.category) search.set('category', params.category);
     if (params.scope && params.scope !== 'all') search.set('scope', params.scope);
     if (params.sort) search.set('sort', params.sort);
     if (params.limit) search.set('limit', String(params.limit));
@@ -149,6 +159,48 @@ export class RecipesApi {
   removeImage(recipeId: string, imageId: string): Promise<void> {
     return firstValueFrom(
       this.http.delete<void>(this.path(`/${recipeId}/images/${imageId}`), this.opts),
+    );
+  }
+
+  // ── besednjak kategorij ──────────────────────────────────────────────────────────────────
+
+  listCategories(): Promise<RecipeCategory[]> {
+    return firstValueFrom(
+      this.http.get<{ categories: RecipeCategory[] }>(apiUrl('/recipe-categories'), this.opts),
+    ).then((res) => res.categories);
+  }
+
+  createCategory(name: string): Promise<RecipeCategory> {
+    return firstValueFrom(
+      this.http.post<RecipeCategory>(apiUrl('/recipe-categories'), { name }, this.opts),
+    );
+  }
+
+  /** Preimenovanje popravi ime tudi v vseh LASTNIH receptih; odgovor pove, koliko jih je bilo. */
+  renameCategory(
+    categoryId: string,
+    name: string,
+  ): Promise<{ category: RecipeCategory; updatedRecipes: number }> {
+    return firstValueFrom(
+      this.http.patch<{ category: RecipeCategory; updatedRecipes: number }>(
+        apiUrl(`/recipe-categories/${categoryId}`),
+        { name },
+        this.opts,
+      ),
+    );
+  }
+
+  /** Izbris kategorijo odstrani iz receptov — receptov NE izbriše. */
+  deleteCategory(categoryId: string): Promise<{ updatedRecipes: number }> {
+    return firstValueFrom(
+      this.http.delete<{ updatedRecipes: number }>(apiUrl(`/recipe-categories/${categoryId}`), this.opts),
+    );
+  }
+
+  /** Pošlje CEL vrstni red, ne relativnega premika. */
+  reorderCategories(categoryIds: string[]): Promise<void> {
+    return firstValueFrom(
+      this.http.put<void>(apiUrl('/recipe-categories/order'), { categoryIds }, this.opts),
     );
   }
 

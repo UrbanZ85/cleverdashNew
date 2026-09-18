@@ -17,6 +17,12 @@ export const MAX_STEP_LENGTH = 2000;
 export const MAX_STEPS = 100;
 export const MAX_TAGS = 20;
 export const MAX_TAG_LENGTH = 40;
+/** Kategorij na recept je manj kot oznak in to je namerno: recept, ki je hkrati v osmih
+ * kategorijah, ni razvrščen — kategorije so obrok in vrsta jedi ("Juhe", "Kosila"), ne opisi. */
+export const MAX_CATEGORIES_PER_RECIPE = 8;
+export const MAX_CATEGORY_NAME_LENGTH = 40;
+/** Zgornja meja BESEDNJAKA. Seznam, ki se ne prilega na zaslon, ni več izbirnik. */
+export const MAX_CATEGORIES = 50;
 export const MAX_QUERY_LENGTH = 200;
 /** Teden v minutah. Vzhajanje testa traja dan, suho zorenje mesa tudi teden — nad tem je vnos
  * skoraj gotovo pomota (npr. sekunde namesto minut) in zavrnitev koristi. */
@@ -69,7 +75,13 @@ const linesInput = z.union([z.string(), z.array(z.string())]);
  * `Sladice` ostati `Sladice` v izpisu, a se ujeti s filtrom `sladice`. Z enim poljem bi bilo
  * treba izbrati med lepim izpisom in delujočim filtrom.
  */
-export function normalizeTags(raw: readonly string[] | string | undefined): {
+export function normalizeTags(
+  raw: readonly string[] | string | undefined,
+  limits: { maxItems: number; maxLength: number } = {
+    maxItems: MAX_TAGS,
+    maxLength: MAX_TAG_LENGTH,
+  },
+): {
   tags: string[];
   tagKeys: string[];
 } {
@@ -79,7 +91,7 @@ export function normalizeTags(raw: readonly string[] | string | undefined): {
   const tags: string[] = [];
   const tagKeys: string[] = [];
   for (const candidate of source) {
-    const display = String(candidate).trim().slice(0, MAX_TAG_LENGTH);
+    const display = String(candidate).trim().slice(0, limits.maxLength);
     if (display.length === 0) continue;
     const key = foldTag(display);
     // Oznaka, od katere po zlaganju ne ostane nič (same ločila, sam emoji), ni oznaka: filtra
@@ -87,10 +99,41 @@ export function normalizeTags(raw: readonly string[] | string | undefined): {
     if (key.length === 0 || tagKeys.includes(key)) continue;
     tags.push(display);
     tagKeys.push(key);
-    if (tags.length >= MAX_TAGS) break;
+    if (tags.length >= limits.maxItems) break;
   }
   return { tags, tagKeys };
 }
+
+/**
+ * Kategorije recepta: isto pravilo kot pri oznakah — prikazna oblika ostane, ujemanje teče po
+ * zloženi (FR-081).
+ *
+ * Ločena funkcija in ne ponovna uporaba `normalizeTags` z drugo mejo: meji sta res drugačni, a to
+ * ni razlog. Razlog je, da sta to DVE različni stvari, ki se bosta razvijali narazen — kategorija
+ * pride iz besednjaka, oznaka je prosto besedilo — in skupna funkcija z zastavico bi ju zlepila
+ * ravno na mestu, kjer ju je treba ločevati.
+ */
+export function normalizeCategories(raw: readonly string[] | string | undefined): {
+  categories: string[];
+  categoryKeys: string[];
+} {
+  const { tags, tagKeys } = normalizeTags(raw, {
+    maxItems: MAX_CATEGORIES_PER_RECIPE,
+    maxLength: MAX_CATEGORY_NAME_LENGTH,
+  });
+  return { categories: tags, categoryKeys: tagKeys };
+}
+
+/** Telo za `POST /recipe-categories` in `PATCH /recipe-categories/{id}`. */
+export const categoryWriteSchema = z.object({
+  name: z.string().trim().min(1).max(MAX_CATEGORY_NAME_LENGTH),
+});
+
+/** Telo za `PUT /recipe-categories/order` — ena operacija s CELIM seznamom, ne zaporedje
+ * posamičnih popravkov (isti vzorec kot vrstni red map v modulu 008). */
+export const categoryOrderSchema = z.object({
+  categoryIds: z.array(z.string()).max(MAX_CATEGORIES),
+});
 
 /**
  * Telo za `POST /recipes`. `title` je EDINO obvezno polje (FR-001).
@@ -107,6 +150,7 @@ export const recipeWriteSchema = z.object({
   prepMinutes: z.coerce.number().int().min(1).max(MAX_PREP_MINUTES).nullish(),
   servings: z.coerce.number().int().min(1).max(MAX_SERVINGS).nullish(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
+  categories: z.union([z.string(), z.array(z.string())]).optional(),
   rating: z.coerce.number().int().min(1).max(5).nullish(),
   /** Ali naj strežnik ob nastanku obišče stran in iz nje predlaga vsebino (FR-010). Privzeto
    * `true`, ker je to razlog, zakaj je uporabnik naslov sploh prilepil — a IZKLOPLJIVO, ker
@@ -131,6 +175,7 @@ export const recipePatchSchema = z.object({
   prepMinutes: z.coerce.number().int().min(1).max(MAX_PREP_MINUTES).nullish(),
   servings: z.coerce.number().int().min(1).max(MAX_SERVINGS).nullish(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
+  categories: z.union([z.string(), z.array(z.string())]).optional(),
   rating: z.coerce.number().int().min(1).max(5).nullish(),
 });
 
@@ -145,6 +190,7 @@ export type RecipePatchInput = z.infer<typeof recipePatchSchema>;
 export const recipesQuerySchema = z.object({
   q: z.string().trim().max(MAX_QUERY_LENGTH).optional(),
   tag: z.string().trim().max(MAX_TAG_LENGTH).optional(),
+  category: z.string().trim().max(MAX_CATEGORY_NAME_LENGTH).optional(),
   scope: z.enum(['all', 'own', 'shared']).default('all'),
   sort: z.enum(['recent', 'title', 'rating', 'cooked']).default('recent'),
   limit: z.coerce.number().int().min(1).max(200).optional(),
@@ -199,6 +245,7 @@ export function buildRecipesFilter(params: {
   userId: string;
   query?: string;
   tag?: string;
+  category?: string;
   scope?: 'all' | 'own' | 'shared';
 }): Record<string, unknown> {
   const own = { ownerId: params.userId };
@@ -225,6 +272,13 @@ export function buildRecipesFilter(params: {
     // posebne vrednosti (npr. nemogočega niza), ker ne potrebuje razlage, zakaj je prav ta
     // vrednost nemogoča — in ker se nemogoča vrednost sčasoma izkaže za mogočo.
     filter.tagKeys = key.length > 0 ? key : { $in: [] };
+  }
+
+  // Kategorija je SVOJ filter in ne posebna vrsta oznake (FR-082): oba je mogoče uporabiti hkrati
+  // ("pokaži juhe, ki so vegi"), zato sta dva pogoja in ne en sam skupni.
+  if (params.category) {
+    const key = foldTag(params.category);
+    filter.categoryKeys = key.length > 0 ? key : { $in: [] };
   }
 
   return filter;

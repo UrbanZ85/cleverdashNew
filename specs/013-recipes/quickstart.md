@@ -57,11 +57,39 @@ Kaj se zgodi v ozadju:
 Za preizkus zavrnitve: preimenuj katero koli besedilno datoteko v `.jpg` in jo poskusi naložiti —
 odgovor je `400` s pojasnilom, da vrsto ugotavljamo iz same datoteke.
 
+## 4b — Kategorije (US10)
+
+1. V seznamu receptov je nad kartami vrstica čipov; skrajno desno je **Uredi**.
+2. Dodaj `Juhe`, `Kosila`, `Zajtrki`, `Večerje`. Kategorija sme obstajati, preden je v njej kak
+   recept.
+3. V receptu (urejanje) je izbirnik **Kategorije** — izbereš jih lahko **več hkrati**.
+4. V seznamu klikni čip → samo ti recepti. Ponoven klik na isti čip ga odznači.
+5. Kategorija in oznaka delujeta **hkrati**: `?category=Juhe&tag=vegi`.
+
+Dve stvari, ki presenetita, če se ju ne pričakuje — obe sta namerni:
+
+| poteza | kaj se zgodi | zakaj |
+|---|---|---|
+| preimenovanje kategorije | popravi ime v besednjaku in v **lastnih** receptih; pove, koliko jih je bilo | v tujem deljenem receptu je ime last lastnika |
+| izbris kategorije | **nobenega recepta ne izbriše** — samo odstrani kategorijo z njih | recept je delo uporabnika, kategorija je njegova razvrstitev |
+
+Neznano ime kategorije se ob shranjevanju recepta **samodejno doda** v besednjak — tudi iz n8n:
+
+```bash
+curl -X POST "$BASE/api/v1/recipes" \
+  -H "X-Api-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"title":"Ričet","categories":["Juhe","Kosila"]}'
+```
+
 ## 5 — Deljenje z uporabnikom (US4)
 
 Potrebna sta dva računa, ki sta se **oba že vsaj enkrat prijavila** (sicer ju imenik ne ponudi).
 
-1. Kot A: recept → ikona **Deljenje** → izberi B → B dobi *Samo ogled*.
+> **Kje je deljenje**: v **shranjenem** receptu (pogled, ne urejanje) — vrstica **Deljenje** pod
+> gumbi, ki pove tudi stanje. Pri *ustvarjanju* recepta je ni: dokler recept nima ID-ja, ni s čim
+> deliti. Vidna je samo lastniku.
+
+1. Kot A: recept → **Deljenje** → izberi B → B dobi *Samo ogled*.
 2. Kot B: v seznamu je recept z oznako **Novo** in značko *Deljeno*; ko ga odpre, oznaka izgine.
 3. Kot B poskusi urejati → gumba ni. (Vmesnik kontrol, ki jih zmožnosti ne dovolijo, ne izriše.)
 4. Kot A dvigni B na *Urejanje* → B lahko popravi sestavino in označi "skuhano", **ocene pa ne**.
@@ -119,7 +147,7 @@ cd apps/api
 npx vitest run tests/unit/recipes-capabilities.spec.ts \
                tests/unit/recipes-domain.spec.ts \
                tests/unit/recipes-jsonld.spec.ts     # 87, brez baze
-npx vitest run tests/contract/recipes/               # 56, z v-pomnilniškim Mongom
+npx vitest run tests/contract/recipes/               # 75, z v-pomnilniškim Mongom
 
 cd ../web
 npx vitest run tests/unit/recipes-model.spec.ts tests/unit/recipes-public-route.spec.ts
@@ -135,8 +163,9 @@ Po `docs/adding-a-tab.md`, obratno:
 1. `rm -rf apps/api/src/modules/recipes apps/web/src/app/features/recipes`
 2. `rm -rf apps/api/tests/contract/recipes apps/api/tests/unit/recipes-*.spec.ts`
 3. `rm apps/web/tests/unit/recipes-*.spec.ts`
-4. odstrani vnos iz `TAB_REGISTRY`, dve vrstici v `main.ts`, tri poti v `app.routes.ts`, tri nize
-   v `BASE_USER_SCOPES`, `/api/v1/shared-recipes/` iz `AUTH_EXEMPT`, ikone in njihov blok v
-   `icons.spec.ts`, sedem spremenljivk v `env.ts` in `.env.example`.
+4. odstrani vnos iz `TAB_REGISTRY`, **tri** vrstice v `main.ts` (recepti, kategorije, javne poti),
+   tri poti v `app.routes.ts`, tri nize v `BASE_USER_SCOPES`, `/api/v1/shared-recipes/` iz
+   `AUTH_EXEMPT`, ikone in njihov blok v `icons.spec.ts`, sedem spremenljivk v `env.ts` in
+   `.env.example`.
 
 Po tem morajo `npm run typecheck`, `npm run lint` in testi ostati čisti (SC-006).

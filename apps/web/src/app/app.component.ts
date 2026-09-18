@@ -6,6 +6,7 @@ import { ActingUserBannerComponent } from './shared/navigation/acting-user-banne
 import { AuthService } from './core/auth/auth.service.js';
 import { ThemeService } from './core/theme/theme.service.js';
 import { DeepLinkHandler } from './core/notifications/deep-link.handler.js';
+import { UsageTrackerService } from './core/usage/usage-tracker.service.js';
 import { PermissionRationaleComponent } from './core/notifications/permission-rationale.component.js';
 
 // FR-002, FR-004: stranski meni na širših zaslonih (ion-split-pane skrije meni v hamburger
@@ -96,10 +97,15 @@ export class AppComponent {
   protected readonly auth = inject(AuthService);
   private readonly theme = inject(ThemeService);
   private readonly deepLinks = inject(DeepLinkHandler);
+  private readonly usage = inject(UsageTrackerService);
   private wasAuthenticated = false;
 
   constructor() {
     this.deepLinks.init(); // globalni poslušalec; no-op na webu (Capacitor.isNativePlatform())
+    // 014: ogledi zavihkov. Tu in ne v mapi zavihka Analitika — sledilnik, ki bi živel tam, bi
+    // začel meriti šele, ko je tisti zavihek odprt, in bi torej meril samo administratorja na
+    // zaslonu z meritvami. Pošlje se izključno oznaka zavihka; napaka se pogoltne (FR-029).
+    this.usage.start();
 
     effect(() => {
       const authenticated = this.auth.isAuthenticated();

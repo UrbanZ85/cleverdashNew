@@ -1,6 +1,7 @@
 # Data Model: Recepti (013)
 
-Dve zbirki. Razlog za delitev je v `research.md` §4: bajti slik se ob izpisu seznama ne smejo brati.
+Tri zbirke. Razlog za prvo delitev je v `research.md` §4 (bajti slik se ob izpisu seznama ne smejo
+brati), za drugo v `research.md` §15 (besednjak kategorij je zaseben, imena v receptih pa ne).
 
 ## `recipes`
 
@@ -18,7 +19,10 @@ nima transakcij čez več dokumentov (`research.md` §13).
 | `steps` | [String] ≤100 × ≤2000 | |
 | `prepMinutes` | Number\|null | 1–10080 (teden). |
 | `servings` | Number\|null | 1–100. |
-| `tags` | [String] ≤20 | Prikazna oblika. Iskanje teče prek `searchText`. |
+| `tags` | [String] ≤20 | Prosto besedilo. Prikazna oblika. |
+| `tagKeys` | [String] | Zložena oblika oznak — po njej teče filter. |
+| `categories` | [String] ≤8 | **IMENA** kategorij, ne identifikatorji (`research.md` §15). |
+| `categoryKeys` | [String] | Zložena oblika kategorij — po njej teče filter. |
 | `rating` | Number\|null | 1–5. Lastnikova (FR-035). |
 | `lastCookedAt` | Date\|null | `null` = nikoli. Pri razvrstitvi gre PRED najstarejši datum (FR-053). |
 | `cookCount` | Number, default 0 | |
@@ -64,7 +68,8 @@ dejstvo, da je povezava obstajala.
 { ownerId: 1, updatedAt: -1 }        // seznam lastnih receptov, privzeta razvrstitev
 { 'members.userId': 1, updatedAt: -1 } // seznam deljenih receptov — brez tega bi bil COLLSCAN
 { 'publicShare.token': 1 }           // javna pot; redek (sparse) — večina receptov ga nima
-{ ownerId: 1, tags: 1 }              // filter po oznaki
+{ ownerId: 1, tagKeys: 1 }           // filter po oznaki
+{ ownerId: 1, categoryKeys: 1 }      // filter po kategoriji (neodvisen od oznake)
 ```
 
 Indeksa nad `searchText` NI in ne bo (`research.md` §10).
@@ -97,6 +102,43 @@ bi se bilo treba braniti z indeksom. Enoličnost je lastnost generatorja.
 { ownerId: 1 }                 // počiščenje in kvota
 ```
 
+
+## `recipecategories`
+
+Uporabnikov BESEDNJAK kategorij. Obstaja zato, da jih je mogoče ponuditi v izbirniku, preimenovati,
+prerazporediti in izbrisati — in da kategorija lahko obstaja, preden je vanjo uvrščen prvi recept
+(FR-083).
+
+| polje | tip | opombe |
+|---|---|---|
+| `_id` | ObjectId | |
+| `userId` | ObjectId → User | **`userId`, ne `ownerId`**: besednjak je zaseben in ga ne vidi nihče drug, zato tu obljuba "`{_id, userId}` je pogoj dostopa" drži v celoti — za razliko od `Recipe.ownerId`. |
+| `name` | String, req., ≤40 | Prikazna oblika. |
+| `key` | String, req. | Zložena oblika (`foldTag`). Po njej se ugotavlja enakost in teče filter. |
+| `order` | Number | |
+| `createdAt`, `updatedAt` | Date | |
+
+### Indeksa
+
+```
+{ userId: 1, order: 1 }            // seznam, kot ga vidi uporabnik
+{ userId: 1, key: 1 } UNIQUE       // ena kategorija na ime, na uporabnika
+```
+
+Enoličnost uveljavljata **oboje** — indeks IN preverba pred vstavljanjem. Nobeno samo zase ne
+zadošča: preverba ne prepreči sočasnosti, indeks pa se v Mongoose gradi asinhrono (`autoIndex`) in
+ob zapisu takoj po zagonu procesa še ne obstaja. Isti par varovalk in isti razlog kot pri mapah v
+modulu 008, kjer je bila to prava napaka v celotnem naboru testov.
+
+### Zakaj recept hrani IMENA in ne identifikatorjev
+
+Glej `research.md` §15. Na kratko: recept vidita dva uporabnika z dvema različnima besednjakoma.
+`categoryId` bi za soudeleženca kazal v zbirko, ki ni njegova.
+
+Cena te odločitve je zapisana in sprejeta: preimenovanje popravi imena samo v receptih, katerih
+lastnik je klicatelj (FR-086), in dve zbirki se lahko razideta — recept sme nositi kategorijo, ki je
+v besednjaku ni. To ni pokvarjeno stanje, ampak veljavno (FR-084 edge case).
+
 ## Kaj v modelu NAMENOMA ni
 
 - **Imena in e-pošte soudeležencev** (FR-039). Samo `userId`; imena bere
@@ -105,6 +147,9 @@ bi se bilo treba braniti z indeksom. Enoličnost je lastnost generatorja.
 - **Zgodovina sprememb.** Vidna sta zadnji avtor in čas. Cela sled bi bila svoja zbirka in svoja
   odločitev.
 - **Ocene soudeležencev** (`research.md` §3).
+- **Hierarhija kategorij.** Ena raven, brez gnezdenja — enako kot mape v modulu 008.
+- **Skupen besednjak kategorij za vse uporabnike.** Besednjak je osebna razvrstitev; skupen bi
+  pomenil, da vsak dodatek vidijo vsi.
 - **Kopije deljenega recepta.** Deljen recept je EN zapis z več bralci. Izbris pri lastniku ga
   odnese vsem (US4 scenarij 5) — to je posledica deljenja, ne napaka.
 - **Datotečni sistem.** Slike so v bazi (`research.md` §4); ta modul ne uvaja novega nosilca v

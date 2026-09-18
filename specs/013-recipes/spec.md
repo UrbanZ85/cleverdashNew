@@ -171,6 +171,35 @@ n8n prestreže povezavo iz pogovora in jo shrani med recepte.
 2. **Given** API ključ brez `recipes:share`, **When** poskusim recept deliti, **Then** zavrnjeno —
    pisanje in deljenje sta ločena obsega.
 
+### User Story 10 - Razvrstim recepte po obroku (Priority: P2)
+
+Receptov je petdeset in hočem videti samo juhe. Ali samo tisto, kar delam za zajtrk.
+
+**Why this priority**: Oznake (US6) to načeloma zmorejo, a so prosto besedilo: isti pojem se
+sčasoma zapiše kot "juha", "Juhe" in "juhice", filter pa razpade na različice istega. Razvrstitev,
+ki je pri kuharici glavni način iskanja, potrebuje urejen besednjak in ne prostega vnosa.
+
+**Independent Test**: Ustvari kategorije Juhe, Kosila, Zajtrki, Večerje; receptu dodeli dve; v
+seznamu klikni čip in dobi samo recepte te kategorije.
+
+**Acceptance Scenarios**:
+
+1. **Given** prazen besednjak, **When** dodam "Juhe", **Then** je na voljo v izbirniku recepta in
+   kot čip nad seznamom, tudi dokler ni v njej nobenega recepta.
+2. **Given** recept, **When** mu dodelim "Juhe" IN "Kosila", **Then** se pojavi pod obema — bučna
+   juha je oboje in izbirati med njima bi bilo napačno vprašanje.
+3. **Given** kategorija "Večerje", **When** v filter vpišem `vecerje`, **Then** se ujame — velike
+   črke in šumniki ne ločujejo.
+4. **Given** izbrana kategorija in izbrana oznaka, **Then** delujeta hkrati ("juhe, ki so vegi").
+5. **Given** kategorija "Juhe" na treh receptih, **When** jo preimenujem v "Juhice", **Then** se
+   ime popravi tudi na vseh treh in povedano mi je, koliko jih je bilo.
+6. **Given** kategorija na treh receptih, **When** jo izbrišem, **Then** je NOBEN recept ne izgubi
+   — izgubijo samo to kategorijo, in povedano mi je, koliko jih je bilo.
+7. **Given** kategorije v besednjaku, **When** jih prerazporedim, **Then** je vrstni red čipov in
+   izbirnika enak temu.
+8. **Given** recept, ki mi ga je nekdo delil in nosi kategorijo, ki je v mojem besednjaku ni,
+   **Then** jo vseeno vidim in je ob urejanju ne izgubim.
+
 ### Edge Cases
 
 - Naslov, daljši od 2048 znakov → zavrnjen z razlogom, ne odrezan.
@@ -185,6 +214,11 @@ n8n prestreže povezavo iz pogovora in jo shrani med recepte.
 - Preklicana javna povezava, odprta iz predpomnilnika → 404, ne stara vsebina.
 - Uvoz s strani, ki v `schema.org/Recipe` navede 400 sestavin → odrežejo se na trdo mejo in to se
   pove, namesto da bi zapis zavrnili v celoti.
+- Kategorija, ki je v receptu, a je v besednjaku klicatelja ni (dodal jo je soudeleženec ali je bila
+  izbrisana) → je veljavna, se prikaže in se ob urejanju ne izgubi.
+- Dve kategoriji, ki se razlikujeta samo v velikosti črk ali šumnikih → sta ista kategorija.
+- Ime kategorije, od katerega po zlaganju ne ostane nič (sama ločila) → zavrnjeno, ker po njem ne
+  bi bilo mogoče filtrirati.
 
 ## Requirements *(mandatory)*
 
@@ -269,11 +303,30 @@ n8n prestreže povezavo iz pogovora in jo shrani med recepte.
 - **FR-047**: Javne poti MORAJO biti dušene po izvornem naslovu, da žetonov ni mogoče ugibati.
 - **FR-048**: Izbris recepta MORA ubiti njegovo javno povezavo.
 
+#### Kategorije
+
+- **FR-080**: Uporabnik MORA imeti lasten, urejen besednjak kategorij ("Juhe", "Kosila",
+  "Zajtrki", "Večerje"), ki ga sam ustvarja, preimenuje, prerazporeja in briše.
+- **FR-081**: Recept sme nositi VEČ kategorij hkrati (do 8). Ujemanje je neobčutljivo na velike
+  črke in šumnike; prikaže se oblika, kot je bila vpisana.
+- **FR-082**: Kategorija in oznaka sta LOČENA filtra in ju je mogoče uporabiti hkrati.
+- **FR-083**: Kategorija sme obstajati, preden je vanjo uvrščen prvi recept.
+- **FR-084**: Ime, ki ga recept navede in ga v besednjaku ni, se SAMODEJNO doda v besednjak
+  klicatelja — brez tega bi bila za eno dejanje potrebna dva klica.
+- **FR-085**: Izbris kategorije jo odstrani z receptov in NE SME izbrisati nobenega recepta.
+  Odgovor mora povedati, koliko receptov je bilo zadetih.
+- **FR-086**: Preimenovanje popravi ime v receptih, katerih LASTNIK je klicatelj. V tuje deljene
+  recepte ne seže; odgovor mora povedati obseg.
+- **FR-087**: Besednjak je ZASEBEN — tujega uporabnik ne vidi in ga ne more spreminjati.
+- **FR-088**: Kategorije so vidne tudi na javni strani: so lastnost jedi, ne podatek o lastniku.
+  Sam besednjak javno NI dosegljiv.
+
 #### Iskanje in razvrstitev
 
-- **FR-050**: Iskanje MORA teči čez ime, opis, sestavine in oznake hkrati.
+- **FR-050**: Iskanje MORA teči čez ime, opis, sestavine, oznake in kategorije hkrati — človek,
+  ki vpiše "juhe", pričakuje juhe in ne nasveta, naj namesto tega uporabi čip.
 - **FR-051**: Iskanje MORA biti neobčutljivo na velike črke in na šumnike (`buca` najde `buča`).
-- **FR-052**: Seznam je mogoče omejiti na eno oznako.
+- **FR-052**: Seznam je mogoče omejiti na eno oznako in, neodvisno, na eno kategorijo.
 - **FR-053**: Razvrstitve: nazadnje spremenjeni, po imenu, po oceni, po tem, kdaj je bilo nazadnje
   kuhano. Nikoli kuhani se pri zadnji uvrstijo PRED najdlje nekuhane.
 - **FR-054**: Seznam MORA vsebovati lastne IN deljene recepte, z vidno razliko med njimi.
@@ -300,6 +353,8 @@ n8n prestreže povezavo iz pogovora in jo shrani med recepte.
   Lastnina je `ownerId`, NE `userId` (zapis ni zaseben).
 - **RecipeImage** — ločena zbirka, ker so bajti veliki in se ob izpisu seznama ne smejo brati.
 - **RecipeMember** — `{ userId, role, addedAt, seenAt }`, poddokument brez lastnega `_id`.
+- **RecipeCategory** — vnos v ZASEBNEM besednjaku enega uporabnika. Recept nanj kaže z IMENOM,
+  ne z identifikatorjem.
 - **PublicShare** — `{ token, createdAt, revokedAt }`, poddokument.
 
 ## Out of Scope
@@ -322,6 +377,7 @@ n8n prestreže povezavo iz pogovora in jo shrani med recepte.
 - **SC-005**: Izpis seznama stotih receptov ne prenese nobenega izvirnika slike.
 - **SC-006**: Brisanje mape modula in petih vpisov pusti `typecheck`, `lint` in teste čiste.
 - **SC-007**: Soudeleženec `view` v vmesniku nima nobene kontrole, ki bi ob kliku vrnila 403.
+- **SC-008**: Izbris kategorije s tremi recepti pusti vse tri recepte.
 
 ## Assumptions
 

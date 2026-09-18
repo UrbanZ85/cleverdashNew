@@ -288,6 +288,18 @@ po `schema.org/Recipe` — sestavine in korake torej v najboljšem primeru ni tr
 Uvoz je **predlog, ne dejstvo**: izpolni samo prazna polja in nikoli ne prepiše tistega, kar je
 vpisal človek.
 
+Recepti se razvrščajo v **kategorije** — "Juhe", "Kosila", "Zajtrki", "Večerje" ali karkoli, kar si
+uporabnik sam nastavi. Recept je lahko v **več kategorijah hkrati**, ker je bučna juha hkrati juha
+in kosilo in bi bila izbira med njima napačno vprašanje. Nad seznamom so kategorije čipi za
+filtriranje, poleg njih pa ostanejo **proste oznake** (vegi, hitro, za goste) kot drugi, neodvisen
+filter — oba delujeta hkrati.
+
+Kategorije so v receptu zapisane kot **imena, ne identifikatorji**, in to ni podrobnost izvedbe:
+recept vidita dva uporabnika, vsak s svojim besednjakom, in identifikator bi za soudeleženca kazal v
+zbirko, ki ni njegova. Posledici sta zapisani v pogodbi — preimenovanje kategorije popravi ime v
+lastnih receptih in ne v tujih deljenih, izbris kategorije pa ne izbriše nobenega recepta, ampak jo
+samo odstrani z njih.
+
 Recept se **deli na dva načina**, ki sta v vmesniku strogo ločena:
 
 - **Z uporabnikom te namestitve** — v vlogi *ogled* ali *urejanje*. Soudeleženec z urejanjem sme
@@ -320,6 +332,10 @@ Recept se **deli na dva načina**, ki sta v vmesniku strogo ločena:
   razkrijemo), soudeleženec s premajhno vlogo pa 403 — recept vidi in mora izvedeti, da naj za
   urejanje prosi lastnika.
 
+Deljenje je v pogledu recepta svoja vrstica z besedilom in stanjem ("Ni deljeno" / "2 osebi ·
+javna povezava"), ne le ikona v orodni vrstici — ikona sama se je izkazala za nenajdljivo. Pri
+*ustvarjanju* recepta deljenja ni in ne more biti: dokler recept ni shranjen, ni s čim deliti.
+
 Zavihek zna tudi **kuhati**: v načinu kuhanja so sestavine in koraki v veliki pisavi, brez menija
 in brez orodnih vrstic, zaslon pa ne ugasne, dokler je odprt. Odkljukani koraki so stanje tistega
 kuhanja in se v recept ne shranijo. Razvrstitev *"Že dolgo ne"* postavi na vrh recepte, ki še
@@ -327,6 +343,56 @@ nikoli niso bili skuhani — ti so navadno prav tisti, ki jih je vredno predlaga
 
 Pogodba je v [`specs/013-recipes/contracts/openapi.yaml`](specs/013-recipes/contracts/openapi.yaml),
 obsegi so `recipes:read`, `recipes:write` in `recipes:share`.
+
+### Administratorska analitika (014)
+
+Zavihek **Analitika**, ki ga v meniju vidi **izključno administrator** — za vse druge ga v
+`GET /tabs` ni, torej ni izklopljen, ampak ga ni. Odgovarja na dve vprašanji, ki ju do zdaj ni
+mogel nihče: **koliko prostora je porabljenega in kdo ga porablja**, ter **kdo aplikacijo sploh
+uporablja in kateri del**.
+
+Pregled porabe sešteje slike receptov (vključno s pomanjšavami), zvočne posnetke beležk ter deljene
+in prejete datoteke — skupno, po vrsti vsebine in **po osebi**, zraven pa števila zapisov. Ločeno
+od tega pokaže **zasedenost nosilca**: vsota zabeleženih velikosti in zasedenost datotečnega sistema
+nista isto število in se ne seštevata, ker so na nosilcu tudi baza in dnevniki, vsota pa ne pozna ne
+indeksov ne stiskanja. Pregled pove tudi, ali se **disk in baza razhajata** (zapis brez vsebine,
+vsebina brez zapisa, okvarjen zapis, obtičalo nalaganje) — in kadar se ne, to izrecno napiše, ker se
+prazen seznam ne da ločiti od preverbe, ki ni tekla (člen VII). Ničesar pri tem ne popravi in ne
+pobriše; pometanje ostane delo modula 009.
+
+Statistika uporabe pokaže prijave po osebi, čas zadnje aktivnosti, koliko oseb je bilo v obdobju
+(7/30/90 dni) aktivnih, in **lestvico zavihkov po uporabi** — skupno in po osebi. Zavihek, ki ga ni
+odprl nihče, je na lestvici z ničlo: neuporabljen zavihek je ravno tisti podatek, zaradi katerega
+lestvica obstaja.
+
+**Kaj se beleži in kaj se namenoma NE.** To ni nadzor nad zaposlenimi in ni sledenje poti osebe po
+aplikaciji. V zbirko gre ena vrstica na (oseba, zavihek, dan) s številom ogledov in časom zadnjega,
+ter ena na (oseba, dan) za prijave. Ne beleži se naslov IP, uporabniški agent, pot (URL),
+identifikator seje, trajanje in ne časovni žig posameznega ogleda — iz teh števcev ni mogoče
+rekonstruirati, kaj je kdo delal ob pol štirih popoldne (člen XII). Telemetrija se **sama pobriše**
+po 400 dneh, kar uveljavlja TTL indeks in ne pometač, ki bi ga bilo mogoče pozabiti zagnati.
+
+Tri odločitve, ki jih je vredno poznati, preden se kdo loti sprememb:
+
+- **Telemetrija je v `platform/usage/`, prikaz pa v `modules/analytics/`.** Prijavo lahko prešteje
+  samo tisti, ki jo vidi — `modules/auth/router.ts` — in klic iz modula v modul je lint napaka
+  (člen I). Ogled zavihka prav tako ni pojem analitike, ampak pojem zavihkov. Isti razlog in isti
+  precedens kot `platform/users/` v 010.
+- **Analitika ne uvozi nobenega tujega modela.** Zbirke drugih modulov bere po imenu prek surove
+  povezave, zato brisanje modula 013 ali 009 analitike ne podre — vir, ki ga ni, se izpusti in je v
+  odgovoru označen z `present: false`. To je pokrito z integracijskim testom, ne s trditvijo.
+- **Ogled se šteje `req.actor` in ne `req.auth`.** Za vse druge module velja obratno
+  ([`docs/adding-a-tab.md`](docs/adding-a-tab.md), korak 7), tu pa zapis pripada fizični osebi za
+  tipkovnico: ko administrator dela v imenu drugega (012), se ogledi štejejo **njemu**, sicer bi
+  pregledovanje tujih podatkov napihnilo prav tiste številke, ki jih bere.
+
+Pogodba je v
+[`specs/014-admin-analytics/contracts/openapi.yaml`](specs/014-admin-analytics/contracts/openapi.yaml).
+Branje zahteva obseg `admin` in **prijavljenega uporabnika** — API ključ analitike ne dobi, ne glede
+na obsege; beleženje ogleda (`POST /usage/views`) pa sme vsak prijavljen uporabnik, ker gre za
+njegovo lastno uporabo.
+
+---
 
 **Stack:** Ionic 8 + Angular 20 (web in Android prek Capacitorja), Node.js 22 + Express 5 +
 Mongoose 8, MongoDB 7, Puppeteer (headless Chromium za 002), Docker Compose + Caddy

@@ -58,6 +58,27 @@ info:
     Odhod z recepta (`/leave`) je pod `write` in ne `share`: dostopa nikomur ne odpre, ampak ga
     samemu sebi zapre.
 
+    ## Kategorije so IMENA, ne identifikatorji
+
+    Recept nosi `categories: string[]` — imena, ne `categoryId`. Besednjak (`/recipe-categories`)
+    je ločen vir in je ZASEBEN vsakemu uporabniku.
+
+    Razlog je deljenje: recept vidita dva uporabnika z dvema različnima besednjakoma, in
+    identifikator bi za soudeleženca kazal v zbirko, ki ni njegova. Z imeni filtriranje deluje
+    enotno čez lastne in deljene recepte, izbris kategorije iz besednjaka pa ne pusti recepta
+    kazati v nič.
+
+    Dve posledici, ki sta del pogodbe in ne podrobnost izvedbe:
+
+    - Kategorija, ki je v receptu, a je v besednjaku klicatelja ni, je VELJAVNA. Nastane, kadar jo
+      je dodal drug soudeleženec ali je bila pozneje izbrisana iz besednjaka.
+    - `PATCH /recipe-categories/{id}` popravi ime v receptih, katerih **lastnik** je klicatelj.
+      V tuje deljene recepte ne seže in odgovor to pove s številom.
+
+    Kategorije in oznake so DVA NEODVISNA filtra in ju je mogoče uporabiti hkrati
+    (`?category=Juhe&tag=vegi`). Kategorija pride iz urejenega besednjaka in je vrsta jedi; oznaka
+    je prosto besedilo.
+
     ## Naslov (URL) je NEOBVEZEN
 
     To je glavna pomenska razlika do modula 008, kjer je `url` edino obvezno polje. Recept z
@@ -74,6 +95,8 @@ tags:
     description: Recepti — prijavljeni dostop
   - name: images
     description: Slike receptov
+  - name: categories
+    description: Besednjak kategorij (Juhe, Kosila, Zajtrki, Večerje)
   - name: sharing
     description: Deljenje med uporabniki in javna povezava
   - name: public
@@ -99,6 +122,12 @@ paths:
       parameters:
         - { name: q, in: query, schema: { type: string, maxLength: 200 } }
         - { name: tag, in: query, schema: { type: string, maxLength: 40 } }
+        - name: category
+          in: query
+          description: |
+            Neodvisen od `tag` — oba je mogoče navesti hkrati. Ujemanje je neobčutljivo na
+            velike črke in šumnike (`vecerje` najde `Večerje`).
+          schema: { type: string, maxLength: 40 }
         - name: scope
           in: query
           schema: { type: string, enum: [all, own, shared], default: all }
@@ -574,6 +603,145 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # ─────────────────────────── kategorije ───────────────────────────
+
+  /recipe-categories:
+    get:
+      tags: [categories]
+      summary: Besednjak kategorij klicatelja
+      description: |
+        ZASEBEN seznam — tuje kategorije ne obstajajo. `recipeCount` šteje samo recepte, katerih
+        lastnik je klicatelj: to je natanko obseg, ki ga bosta zadela preimenovanje in izbris.
+      operationId: listRecipeCategories
+      responses:
+        '200':
+          description: Besednjak, urejen po `order`
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [categories]
+                properties:
+                  categories:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecipeCategory' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      tags: [categories]
+      summary: Nova kategorija
+      description: |
+        Nova kategorija gre na KONEC seznama — obratno od receptov, ki gredo na vrh. Kategorija je
+        razvrstitev in ne najdba: uporabnik jo je pravkar ustvaril in ve, kje je.
+
+        `400`, kadar ime po zlaganju (male črke brez šumnikov) že obstaja — `Juhe` in `juhe` sta
+        ista kategorija — ali kadar od imena po zlaganju ne ostane nič.
+      operationId: createRecipeCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 40 }
+      responses:
+        '201':
+          description: Nastala
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeCategory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /recipe-categories/order:
+    put:
+      tags: [categories]
+      summary: Vrstni red besednjaka
+      description: |
+        Ena operacija s CELIM seznamom, ne zaporedje posamičnih popravkov.
+
+        MORA biti razrešena PRED `/recipe-categories/{categoryId}`, sicer bi usmerjevalnik "order"
+        razumel kot ID kategorije.
+      operationId: reorderRecipeCategories
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [categoryIds]
+              properties:
+                categoryIds:
+                  type: array
+                  items: { type: string }
+      responses:
+        '204': { description: Shranjeno }
+        '400':
+          description: Seznam vsebuje neveljaven ID ali ID, ki ni klicateljev
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /recipe-categories/{categoryId}:
+    parameters:
+      - { name: categoryId, in: path, required: true, schema: { type: string } }
+    patch:
+      tags: [categories]
+      summary: Preimenuj kategorijo
+      description: |
+        Popravi ime v besednjaku IN v vseh receptih, katerih **lastnik** je klicatelj. Odgovor pove,
+        koliko jih je bilo — preimenovanje je poseg v več zapisov hkrati in uporabnik mora videti
+        njegov obseg.
+
+        V TUJE deljene recepte z istim imenom NE seže: tam je ime last tistega, ki recept ima.
+      operationId: renameRecipeCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 40 }
+      responses:
+        '200':
+          description: Preimenovana
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [category, updatedRecipes]
+                properties:
+                  category: { $ref: '#/components/schemas/RecipeCategory' }
+                  updatedRecipes: { type: integer, minimum: 0 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      tags: [categories]
+      summary: Izbriši kategorijo
+      description: |
+        Kategorijo ODSTRANI z receptov. **Nobenega recepta ne izbriše** — recept je delo
+        uporabnika, kategorija je zgolj njegova razvrstitev.
+
+        Odgovor pove, koliko receptov je kategorijo izgubilo.
+      operationId: deleteRecipeCategory
+      responses:
+        '200':
+          description: Izbrisana
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updatedRecipes]
+                properties:
+                  updatedRecipes: { type: integer, minimum: 0 }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ─────────────────────────── JAVNE poti ───────────────────────────
 
   /shared-recipes/{token}:
@@ -763,7 +931,14 @@ components:
           type: array
           maxItems: 20
           items: { type: string, maxLength: 40 }
-          description: Prikazna oblika, kot jo je vpisal uporabnik. Filter se ujema neobčutljivo.
+          description: Prosto besedilo. Prikazna oblika, kot jo je vpisal uporabnik.
+        categories:
+          type: array
+          maxItems: 8
+          items: { type: string, maxLength: 40 }
+          description: |
+            IMENA iz besednjaka, ne identifikatorji — glej opis modula. Recept sme nositi
+            kategorijo, ki je v besednjaku klicatelja ni.
         rating:
           type: [integer, 'null']
           minimum: 1
@@ -805,6 +980,22 @@ components:
         capabilities: { $ref: '#/components/schemas/Capabilities' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    RecipeCategory:
+      type: object
+      description: Vnos v ZASEBNEM besednjaku enega uporabnika.
+      required: [id, name, key, order, recipeCount]
+      properties:
+        id: { type: string }
+        name: { type: string, maxLength: 40 }
+        key:
+          type: string
+          description: Zložena oblika (male črke brez šumnikov). Po njej teče ujemanje in filter.
+        order: { type: integer }
+        recipeCount:
+          type: integer
+          minimum: 0
+          description: Koliko LASTNIH receptov nosi to kategorijo.
 
     RecipeImage:
       type: object
@@ -849,6 +1040,15 @@ components:
             - type: string
             - type: array
               items: { type: string }
+        categories:
+          description: |
+            Imena kategorij. Neznano ime se SAMODEJNO doda v besednjak klicatelja — brez tega bi
+            bila za eno dejanje potrebna dva klica. Presežek nad osem se poreže, zapis pa se
+            vseeno shrani.
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
         rating: { type: [integer, 'null'], minimum: 1, maximum: 5 }
         importFromUrl:
           type: boolean
@@ -869,6 +1069,11 @@ components:
         prepMinutes: { type: [integer, 'null'] }
         servings: { type: [integer, 'null'] }
         tags:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        categories:
           oneOf:
             - type: string
             - type: array
@@ -896,6 +1101,13 @@ components:
         prepMinutes: { type: [integer, 'null'] }
         servings: { type: [integer, 'null'] }
         tags: { type: array, items: { type: string } }
+        categories:
+          type: array
+          items: { type: string }
+          description: |
+            Kategorije so na javni strani VIDNE: so lastnost jedi ("Juhe"), ne podatek o lastniku
+            ne o njegovih navadah. Besednjak sam ostane zaseben — javna stran vidi samo imena, ki
+            so na TEM receptu.
         coverImageId: { type: [string, 'null'] }
         images:
           type: array

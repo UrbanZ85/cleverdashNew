@@ -269,6 +269,31 @@ const envSchema = z.object({
    * bilo mogoče žetone ugibati. Prevzeto po vzorcu javnih poti modula 009. */
   RECIPES_PUBLIC_RATE_LIMIT: z.coerce.number().int().positive().default(60),
   RECIPES_PUBLIC_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+
+  // 014 — Administratorska analitika in telemetrija pod njo. Vse štiri imajo privzetek
+  // (kakovostna vrata, točka 4).
+  //
+  /** Rok hrambe dnevnih števcev uporabe. 400 dni = 13 mesecev, torej ravno toliko, da je mogoče
+   * primerjati z istim mesecem lani; daljše hranjenje na nobeno vprašanje s tega zaslona ne
+   * odgovori (člen XII: beleži se najmanj, kar odgovori).
+   *
+   * To vrednost UVELJAVLJA TTL indeks na `expiresAt` (platform/usage/usage-counter.model.ts) in
+   * ne pometač. Razlog je opozorilo, ki v tej datoteki že obstaja: `SCREENSHOT_RETENTION_DAYS` je
+   * razglašen in ga NE BERE NIHČE. Indeks je bodisi ustvarjen bodisi ga ni — prazen tek se tu ne
+   * more zgoditi tiho. */
+  USAGE_RETENTION_DAYS: z.coerce.number().int().positive().max(3_650).default(400),
+  /** Okno, v katerem ponoven ogled ISTEGA zavihka ne šteje znova (FR-027): osvežitev strani ni
+   * nov ogled. Uveljavljeno na strežniku, ne na odjemalcu — odjemalčev števec ne bi vzdržal
+   * dveh oken brskalnika. */
+  USAGE_VIEW_DEDUPE_SECONDS: z.coerce.number().int().positive().max(3_600).default(60),
+  /** Veljavnost predpomnjenega pregleda porabe. Seštevanje po vseh zapisih namestitve in sprehod
+   * po nosilcu sta draga; 300 s je enako kot `COMMUTE_CACHE_SECONDS` in iz istega razloga —
+   * podatek se v petih minutah ne spremeni toliko, da bi bilo vredno računati znova. */
+  ANALYTICS_CACHE_SECONDS: z.coerce.number().int().positive().default(300),
+  /** Starost, pod katero sirota na nosilcu NI prijavljena: lahko je nalaganje, ki ravno teče.
+   * Ista vrednost in isti razlog kot `ORPHAN_GRACE_MS` v pometaču modula 009 — tam je zapisana
+   * kot konstanta, tu kot nastavitev, ker gre za prikaz in ne za brisanje. */
+  ANALYTICS_ORPHAN_GRACE_HOURS: z.coerce.number().int().positive().default(24),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -186,3 +186,35 @@ in se slika ob odsotnosti pobriše — namesto da bi osirotela (FR-026, Edge Cas
 Prevzeto iz 010 z istim razlogom: `__v` bi `save()` naredil videti varen — deloval bi v razvoju in
 izgubljal popravke v produkciji. Odsotnost `__v` je uveljavljanje pravila "nikoli
 brati-spremeniti-pisati", ne opustitev.
+
+## §15 — Kategorije: recept hrani IMENA, ne identifikatorjev
+
+Dodano po prvem preizkusu modula: oznake (`tags`) so prosto besedilo in za razvrstitev po obroku
+("Juhe", "Kosila", "Zajtrki", "Večerje") ne zadoščajo — isti pojem se sčasoma zapiše v treh
+različicah in filter razpade.
+
+Kategorija je zato SVOJ pojem z urejenim besednjakom. Odločitev, ki jo je bilo treba sprejeti, je
+bila, kako recept nanj kaže.
+
+**Zavrnjeno: `categoryIds: [ObjectId]` s `ref: 'RecipeCategory'`.** Videti je pravilneje in bi dalo
+preimenovanje zastonj. Ne gre, ker so recepti DELJENI: recept vidita dva uporabnika, vsak s svojim
+besednjakom, in identifikator bi za soudeleženca kazal v zbirko, ki ni njegova. Rešitve tega so tri
+in vse slabše od izbrane — skupen besednjak (vsak dodatek vidijo vsi), besednjak lastnika (urejanje
+tujega recepta spreminja tuj seznam) ali razreševanje imen po lastniku ob vsakem izpisu (filter po
+kategoriji čez lastne in deljene recepte postane nemogoč).
+
+**Izbrano: `categories: [String]` + `categoryKeys: [String]`**, isti par kot pri oznakah. Filter
+deluje enotno čez lastne in deljene recepte, izbris kategorije iz besednjaka pa ne pusti recepta
+kazati v nič.
+
+Kar ta izbira stane in je zapisano v pogodbi, ne skrito:
+
+1. **Preimenovanje je poseg v več zapisov.** Popravi ime v besednjaku in v receptih, katerih
+   LASTNIK je klicatelj; v tuje deljene ne seže. Odgovor vrne število, da je obseg viden (člen VII).
+2. **Vira se lahko razideta.** Recept sme nositi kategorijo, ki je v besednjaku klicatelja ni.
+   To je VELJAVNO stanje in ne napaka — nastane, kadar jo je dodal drug soudeleženec. Izbirnik v
+   urejevalniku zato ponudi besednjak PLUS kategorije, ki jih recept že nosi, sicer bi prvo
+   shranjevanje tiho odstranilo kategorijo, ki je nihče ni odstranil.
+
+Besednjak je `userId` in ne `ownerId` (glej data-model.md): je zaseben in tu obljuba iz `note.model.ts`
+drži v celoti. To je edina zbirka tega modula, pri kateri je tako.

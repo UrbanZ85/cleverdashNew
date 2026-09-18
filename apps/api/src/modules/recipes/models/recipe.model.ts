@@ -92,6 +92,19 @@ const recipeSchema = new Schema(
      * izbrati med lepim izpisom in delujočim filtrom. Vzdržuje ju skupaj `normalizeTags`. */
     tagKeys: { type: [String], default: [] },
 
+    /** Kategorije ("Juhe", "Kosila", "Zajtrki") — IMENA, ne identifikatorji.
+     *
+     * Zakaj imena in ne `ref: 'RecipeCategory'` (glej recipe-category.model.ts): recept vidita dva
+     * uporabnika z DVEMA različnima besednjakoma, in `categoryId` bi za soudeleženca kazal v
+     * zbirko, ki ni njegova. Z imeni filtriranje deluje enotno čez lastne in deljene recepte,
+     * izbris kategorije iz besednjaka pa ne pusti recepta kazati v nič.
+     *
+     * Zakaj SVOJI polji in ne del `tags`: kategorija pride iz urejenega besednjaka in je obrok
+     * oziroma vrsta jedi, oznaka je prosto besedilo ("vegi", "za goste"). Filtra sta dva in ju je
+     * mogoče uporabiti hkrati; z enim poljem tega ne bi bilo mogoče ločiti. */
+    categories: { type: [String], default: [] },
+    categoryKeys: { type: [String], default: [] },
+
     /** 1–5, `null` = brez ocene. LASTNIKOVA (FR-035, research.md §3): ocena na članstvu bi
      * odprla povprečja in s tem recenzijski sistem, ki ga nihče ni naročil. */
     rating: { type: Number, default: null, min: 1, max: 5 },
@@ -141,8 +154,10 @@ recipeSchema.index({ ownerId: 1, updatedAt: -1 });
 // Seznam DELJENIH receptov. Brez tega indeksa bi bil `$or` iz `buildRecipesFilter` na tej strani
 // pregled cele zbirke — in bi z rastjo zbirke upočasnil vsak izpis, tudi lastnikov.
 recipeSchema.index({ 'members.userId': 1, updatedAt: -1 });
-// Filter po oznaki (FR-052).
+// Filter po oznaki (FR-052) in po kategoriji (FR-082). Dva indeksa, ker sta dva neodvisna
+// filtra — sestavljen indeks čez obe polji bi pospešil samo poizvedbo, ki navede OBOJE.
 recipeSchema.index({ ownerId: 1, tagKeys: 1 });
+recipeSchema.index({ ownerId: 1, categoryKeys: 1 });
 // Javna pot. `sparse`, ker večina receptov javne povezave nima in prazni vnosi v indeksu ne
 // koristijo nikomur.
 //

@@ -5,6 +5,7 @@ import { KeycloakUnreachableError, getKeycloakConfig } from '../../platform/keyc
 import { mapRolesToAccess } from '../../platform/keycloak/role-mapping.js';
 import { findOrCreateUser } from './services/user-provisioning.service.js';
 import { migrateLegacyDataIfNeeded } from '../../platform/migration/legacy-userless-migration.service.js';
+import { recordLoginQuietly } from '../../platform/usage/recorder.service.js';
 import {
   createSession,
   getActiveSession,
@@ -275,6 +276,16 @@ authRouter.get('/auth/callback', async (req, res) => {
     });
     setSessionCookie(res, env, cookieValue);
     auditLogin(req.log, { userId: String(user._id), sessionId: String(session._id) });
+    // 014: prijava se poleg dnevnika prešteje tudi v zbirko (platform/usage/). Dnevnik je pravo
+    // mesto za posamezen dogodek, a ni mesto, s katerega se šteje — vrtljiv je in ni razvrščen po
+    // uporabniku, zato "kolikokrat se je kdo ta mesec prijavil" iz njega ni odgovor.
+    //
+    // Klic v `platform/` s tega mesta ni novost: `migrateLegacyDataIfNeeded` deset vrstic više je
+    // isti vzorec in iz istega razloga (člen I — modul ne kliče modula, platformo pa sme).
+    //
+    // `Quietly`: neuspelo štetje je okvara telemetrije, ne avtentikacije. Človek, ki se prijavlja,
+    // za to ni kriv in ne sme ostati pred vrati; napaka gre v dnevnik kot opozorilo.
+    await recordLoginQuietly(String(user._id), req.log);
 
     res.redirect(302, safeRedirectPath(flow.redirectTo));
   } catch (err) {

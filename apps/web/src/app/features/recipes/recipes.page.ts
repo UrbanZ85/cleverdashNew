@@ -16,12 +16,14 @@ import {
   IonText,
 } from '@ionic/angular/standalone';
 import { PageHeaderComponent } from '../../shared/layout/page-header.component.js';
+import { RecipeCategoryManagerComponent } from './category-manager.component.js';
 import { RecipesApi } from './recipes.api.js';
 import {
   formatDuration,
   formatLastCooked,
   SORT_LABELS,
   type Recipe,
+  type RecipeCategory,
   type RecipeScope,
   type RecipeSort,
 } from './recipes.model.js';
@@ -40,6 +42,7 @@ import {
   imports: [
     FormsModule,
     PageHeaderComponent,
+    RecipeCategoryManagerComponent,
     IonContent,
     IonSearchbar,
     IonSegment,
@@ -94,9 +97,28 @@ import {
           </ion-select>
         </div>
 
+        <!-- KATEGORIJE so svoja vrstica, ločena od oznak: to sta dva NEODVISNA filtra in ju je
+             mogoče uporabiti hkrati ("juhe, ki so vegi"). Ena skupna vrstica čipov bi dala vtis,
+             da je izbira ena sama. -->
+        <div class="filters">
+          <ion-chip [outline]="activeCategory() !== null" (click)="setCategory(null)">Vse</ion-chip>
+          @for (category of categories(); track category.id) {
+            <ion-chip
+              [outline]="activeCategory() !== category.name"
+              (click)="setCategory(category.name)"
+            >
+              {{ category.name }}
+            </ion-chip>
+          }
+          <ion-chip outline class="manage" (click)="categoriesOpen.set(true)">
+            <ion-icon name="create-outline" aria-hidden="true"></ion-icon>
+            <ion-label>Uredi</ion-label>
+          </ion-chip>
+        </div>
+
         @if (tags().length > 0) {
-          <div class="tag-filters">
-            <ion-chip [outline]="activeTag() !== null" (click)="setTag(null)">Vse</ion-chip>
+          <div class="filters tags-row">
+            <ion-chip [outline]="activeTag() !== null" (click)="setTag(null)">Vse oznake</ion-chip>
             @for (tag of tags(); track tag) {
               <ion-chip [outline]="activeTag() !== tag" (click)="setTag(tag)">{{ tag }}</ion-chip>
             }
@@ -177,6 +199,10 @@ import {
                     <p class="source"><ion-icon name="link-outline" aria-hidden="true"></ion-icon> {{ host }}</p>
                   }
 
+                  @if (recipe.categories.length > 0) {
+                    <p class="cats">{{ recipe.categories.join(' · ') }}</p>
+                  }
+
                   @if (recipe.tags.length > 0) {
                     <p class="tags">{{ recipe.tags.join(' · ') }}</p>
                   }
@@ -187,6 +213,12 @@ import {
         }
       </div>
     </ion-content>
+
+    <app-recipe-category-manager
+      [isOpen]="categoriesOpen()"
+      (closed)="categoriesOpen.set(false)"
+      (changed)="onCategoriesChanged()"
+    ></app-recipe-category-manager>
   `,
   styles: [
     `
@@ -198,11 +230,22 @@ import {
         justify-content: flex-end;
         padding: 4px 8px;
       }
-      .tag-filters {
+      .filters {
         display: flex;
         flex-wrap: wrap;
         gap: 4px;
         padding: 4px 8px 8px;
+      }
+      /* Oznake so vizualno podrejene kategorijam: kategorija je razvrstitev, oznaka je opis. */
+      .filters.tags-row {
+        padding-top: 0;
+        font-size: 0.85em;
+      }
+      .filters .manage {
+        margin-left: auto;
+      }
+      .cats {
+        font-weight: 500;
       }
       .msg,
       .empty {
@@ -292,6 +335,9 @@ export class RecipesPage implements OnInit, OnDestroy {
   readonly error = signal<string | null>(null);
   readonly query = signal('');
   readonly activeTag = signal<string | null>(null);
+  readonly activeCategory = signal<string | null>(null);
+  readonly categories = signal<RecipeCategory[]>([]);
+  readonly categoriesOpen = signal(false);
   readonly scope = signal<RecipeScope>('all');
   readonly sort = signal<RecipeSort>('recent');
 
@@ -323,7 +369,11 @@ export class RecipesPage implements OnInit, OnDestroy {
   readonly hasShared = computed(() => this.recipes().some((recipe) => !recipe.isOwn));
 
   readonly isFiltered = computed(
-    () => this.query().trim().length > 0 || this.activeTag() !== null || this.scope() !== 'all',
+    () =>
+      this.query().trim().length > 0 ||
+      this.activeTag() !== null ||
+      this.activeCategory() !== null ||
+      this.scope() !== 'all',
   );
 
   readonly subtitle = computed(() => {
@@ -333,7 +383,22 @@ export class RecipesPage implements OnInit, OnDestroy {
   });
 
   async ngOnInit(): Promise<void> {
-    await this.reload();
+    // Besednjak in recepti se naložita vzporedno: čipi kategorij so nad seznamom in bi ob
+    // zaporednem nalaganju poskočili šele po tem, ko je seznam že izrisan.
+    await Promise.all([this.loadCategories(), this.reload()]);
+  }
+
+  /** Besednjak kategorij za vrstico čipov.
+   *
+   * Prihaja z LOČENE poti in ne iz receptov (kot oznake): kategorija sme obstajati, preden je vanjo
+   * uvrščen prvi recept — sicer je ne bi bilo mogoče ustvariti vnaprej. */
+  private async loadCategories(): Promise<void> {
+    try {
+      this.categories.set(await this.api.listCategories());
+    } catch {
+      // Brez besednjaka seznam še vedno deluje; čipov kategorij takrat ni.
+      this.categories.set([]);
+    }
   }
 
   ngOnDestroy(): void {
@@ -347,6 +412,7 @@ export class RecipesPage implements OnInit, OnDestroy {
       const recipes = await this.api.list({
         q: this.query(),
         tag: this.activeTag() ?? undefined,
+        category: this.activeCategory() ?? undefined,
         scope: this.scope(),
         sort: this.sort(),
       });
@@ -412,6 +478,19 @@ export class RecipesPage implements OnInit, OnDestroy {
     await this.reload();
   }
 
+  /** Klik na že izbrano kategorijo jo ODZNAČI — sicer bi bilo treba za "vse" vedno ciljati prvi
+   * čip, kar je pri dolgi vrstici, ki se drsi, nerodno. */
+  async setCategory(category: string | null): Promise<void> {
+    this.activeCategory.set(category !== null && category === this.activeCategory() ? null : category);
+    await this.reload();
+  }
+
+  /** Besednjak se je spremenil (dodana, preimenovana, izbrisana kategorija) — osvežiti je treba
+   * OBOJE: čipe in recepte, ker preimenovanje spremeni tudi imena na receptih. */
+  async onCategoriesChanged(): Promise<void> {
+    await Promise.all([this.loadCategories(), this.reload()]);
+  }
+
   async setScope(scope: RecipeScope): Promise<void> {
     this.scope.set(scope);
     await this.reload();
@@ -425,6 +504,7 @@ export class RecipesPage implements OnInit, OnDestroy {
   async clearFilters(): Promise<void> {
     this.query.set('');
     this.activeTag.set(null);
+    this.activeCategory.set(null);
     this.scope.set('all');
     await this.reload();
   }

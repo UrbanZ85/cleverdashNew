@@ -11,8 +11,11 @@ import {
   IonIcon,
   IonInput,
   IonItem,
+  IonLabel,
   IonList,
   IonNote,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonText,
   IonTextarea,
@@ -23,11 +26,15 @@ import { RecipeShareDialogComponent } from './recipe-share-dialog.component.js';
 import { RecipesApi } from './recipes.api.js';
 import { makeThumbnail, measureImage } from './image-resize.js';
 import {
+  asText,
   describeSourceStatus,
   formatDuration,
   formatLastCooked,
   splitLines,
+  toOptionalCount,
+  type FormFieldValue,
   type Recipe,
+  type RecipeCategory,
   type RecipeImage,
 } from './recipes.model.js';
 
@@ -58,7 +65,10 @@ import {
     IonIcon,
     IonList,
     IonItem,
+    IonLabel,
     IonInput,
+    IonSelect,
+    IonSelectOption,
     IonTextarea,
     IonNote,
     IonChip,
@@ -76,9 +86,7 @@ import {
         <ion-title>{{ isNew() ? 'Nov recept' : (recipe()?.title ?? 'Recept') }}</ion-title>
         <ion-buttons slot="end">
           @if (editing()) {
-            <ion-button [disabled]="busy() || form.title.trim().length === 0" (click)="save()">
-              Shrani
-            </ion-button>
+            <ion-button [disabled]="busy() || !canSave()" (click)="save()">Shrani</ion-button>
           } @else if (recipe(); as current) {
             @if (current.capabilities.editRecipe) {
               <ion-button (click)="startEdit()" aria-label="Uredi">
@@ -126,7 +134,7 @@ import {
           </ion-item>
           <!-- Uvoz je IZRECNA poteza in ne stranski učinek vpisa naslova: odhodni klic brez
                povoda prepoveduje člen VIII, zato ga sproži gumb. -->
-          @if (!isNew() && form.url.trim().length > 0) {
+          @if (!isNew() && hasUrl()) {
             <ion-item lines="none">
               <ion-button fill="clear" size="small" [disabled]="busy()" (click)="reimport()">
                 <ion-icon slot="start" name="refresh-outline" aria-hidden="true"></ion-icon>
@@ -190,11 +198,34 @@ import {
             ></ion-input>
           </ion-item>
 
+          <!-- KATEGORIJE so izbira iz besednjaka, OZNAKE so prosto besedilo. Ločeni polji in ne
+               eno: kategorija je razvrstitev ("Juhe", "Kosila") in mora biti povsod zapisana
+               enako, sicer filter razpade na različice istega; oznaka je opis in sme biti karkoli. -->
+          <ion-item>
+            <ion-select
+              label="Kategorije"
+              labelPlacement="stacked"
+              [multiple]="true"
+              placeholder="Izberi …"
+              [ngModel]="form.categories"
+              (ionChange)="onCategoriesPicked($any($event).detail.value)"
+            >
+              @for (option of categoryOptions(); track option) {
+                <ion-select-option [value]="option">{{ option }}</ion-select-option>
+              }
+            </ion-select>
+          </ion-item>
+          @if (categoryOptions().length === 0) {
+            <ion-note class="hint">
+              Kategorij še ni. Ustvariš jih v seznamu receptov, pod vrstico čipov → "Uredi".
+            </ion-note>
+          }
+
           <ion-item>
             <ion-input
               label="Oznake (ločene z vejico)"
               labelPlacement="stacked"
-              placeholder="juha, vegi, hitro"
+              placeholder="vegi, hitro, za goste"
               [(ngModel)]="form.tags"
             ></ion-input>
           </ion-item>
@@ -285,6 +316,14 @@ import {
               </a>
             }
 
+            @if (current.categories.length > 0) {
+              <div class="tags">
+                @for (category of current.categories; track category) {
+                  <ion-chip color="primary">{{ category }}</ion-chip>
+                }
+              </div>
+            }
+
             @if (current.tags.length > 0) {
               <div class="tags">
                 @for (tag of current.tags; track tag) {
@@ -314,6 +353,21 @@ import {
                 <li>{{ step }}</li>
               }
             </ol>
+          }
+
+          <!-- Deljenje je BESEDILO in ne le ikona v orodni vrstici. Ikona sama se je izkazala za
+               nenajdljivo: uporabnik je iskal deljenje pri ustvarjanju recepta, kjer ga po
+               naravi stvari ni (recept brez ID-ja ni s čim deliti), v pogledu pa je bila
+               skrita med ikonami. Ta vrstica hkrati pove STANJE, ne le da možnost obstaja. -->
+          @if (current.capabilities.manageSharing) {
+            <button class="share-row" type="button" (click)="shareOpen.set(true)">
+              <ion-icon name="people-outline" aria-hidden="true"></ion-icon>
+              <span class="share-text">
+                <strong>Deljenje</strong>
+                <small>{{ sharingSummary(current) }}</small>
+              </span>
+              <ion-icon name="chevron-forward-outline" aria-hidden="true"></ion-icon>
+            </button>
           }
 
           <div class="actions">
@@ -506,6 +560,28 @@ import {
         padding-top: 8px;
         font-size: 0.8rem;
       }
+      .share-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        margin-top: 12px;
+        padding: 10px 12px;
+        border: 1px solid var(--ion-color-step-150, #ddd);
+        border-radius: 10px;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .share-text {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+      }
+      .share-text small {
+        color: var(--ion-color-medium-shade);
+      }
 
       /* Način kuhanja: prekrivalo čez vse, brez menija in brez orodnih vrstic. Velika pisava in
          velike tarče za dotik — telefon je na pultu in roke niso čiste. */
@@ -575,6 +651,7 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
   readonly editing = signal(false);
   readonly shareOpen = signal(false);
   readonly cooking = signal<Recipe | null>(null);
+  readonly categories = signal<RecipeCategory[]>([]);
   readonly stars = [1, 2, 3, 4, 5];
 
   private readonly doneSteps = signal<Set<number>>(new Set());
@@ -585,13 +662,40 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
 
   /** Obrazec je navaden objekt in ne signal: `[(ngModel)]` piše vanj neposredno, vmesna plast
    * signalov pa bi pri vsakem pritisku tipke sprožila izris celega zaslona. */
-  form = { title: '', url: '', description: '', ingredients: '', steps: '', prepMinutes: '', servings: '', tags: '' };
+  /** Tipi povedo RESNICO o tem, kaj `ngModel` lahko vrne — glej `FormFieldValue` v
+   * recipes.model.ts. Polji s številom vrneta število ali `null`, ne niza. */
+  form = {
+    title: '' as FormFieldValue,
+    url: '' as FormFieldValue,
+    description: '' as FormFieldValue,
+    ingredients: '' as FormFieldValue,
+    steps: '' as FormFieldValue,
+    prepMinutes: '' as FormFieldValue,
+    servings: '' as FormFieldValue,
+    tags: '' as FormFieldValue,
+    /** Seznam IMEN, ne identifikatorjev — recept hrani imena (glej recipes.model.ts). */
+    categories: [] as string[],
+  };
 
   /** Zadržek prebujenega zaslona med kuhanjem. `null`, dokler način ni vklopljen ali kadar ga
    * brskalnik ne podpira — odsotnost NI napaka in se uporabniku ne javi. */
   private wakeLock: { release: () => Promise<void> } | null = null;
 
+  /**
+   * Kaj je v izbirniku: besednjak PLUS kategorije, ki jih recept že nosi.
+   *
+   * Drugi del ni odveč: deljen recept lahko nosi kategorijo, ki je v MOJEM besednjaku ni (dodal jo
+   * je lastnik ali drug soudeleženec). Brez nje bi izbirnik ob prvem shranjevanju tiho odstranil
+   * kategorijo, ki je nisem nikoli odstranil.
+   */
+  readonly categoryOptions = computed(() => {
+    const names = this.categories().map((category) => category.name);
+    for (const name of this.form.categories) if (!names.includes(name)) names.push(name);
+    return names;
+  });
+
   async ngOnInit(): Promise<void> {
+    void this.loadCategories();
     const id = this.route.snapshot.paramMap.get('recipeId');
     if (!id || id === 'new') {
       this.editing.set(true);
@@ -620,6 +724,29 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
     }
   }
 
+  private async loadCategories(): Promise<void> {
+    try {
+      this.categories.set(await this.api.listCategories());
+    } catch {
+      // Brez besednjaka je izbirnik prazen, recept pa se vseeno uredi in shrani.
+      this.categories.set([]);
+    }
+  }
+
+  onCategoriesPicked(values: string[] | null | undefined): void {
+    this.form.categories = values ?? [];
+  }
+
+  /** Kratek povzetek stanja deljenja za vrstico v pogledu. Pove, KOLIKO in ali je javna povezava
+   * živa — ne le, da možnost obstaja. */
+  sharingSummary(recipe: Recipe): string {
+    const parts: string[] = [];
+    if (recipe.members.length === 1) parts.push('1 oseba');
+    else if (recipe.members.length > 1) parts.push(`${recipe.members.length} osebe`);
+    if (recipe.publicLink) parts.push('javna povezava');
+    return parts.length === 0 ? 'Ni deljeno' : parts.join(' · ');
+  }
+
   private fillForm(recipe: Recipe): void {
     this.form = {
       title: recipe.title,
@@ -627,19 +754,22 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
       description: recipe.description ?? '',
       ingredients: recipe.ingredients.join('\n'),
       steps: recipe.steps.join('\n'),
-      prepMinutes: recipe.prepMinutes === null ? '' : String(recipe.prepMinutes),
-      servings: recipe.servings === null ? '' : String(recipe.servings),
+      prepMinutes: recipe.prepMinutes,
+      servings: recipe.servings,
       tags: recipe.tags.join(', '),
+      categories: [...recipe.categories],
     };
   }
 
-  /** Prazno polje pomeni `null` ("pobriši") in ne `undefined` ("ne spreminjaj"): uporabnik, ki je
-   * čas izbrisal, ga je izbrisal z namenom. Ista past kot na strežniku. */
-  private numberOrNull(value: string): number | null {
-    const trimmed = value.trim();
-    if (trimmed.length === 0) return null;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+  /** Ali je obrazec mogoče shraniti. Metoda in ne izraz v predlogi: `form.title` ni nujno niz in
+   * `form.title.trim()` v vezavi bi vrgel med zaznavanjem sprememb — torej na mestu, kjer napake
+   * ni videti nikjer. */
+  canSave(): boolean {
+    return asText(this.form.title).length > 0;
+  }
+
+  hasUrl(): boolean {
+    return asText(this.form.url).length > 0;
   }
 
   async save(): Promise<void> {
@@ -647,17 +777,18 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
     this.error.set(null);
     try {
       const draft = {
-        title: this.form.title.trim(),
-        url: this.form.url.trim().length > 0 ? this.form.url.trim() : null,
-        description: this.form.description.trim().length > 0 ? this.form.description.trim() : null,
+        title: asText(this.form.title),
+        url: asText(this.form.url) || null,
+        description: asText(this.form.description) || null,
         ingredients: splitLines(this.form.ingredients),
         steps: splitLines(this.form.steps),
-        prepMinutes: this.numberOrNull(this.form.prepMinutes),
-        servings: this.numberOrNull(this.form.servings),
-        tags: this.form.tags
+        prepMinutes: toOptionalCount(this.form.prepMinutes),
+        servings: toOptionalCount(this.form.servings),
+        tags: asText(this.form.tags)
           .split(',')
           .map((tag) => tag.trim())
           .filter((tag) => tag.length > 0),
+        categories: [...this.form.categories],
       };
 
       const existing = this.recipe();
@@ -707,7 +838,7 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
     try {
       // Naslov je lahko v obrazcu spremenjen, a še ne shranjen; uvoz bere naslov IZ ZAPISA, zato
       // se najprej shrani. Brez tega bi gumb tiho bral staro stran.
-      const saved = await this.api.update(current.id, { url: this.form.url.trim() || null });
+      const saved = await this.api.update(current.id, { url: asText(this.form.url) || null });
       const updated = await this.api.reimport(saved.id, false);
       this.recipe.set(updated);
       this.fillForm(updated);
@@ -992,10 +1123,29 @@ export class RecipeEditorPage implements OnInit, OnDestroy {
     void this.router.navigate(['/recipes']);
   }
 
-  /** Sporočilo strežnika (RFC 9457 `detail`) je namenjeno uporabniku in pove, KAJ narediti —
-   * zato ima prednost pred našim nadomestkom (člen VI). */
+  /**
+   * Sporočilo za uporabnika iz ujete napake.
+   *
+   * TRIJE primeri in vsak je druga stvar — prej so bili vsi en sam nadomestek, kar je stalo eno
+   * dolgo preiskavo (glej `toOptionalCount` v recipes.model.ts):
+   *
+   *  1. Strežnik je odgovoril z RFC 9457 in `detail` je namenjen uporabniku — ta ima prednost pred
+   *     našim besedilom (člen VI).
+   *  2. Zahteva je šla ven in ni uspela drugače (omrežje, 500 brez `detail`) — nadomestek.
+   *  3. **Napaka v NAŠI kodi**, ki je padla, preden je zahteva sploh nastala. Prej je bila videti
+   *     enako kot 2 — "Recepta ni bilo mogoče shraniti" — in v konzoli ni bilo ničesar, ker jo je
+   *     `catch` požrl. Zdaj gre v konzolo in uporabnik izve, da ponavljanje ne bo pomagalo.
+   */
   private describe(err: unknown, fallback: string): string {
     const detail = (err as { error?: { detail?: string } })?.error?.detail;
-    return typeof detail === 'string' && detail.length > 0 ? detail : fallback;
+    if (typeof detail === 'string' && detail.length > 0) return detail;
+
+    // `HttpErrorResponse` ima `status`; česar nima, se do strežnika ni prebilo.
+    const isHttp = typeof (err as { status?: unknown })?.status === 'number';
+    if (!isHttp) {
+      console.error('[recipes] shranjevanje je padlo pred zahtevo na API:', err);
+      return 'Napaka v aplikaciji — shranjevanje se ni niti začelo. Podrobnosti so v konzoli brskalnika.';
+    }
+    return fallback;
   }
 }

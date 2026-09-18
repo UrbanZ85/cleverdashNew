@@ -46,6 +46,30 @@ describe('POST /recipes', () => {
     expect(res.body.capabilities.deleteRecipe).toBe(true);
   });
 
+  it('sprejme TOČNO obliko, ki jo pošlje obrazec — vsa neizpolnjena polja kot null', async () => {
+    // Pripeto ob napaki, pri kateri urejevalnik recepta ni mogel shraniti. Vzrok je bil na
+    // ODJEMALCU (ion-input type=number vrne število, ne niza — glej recipes.model.ts), a ker je
+    // bila napaka videti kot "strežnik ne sprejme", ta test pribije, da telo v tej obliki JE
+    // veljavno. Brez njega bi bila naslednja taka preiskava spet ugibanje.
+    const app = await boot();
+    const user = await loginAs(app, 'a');
+
+    const res = await request(app).post('/api/v1/recipes').set(AUTH(user.token)).send({
+      title: 'Test',
+      url: null,
+      description: null,
+      ingredients: [],
+      steps: [],
+      prepMinutes: null,
+      servings: null,
+      tags: [],
+      categories: [],
+      importFromUrl: false,
+    });
+
+    expect(res.status).toBe(201);
+  });
+
   it('zavrne recept brez imena', async () => {
     const app = await boot();
     const user = await loginAs(app, 'a');
