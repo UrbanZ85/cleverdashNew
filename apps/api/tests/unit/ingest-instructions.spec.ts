@@ -135,6 +135,25 @@ describe('navodilo za agenta', () => {
     });
     expect(text).toContain('Ne izmišljuj si podatkov');
     expect(text).toMatch(/ključa .*ne izpiši/i);
+    // Posledica resnične napake: navadni ChatGPT POST ne zna poslati in je to sporočil kot
+    // napako omrežja. Agent mora povedati, da ni poslal — ne molčati in ne trditi nasprotnega.
+    expect(text).toContain('Nikoli ne reci, da je shranjeno, če ni.');
+  });
+});
+
+describe('jezik zapisa', () => {
+  it('agentu naroči, naj vse zapiše v slovenščini in tuje strani prevede', () => {
+    // Lastnik namestitve je slovenski; recept, uvožen iz angleškega PDF-ja, mora v kuharici biti
+    // v slovenščini. Prvotno pravilo ("prepiši v jeziku strani") je zahtevalo nasprotno.
+    const text = buildIngestInstructions({
+      baseUrl: BASE,
+      secret: 'cd_x',
+      targets: targets('recipes'),
+      expiresAt: null,
+    });
+    expect(text).toContain('VSE ZAPIŠI V SLOVENŠČINI');
+    expect(text).toContain('prevedi');
+    expect(text).not.toContain('Ne prevajaj in ne preoblikuj');
   });
 });
 
@@ -150,6 +169,8 @@ describe('veljavnost v navodilu', () => {
     });
     expect(text).toMatch(/31\.\s*12\.\s*2026/);
     expect(text).not.toContain('2027');
+    // Ura je obvezna: privzeta veljavnost ključa je deset MINUT, pri kateri sam datum zavaja.
+    expect(text).toMatch(/23[:.]30/);
   });
 
   it('brez roka to izrecno pove', () => {

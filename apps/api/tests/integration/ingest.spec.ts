@@ -61,7 +61,7 @@ describe('izdaja agentskega ključa', () => {
     const res = await issueKey(app, user.accessToken, {
       label: 'ChatGPT — recepti',
       targets: ['recipes'],
-      expiresInDays: 30,
+      expiresInMinutes: 10,
     });
 
     expect(res.status).toBe(201);
@@ -423,6 +423,95 @@ describe('uvoz z agentskim ključem', () => {
     expect(res.status).toBe(201);
     const note = await NoteModel.findById(res.body.id).lean();
     expect(note?.pinned).toBe(false);
+  });
+});
+
+describe('pot na cilj in shema za Custom GPT Action', () => {
+  it('POST /ingest/recipes shrani enako kot /ingest s "target" v telesu', async () => {
+    // Custom GPT Action izbira med ORODJI in ne med vrednostmi polja, zato potrebuje eno pot na
+    // cilj. Obe obliki morata voditi v isto kodo — sicer bi bili dve pogodbi in ne dva zapisa ene.
+    const app = await boot();
+    const user = await login(app, 'kc-ingest-path');
+    const key = await issueKey(app, user.accessToken, { label: 'gpt', targets: ['recipes'] });
+
+    const res = await request(app)
+      .post('/api/v1/ingest/recipes')
+      .set('X-API-Key', key.body.secret)
+      .send({ title: 'Prek poti', url: 'https://primer.si/recept' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.target).toBe('recipes');
+    const recipe = await RecipeModel.findById(res.body.id).lean();
+    expect(String(recipe?.ownerId)).toBe(user.userId);
+  });
+
+  it('pot prevlada nad nasprotujočim "target" v telesu', async () => {
+    const app = await boot();
+    const user = await login(app, 'kc-ingest-path-wins');
+    const key = await issueKey(app, user.accessToken, { label: 'gpt', targets: ['recipes', 'notes'] });
+
+    const res = await request(app)
+      .post('/api/v1/ingest/notes')
+      .set('X-API-Key', key.body.secret)
+      .send({ target: 'recipes', body: 'to je beležka' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.target).toBe('notes');
+    expect(await NoteModel.countDocuments({})).toBe(1);
+    expect(await RecipeModel.countDocuments({})).toBe(0);
+  });
+
+  it('"targets" in "openapi.json" nista razumljena kot imeni ciljev', async () => {
+    // Brez pravilnega vrstnega reda poti bi ju `/ingest/:target` ujel in bi GET postal POST cilj.
+    const app = await boot();
+    const user = await login(app, 'kc-ingest-shadow');
+    const res = await request(app)
+      .get('/api/v1/ingest/targets')
+      .set('Authorization', `Bearer ${user.accessToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('shema za Action je veljaven OpenAPI z eno operacijo na cilj', async () => {
+    const app = await boot();
+    const user = await login(app, 'kc-ingest-schema');
+    const key = await issueKey(app, user.accessToken, { label: 'gpt', targets: ['recipes'] });
+
+    const res = await request(app)
+      .get('/api/v1/ingest/openapi.json')
+      .set('X-API-Key', key.body.secret);
+
+    expect(res.status).toBe(200);
+    expect(res.body.openapi).toBe('3.1.0');
+    expect(res.body.servers[0].url).toBe('http://localhost:3000');
+    // Samo cilji TEGA ključa — shema ne sme razkriti modulov, do katerih ključ nima dostopa.
+    expect(Object.keys(res.body.paths)).toEqual(['/api/v1/ingest/recipes']);
+
+    const op = res.body.paths['/api/v1/ingest/recipes'].post;
+    expect(op.operationId).toBe('shrani_recipes');
+    const schema = op.requestBody.content['application/json'].schema;
+    expect(schema.required).toEqual(['title']);
+    expect(schema.additionalProperties).toBe(false);
+    expect(Object.keys(schema.properties)).toContain('ingredients');
+    // Ključ v shemi NE sme biti — vpiše se ločeno v zavihku Authentication.
+    expect(JSON.stringify(res.body)).not.toContain(key.body.secret);
+    expect(res.body.components.securitySchemes.apiKey.name).toBe('X-API-Key');
+  });
+
+  it('operationId za cilj z vezajem je veljaven', async () => {
+    // Action dovoli samo `[A-Za-z0-9_-]`; `saved-links` bi kot `shrani_saved-links` še šlo, a
+    // podčrtaj je varnejši pri vseh različicah.
+    const app = await boot();
+    const user = await login(app, 'kc-ingest-schema-dash');
+    const key = await issueKey(app, user.accessToken, { label: 'gpt', targets: ['saved-links'] });
+
+    const res = await request(app)
+      .get('/api/v1/ingest/openapi.json')
+      .set('X-API-Key', key.body.secret);
+
+    const op = res.body.paths['/api/v1/ingest/saved-links'].post;
+    expect(op.operationId).toBe('shrani_saved_links');
+    expect(op.operationId).toMatch(/^[A-Za-z0-9_]+$/);
   });
 });
 

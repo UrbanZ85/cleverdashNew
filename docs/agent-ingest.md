@@ -6,18 +6,59 @@ Namen je en sam in ozek: uporabnik agentu pošlje naslov strani, agent jo preber
 shrani — recept v kuharico, članek med povezave, povzetek med beležke. Vse, kar mora uporabnik
 narediti, je izdati ključ in prilepiti navodilo, ki ga dobi ob tem.
 
-## Za uporabnika
+## Navadni ChatGPT tega NE zmore — preberi to najprej
+
+Pogovorni ChatGPT **ne zna poslati zahteve POST**. Njegovo brskanje strani samo BERE (GET); nima
+orodja, ki bi poslalo telo in lastno glavo `X-API-Key`.
+
+To se v praksi ne pokaže kot zavrnitev, ampak kot zavajajoča napaka. V prvem poskusu je ChatGPT
+pravilno prebral recept iz PDF-ja, sestavil **pravilen** JSON in nato javil omrežno napako
+(`Could not resolve host: cleverdash.zuusi.com`). Strežnik je bil ves čas zdrav —
+`GET /api/v1/health` je vračal `200`, `POST /api/v1/ingest` pa `401` (pravilno: brez ključa).
+Ime se je javno razreševalo brez težav. Poslati zahteve preprosto ni znal.
+
+Zato sta dve poti:
+
+| Orodje | Kaj rabiš |
+| --- | --- |
+| **ChatGPT** | **Custom GPT z Action** (spodaj). Drugače ne gre. |
+| n8n, Shortcuts, `curl`, lasten skript | Navodilo iz *Kopiraj navodilo*. Ta orodja POST znajo. |
+
+## Postavitev Custom GPT (enkratna)
+
+1. **Nastavitve → Agent → Shema za Custom GPT (Action)** → *Kopiraj shemo*.
+2. V ChatGPT: **Create a GPT → Configure → Create new action**.
+3. V polje *Schema* prilepi shemo.
+4. **Authentication → API Key**, *Auth Type*: `Custom`, *Custom Header Name*: `X-API-Key`,
+   v polje za vrednost pa prilepi ključ.
+5. V *Instructions* GPT-ja prilepi besedilo iz *Kopiraj navodilo* — tam so pravila (slovenščina,
+   brez izmišljanja, kaj pomeni kateri odgovor).
+
+Nato mu samo pošlješ naslov strani.
+
+Shema je vezana na **cilje**, ne na ključ, zato se ob zamenjavi ključa ne spremeni — zamenjaš le
+vrednost v zavihku Authentication.
+
+## Izdaja ključa
 
 1. **Nastavitve → Agent → Ključi za ChatGPT in n8n.**
-2. Vpiši ime ključa, izberi veljavnost in odkljukaj, kam sme ta ključ shranjevati.
-3. **Izdaj ključ.** Pritisni *Kopiraj navodilo za ChatGPT*.
-4. Navodilo prilepi v pogovor z ChatGPT. Nato mu pošlji naslov strani.
+2. Vpiši ime, izberi veljavnost in odkljukaj, kam sme ta ključ shranjevati.
+3. **Izdaj ključ.**
 
 Ključ je viden **samo ob izdaji**. Kdor ga izgubi, izda novega — obnoviti ga ni mogoče. Oblika
 zahteve (brez ključa) se da prebrati kadar koli prek gumba *Navodilo*.
 
 Ključ prekliči takoj, ko ga ne rabiš več (gumb *Prekliči*): preklic je nepovraten in agent, ki ga
 uporablja, takoj neha delovati.
+
+### Veljavnost
+
+Privzeto **10 minut**, na voljo od 5 minut do brez roka. Kratko je namerno: ključ se prilepi v tuj
+pogovorni vmesnik, kjer obvisi v zgodovini pogovora, ki je ne nadzoruje nihče.
+
+**Pri Custom GPT to pomeni kompromis**, ki ga je vredno poznati: ključ je shranjen v nastavitvah
+GPT-ja, zato desetminutni ključ pomeni vpis novega pred vsako uporabo. Za GPT, ki ga uporabljaš
+redno, je smiselna daljša izbira; za enkratno shranjevanje recepta je 10 minut prav.
 
 ## Pogodba
 
@@ -41,6 +82,22 @@ Content-Type: application/json
 - Aktualen seznam ciljev z opisi polj vrne `GET /api/v1/ingest/targets`. Ta seznam ni nikjer
   prepisan — sestavi ga register.
 
+### Druga oblika: ena pot na cilj
+
+```
+POST /api/v1/ingest/recipes
+X-API-Key: cd_…
+
+{ "title": "Bučna juha", "url": "https://…" }
+```
+
+Cilj je v naslovu, zato je telo **sam zapis**, brez ovojnice. To obliko uporablja Custom GPT
+Action: model tam izbira med ORODJI in ne med vrednostmi polja, zato je ena pot na cilj edina
+oblika, pri kateri ne zgreši. Ista koda, ista pravila, isti odgovori.
+
+`GET /api/v1/ingest/openapi.json` vrne OpenAPI 3.1 shemo za te poti — samo za cilje, ki jih
+klicatelj sme uporabiti. Shema je za avtentikacijo, ne javna, in ključa ne vsebuje.
+
 ### Odgovor
 
 | Stanje | Status | Pomen |
@@ -56,9 +113,10 @@ izpuščeno (npr. mapa, ki ne obstaja). Člen VII — izid ni skrit v dnevnik.
 
 ## Zakaj tako
 
-**Ena pot namesto poti na cilj.** Naslov je edino, kar uporabnik prilepi v pogovor. Z eno potjo je
-dodatni cilj sprememba ene besede v telesu, ki jo agent izbere sam, in ne nov naslov, ki ga mora
-človek znova prilepiti.
+**Dva zapisa iste pogodbe.** `/ingest` z `target` v telesu je za `curl` in n8n, kjer se naslov
+sestavi enkrat. `/ingest/<cilj>` je za Custom GPT Action, kjer model izbira med ORODJI in ne med
+vrednostmi polja — ena pot z razvejano shemo (`oneOf` po `target`) je oblika, pri kateri redno
+pošlje polja enega cilja pod imenom drugega. Obe vodita v isto kodo, zato to nista dve pogodbi.
 
 **Dve zapori, ne ena.** Vsak cilj nosi obseg svojega modula (`recipes:write` …) in ta se preveri
 kot pri vsaki drugi poti. Poleg tega ima ključ **svoj seznam ciljev**, ki je ožji: ključ za
@@ -102,7 +160,8 @@ modula ostane brisanje mape in ene vrstice (člen I). Kako dodati cilj: korak 8 
 | Datoteka | Kaj |
 | --- | --- |
 | `platform/ingest/registry.ts` | Register ciljev; ne pozna nobenega modula. |
-| `platform/ingest/router.ts` | `POST /ingest`, `GET /ingest/targets`. |
+| `platform/ingest/router.ts` | `POST /ingest`, `POST /ingest/<cilj>`, `GET /ingest/targets`. |
+| `platform/ingest/openapi.ts` | Shema za Custom GPT Action. |
 | `platform/ingest/keys.router.ts` | Izdaja in preklic agentskih ključev. |
 | `platform/ingest/instructions.ts` | Besedilo, ki ga uporabnik prilepi agentu. |
 | `platform/apikeys/model.ts` | `ownerId` in `targets` na ključu. |

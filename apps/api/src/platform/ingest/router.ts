@@ -1,9 +1,10 @@
-import { Router, type Request } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { resolveAutomationOwnerUserId } from '../auth/automation-owner.js';
 import { ADMIN_SCOPE } from '../auth/scopes.js';
 import { loadEnv } from '../config/env.js';
 import { badRequest, forbidden, notFound, unauthorized } from '../errors/problem.js';
+import { buildIngestOpenApi } from './openapi.js';
 import {
   findIngestTarget,
   listIngestTargets,
@@ -11,12 +12,22 @@ import {
   type IngestTarget,
 } from './registry.js';
 
-// `POST /api/v1/ingest` — ENA vstopna točka, ki jo dobi agent (ChatGPT, n8n, karkoli drugega).
+// Vstopna točka, ki jo dobi agent (ChatGPT, n8n, karkoli drugega).
 //
-// ZAKAJ ENA POT IN NE `/ingest/recipes`, `/ingest/notes` … Naslov je edino, kar uporabnik
-// prilepi v pogovor z agentom, in navodilo se vanj zapiše enkrat. Z eno potjo je razširitev na
-// nov cilj sprememba ENE besede v telesu, ki jo agent izbere sam, ne pa nov naslov, ki ga mora
-// človek znova prilepiti. Cena je ovojnica `{target, data}` in je zavestno plačana.
+// DVA ZAPISA, ENA POGODBA (glej `readBody` in registraciji na dnu):
+//
+//   POST /api/v1/ingest                {"target":"recipes","data":{…}}
+//   POST /api/v1/ingest/recipes        {…}
+//
+// Prvotno je obstajal samo prvi. Utemeljitev je bila, da je naslov edino, kar uporabnik prilepi
+// v pogovor, zato naj bo en sam in naj cilj izbere agent v telesu. Za `curl` in n8n to drži in
+// ostaja.
+//
+// Za ChatGPT je bila napačna, in ne zaradi oblike telesa: navadni pogovorni ChatGPT zahteve POST
+// SPLOH NE ZNA poslati — bere strani, ne pošilja teles in lastnih glav. Edina pot, po kateri jo
+// pošlje, je Custom GPT z Action, tam pa model izbira med ORODJI in ne med vrednostmi polja. Ena
+// pot z razvejano shemo (`oneOf` po `target`) je oblika, pri kateri redno pošlje polja enega
+// cilja pod imenom drugega. Zato druga oblika — in ker gre za isto kodo, to ni druga pogodba.
 //
 // To NI stranska vrata mimo obsegov. Vsak cilj nosi svoj obseg (`IngestTarget.scope`) in ta se
 // preveri ob vsaki zahtevi — uvoz v recepte zahteva natanko `recipes:write`, isto kot
@@ -32,12 +43,34 @@ export const ingestRouter = Router();
  * tiho izpustili cele zapise, o katerih agent misli, da so shranjeni. */
 const MAX_BATCH = 25;
 
+/** Vsebina: en zapis ali sveženj. Ista oblika v obeh zapisih pogodbe. */
+const ingestDataSchema = z.union([
+  z.record(z.unknown()),
+  z.array(z.record(z.unknown())).max(MAX_BATCH),
+]);
+
 const ingestBodySchema = z.object({
   /** Neobvezen, kadar ima ključ natanko en cilj — takrat ni česa izbirati in zahteva po polju
    * bi bila samo priložnost za napako agenta. */
   target: z.string().trim().min(1).max(64).optional(),
-  data: z.union([z.record(z.unknown()), z.array(z.record(z.unknown())).max(MAX_BATCH)]),
+  data: ingestDataSchema,
 });
+
+/**
+ * Telo, v obliki, ki jo razume ostanek obdelave — ne glede na to, kateri zapis pogodbe je bil
+ * uporabljen.
+ *
+ * `/ingest` nosi OVOJNICO `{target, data}`, ker cilja iz naslova ni od kod vzeti.
+ * `/ingest/recipes` je cilj že v naslovu, zato je telo kar SAM ZAPIS — ovojnica bi tam bila
+ * odvečna raven, ki bi jo Custom GPT Action moral izumiti iz sheme in bi se pri njej motil. To
+ * ni druga pogodba: obe obliki tu postaneta ista vrednost in gresta skozi isto kodo.
+ */
+function readBody(req: Request): { target: string | null; data: z.infer<typeof ingestDataSchema> } {
+  const fromPath = typeof req.params.target === 'string' ? req.params.target : null;
+  if (fromPath) return { target: fromPath, data: ingestDataSchema.parse(req.body) };
+  const parsed = ingestBodySchema.parse(req.body);
+  return { target: parsed.target ?? null, data: parsed.data };
+}
 
 /**
  * Cilji, ki jih ta klicatelj sme uporabiti.
@@ -113,11 +146,34 @@ ingestRouter.get('/ingest/targets', (req, res, next) => {
   }
 });
 
-ingestRouter.post('/ingest', async (req, res, next) => {
+/**
+ * Shema za Custom GPT Action.
+ *
+ * Obstaja, ker navadni pogovorni ChatGPT POST zahteve NE ZNA poslati — bere strani, ne pošilja
+ * teles in lastnih glav. Edina pot, po kateri jo pošlje, je Action s to shemo. Podrobneje v
+ * `openapi.ts`.
+ *
+ * Za avtentikacijo, ne javno: shema se KOPIRA iz Nastavitev in prilepi v graditelj GPT-ja, ne
+ * uvozi po naslovu. Javna shema bi vsakomur razkrila, kateri moduli so v tej namestitvi in kakšna
+ * polja imajo — brez ene same koristi za lastnika.
+ */
+ingestRouter.get('/ingest/openapi.json', (req, res, next) => {
+  try {
+    if (!req.auth) throw unauthorized('Zahtevana je avtentikacija.');
+    const permitted = allowedTargets(req);
+    if (permitted.length === 0) throw forbidden('Ni cilja, za katerega bi bilo mogoče sestaviti shemo.');
+    const { PUBLIC_BASE_URL } = loadEnv();
+    res.json(buildIngestOpenApi({ baseUrl: PUBLIC_BASE_URL, targets: permitted }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+async function handleIngest(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     if (!req.auth) throw unauthorized('Zahtevana je avtentikacija.');
 
-    const body = ingestBodySchema.parse(req.body);
+    const body = readBody(req);
     const permitted = allowedTargets(req);
 
     if (permitted.length === 0) {
@@ -127,6 +183,8 @@ ingestRouter.post('/ingest', async (req, res, next) => {
     // Izbira cilja. Izpuščen `target` je dovoljen SAMO pri enem samem dovoljenem cilju — pri več
     // ciljih bi privzetek pomenil, da zapis tiho pristane nekje, kjer ga agent ni nameraval
     // shraniti, in tega ne popravi noben odgovor 201.
+    // Cilj pove `readBody`: iz naslova, kadar je pot na cilj, sicer iz polja `target`. Kadar ga
+    // ni ne tam ne tam, je dovoljen samo, če je dovoljeni cilj EN SAM.
     const requested = body.target ?? (permitted.length === 1 ? permitted[0]!.key : null);
     if (!requested) {
       throw badRequest(
@@ -211,4 +269,18 @@ ingestRouter.post('/ingest', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}
+
+// DVA ZAPISA ISTE POGODBE, ena sama izvedba.
+//
+// `/ingest` z `target` v telesu je za `curl`, n8n in vse, kar naslov sestavi enkrat.
+// `/ingest/:target` je za Custom GPT Action, kjer model izbira med ORODJI in ne med vrednostmi
+// polja — tam je ena pot na cilj edina oblika, pri kateri ne zgreši (glej `openapi.ts`).
+//
+// VRSTNI RED JE POMEMBEN: `/ingest/targets` in `/ingest/openapi.json` sta registrirana ZGORAJ,
+// sicer bi ju `/ingest/:target` ujel kot imeni ciljev. Ista opomba kot v modules/notes/router.ts
+// in modules/recipes/router.ts, kjer je bila to prava napaka v usmerjanju. (Poti ključev
+// `/ingest/keys*` so v `keys.router.ts`, ki je v `main.ts` vpet PRED tem usmerjevalnikom — iz
+// istega razloga.)
+ingestRouter.post('/ingest', handleIngest);
+ingestRouter.post('/ingest/:target', handleIngest);

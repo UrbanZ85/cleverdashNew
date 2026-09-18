@@ -36,24 +36,32 @@ const TYPE_LABEL: Record<IngestField['type'], string> = {
 };
 
 /**
- * Datum po slovensko, v domačem časovnem pasu.
+ * Datum IN URA poteka, po slovensko, v domačem časovnem pasu.
  *
  * NE prek `toISOString()` — člen V.4: koledarski dan se v tej kodni bazi nikoli ne računa prek
  * UTC, in "velja do 1. 1." namesto "do 31. 12." je natanko tista napaka za eno uro, ki jo ta člen
  * prepoveduje.
  *
- * ŠTEVILČNO in ne `dateStyle: 'long'`: ta da ime meseca v imenovalniku ("17. december 2026"),
- * stavek okoli njega pa terja rodilnik ("velja do 17. decembra 2026"). `Intl` sklona ne pozna,
- * lastna preglednica sklanjatev pa bi bila dvanajst vrstic za en sam stavek. Številčni zapis je
- * slovnično nevtralen in enako nedvoumen.
+ * URA JE OBVEZNA IN NE OKRASEK. Privzeta veljavnost ključa je nekaj MINUT (glej
+ * `keys.router.ts`), pri kateri sam datum ne pove ničesar — "velja do 18. 10." bi pri ključu, ki
+ * poteče čez deset minut, bralca dejavno zavedel.
+ *
+ * Mesec je ŠTEVILČNO in ne `dateStyle: 'long'`: ta da ime meseca v imenovalniku ("17. oktober"),
+ * stavek okoli njega pa terja rodilnik ("velja do 17. oktobra"). `Intl` sklona ne pozna, lastna
+ * preglednica sklanjatev pa bi bila dvanajst vrstic za en sam stavek.
  */
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat('sl-SI', {
+function formatExpiry(date: Date): string {
+  const formatted = new Intl.DateTimeFormat('sl-SI', {
     timeZone: 'Europe/Ljubljana',
     day: 'numeric',
     month: 'numeric',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(date);
+  // `sl-SI` loči datum in uro z vejico ("18. 10. 2026, 14:35"); "ob" se bere bolj naravno v
+  // stavku "Ključ velja do …".
+  return formatted.replace(', ', ' ob ');
 }
 
 /** Vrstica ene lastnosti v opisu polj. Poravnava je v presledkih in ne v tabeli, ker se navodilo
@@ -134,12 +142,24 @@ export function buildIngestInstructions(input: InstructionsInput): string {
   lines.push('');
 
   lines.push('PRAVILA');
-  lines.push('  1. Ne izmišljuj si podatkov. Polje, ki ga na strani ni, preprosto izpusti —');
+  lines.push('  1. VSE ZAPIŠI V SLOVENŠČINI. Če je stran v tujem jeziku, prevedi — naslov jedi,');
+  lines.push('     opis, sestavine in korake. Količine in enote pretvori v obliko "400 g",');
+  lines.push('     "2 dl", "1 žlica". Lastnih imen krajev in blagovnih znamk ne prevajaj.');
+  lines.push('  2. Ne izmišljuj si podatkov. Polje, ki ga na strani ni, preprosto izpusti —');
   lines.push('     nikoli ne pošlji ugibanja, praznega niza ali besede "neznano".');
-  lines.push('  2. Besedilo prepiši v jeziku strani. Ne prevajaj in ne preoblikuj po svoje.');
   lines.push('  3. Pošlji NAVADEN JSON, brez ovojnice ```json in brez komentarjev.');
   lines.push('  4. Pošlji natanko eno zahtevo. Če odgovor ni napaka omrežja, NE poskušaj znova.');
   lines.push('  5. Ključa iz tega navodila ne izpiši, ne ponovi in ne pokaži nikomur.');
+  // Pravilo 6 je posledica resnične napake: navadni pogovorni ChatGPT POST zahteve NE ZNA
+  // poslati (brskanje bere strani, ne pošilja teles in lastnih glav). Sestavil je pravilen JSON,
+  // zahteve ni mogel poslati in je to sporočil kot napako omrežja ("could not resolve host"),
+  // zaradi česar je bilo videti kot okvara strežnika. Strežnik je bil ves čas zdrav.
+  //
+  // Popravek je Custom GPT z Action (glej `openapi.ts`), to pravilo pa je varovalka za primer,
+  // ko navodilo vseeno pristane v navadnem pogovoru: takrat mora agent to POVEDATI in ne
+  // molčati ali trditi, da je shranjeno.
+  lines.push('  6. Če zahteve ne moreš poslati (nimaš orodja za POST s to glavo), mi to TAKOJ');
+  lines.push('     povej in izpiši sestavljeni JSON. Nikoli ne reci, da je shranjeno, če ni.');
   lines.push('');
 
   lines.push('ODGOVOR');
@@ -153,7 +173,8 @@ export function buildIngestInstructions(input: InstructionsInput): string {
   lines.push('VELJAVNOST KLJUČA');
   lines.push(
     input.expiresAt
-      ? `  Ključ velja do ${formatDate(input.expiresAt)}. Po tem bo odgovor 401 in mi to povej.`
+      ? `  Ključ velja do ${formatExpiry(input.expiresAt)}. Po tem bo odgovor 401 — takrat mi povej,
+  da potrebujem nov ključ, in ne poskušaj znova.`
       : '  Ključ nima roka veljavnosti.',
   );
 

@@ -22,11 +22,20 @@ import { findIngestTarget, listIngestTargets, type IngestTarget } from './regist
 // sumu zlorabe treba pregledati — trije kraji namesto enega, da bi se izognili enemu polju.
 export const ingestKeysRouter = Router();
 
-/** Privzeta veljavnost, kadar je uporabnik ne določi. Ključ, ki ga človek prilepi v tuj pogovorni
- * vmesnik, ne sme veljati večno po pomoti — mora pa veljati dovolj dolgo, da se uporabnik ne uči
- * postopka vsak teden znova. */
-const DEFAULT_EXPIRY_DAYS = 90;
-const MAX_EXPIRY_DAYS = 3650;
+/**
+ * Privzeta veljavnost, kadar je uporabnik ne določi: DESET MINUT.
+ *
+ * Prvotno je bilo 90 dni. Lastnik namestitve je to zavrnil in ima prav: ključ se prilepi v tuj
+ * pogovorni vmesnik, kjer obvisi v zgodovini pogovora, ki je ne nadzoruje nihče od naju — in
+ * ravno tako se je prvi ključ te namestitve znašel prilepljen v tretji sistem. Minute so pravo
+ * merilo za poverilnico, ki jo človek uporabi takoj, ko jo dobi.
+ *
+ * `MAX_EXPIRY_MINUTES` je vseeno leto: n8n in domače avtomatizacije ključa ne prilepijo nikamor in
+ * zanje kratek rok pomeni samo, da avtomatizacija tiše neha delovati. Meja je tu zato, da
+ * dolgoživ ključ ostane MOŽEN, privzetek pa kratek.
+ */
+const DEFAULT_EXPIRY_MINUTES = 10;
+const MAX_EXPIRY_MINUTES = 527_040;
 
 const createKeySchema = z.object({
   label: z.string().trim().min(1).max(80),
@@ -35,7 +44,7 @@ const createKeySchema = z.object({
   targets: z.array(z.string().trim().min(1).max(64)).min(1).max(20),
   /** `null` pomeni IZRECNO "brez roka". Izpuščeno polje pomeni "privzeto" — razlike ni mogoče
    * izraziti z eno vrednostjo, zato sta obe obliki dovoljeni in se obravnavata drugače. */
-  expiresInDays: z.number().int().min(1).max(MAX_EXPIRY_DAYS).nullish(),
+  expiresInMinutes: z.number().int().min(1).max(MAX_EXPIRY_MINUTES).nullish(),
 });
 
 function generateSecret(): { secret: string; keyHash: string; keyPrefix: string } {
@@ -149,9 +158,9 @@ ingestKeysRouter.post('/ingest/keys', async (req, res, next) => {
     const scopes = [...new Set(chosen.map((t) => t.scope))];
 
     const expiresAt =
-      body.expiresInDays === null
+      body.expiresInMinutes === null
         ? null
-        : new Date(Date.now() + (body.expiresInDays ?? DEFAULT_EXPIRY_DAYS) * 86_400_000);
+        : new Date(Date.now() + (body.expiresInMinutes ?? DEFAULT_EXPIRY_MINUTES) * 60_000);
 
     const { secret, keyHash, keyPrefix } = generateSecret();
     const created = await ApiKeyModel.create({

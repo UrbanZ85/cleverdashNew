@@ -37,13 +37,25 @@ interface CreatedKey extends AgentKeyView {
   curl: string;
 }
 
-/** Ponujene veljavnosti. `null` je IZRECNA izbira "brez roka" in ne odsotnost izbire — ključ,
- * ki ga človek prilepi v tuj pogovorni vmesnik, ne sme veljati večno po pomoti. */
-const EXPIRY_CHOICES: { days: number | null; label: string }[] = [
-  { days: 30, label: '30 dni' },
-  { days: 90, label: '90 dni' },
-  { days: 365, label: 'eno leto' },
-  { days: null, label: 'brez roka' },
+/**
+ * Ponujene veljavnosti, v MINUTAH.
+ *
+ * Kratke so namerno in privzetek je 10 minut: ključ se prilepi v tuj pogovorni vmesnik, kjer
+ * obvisi v zgodovini pogovora, ki je ne nadzoruje nihče. Za enkratno shranjevanje recepta je
+ * deset minut več kot dovolj.
+ *
+ * Daljše možnosti ostajajo za n8n in domače avtomatizacije, ki ključa ne prilepijo nikamor — in
+ * za Custom GPT Action, kjer je ključ shranjen v nastavitvah GPT-ja in bi ga bilo treba ob vsakem
+ * izteku vpisati znova. `null` je IZRECNA izbira "brez roka", ne odsotnost izbire.
+ */
+const EXPIRY_CHOICES: { minutes: number | null; label: string }[] = [
+  { minutes: 5, label: '5 minut' },
+  { minutes: 10, label: '10 minut' },
+  { minutes: 30, label: '30 minut' },
+  { minutes: 60, label: '1 ura' },
+  { minutes: 480, label: '8 ur' },
+  { minutes: 1440, label: '1 dan' },
+  { minutes: null, label: 'brez roka' },
 ];
 
 // Razdelek Nastavitev za agentske ključe (015). Gostuje ga `settings.page.ts` v sklopu "Agent",
@@ -105,11 +117,11 @@ const EXPIRY_CHOICES: { days: number | null; label: string }[] = [
       <ion-select
         label="Veljavnost"
         labelPlacement="stacked"
-        [(ngModel)]="newExpiryDays"
+        [(ngModel)]="newExpiryMinutes"
         interface="popover"
       >
         @for (choice of expiryChoices; track choice.label) {
-          <ion-select-option [value]="choice.days">{{ choice.label }}</ion-select-option>
+          <ion-select-option [value]="choice.minutes">{{ choice.label }}</ion-select-option>
         }
       </ion-select>
     </ion-item>
@@ -166,6 +178,29 @@ const EXPIRY_CHOICES: { days: number | null; label: string }[] = [
       </div>
     }
 
+    <!-- Ločeno od izdaje ključa: GPT se postavi ENKRAT, ključ pa se ob kratki veljavnosti
+         zamenja mnogokrat. Shema se med tem ne spremeni. -->
+    <ion-button fill="outline" expand="block" (click)="loadSchema()">
+      Shema za Custom GPT (Action)
+    </ion-button>
+
+    @if (schema(); as text) {
+      <div class="issued">
+        <h3>Shema za Custom GPT</h3>
+        <p class="cd-section-hint">
+          Navadni ChatGPT ne zna poslati zahteve POST — zna brati strani, ne pa pošiljati podatkov.
+          Da shranjevanje deluje iz ChatGPT, potrebuješ <strong>Custom GPT</strong>:
+          Configure &rarr; Create new action &rarr; prilepi spodnjo shemo, nato Authentication &rarr;
+          API Key &rarr; Custom header name <code>X-API-Key</code> in vpiši ključ.
+        </p>
+        <ion-button expand="block" (click)="copy(text)">
+          {{ copied() === 'schema' ? 'Kopirano ✓' : 'Kopiraj shemo' }}
+        </ion-button>
+        <pre class="instructions">{{ text }}</pre>
+        <ion-button fill="clear" expand="block" (click)="schema.set(null)">Zapri</ion-button>
+      </div>
+    }
+
     @if (viewedInstructions(); as text) {
       <div class="issued">
         <h3>Navodilo</h3>
@@ -216,11 +251,14 @@ export class AgentKeysSettingsComponent implements OnInit {
   readonly created = signal<CreatedKey | null>(null);
   readonly viewedInstructions = signal<string | null>(null);
   readonly error = signal<string | null>(null);
-  readonly copied = signal<'instructions' | 'secret' | 'viewed' | null>(null);
+  readonly copied = signal<'instructions' | 'secret' | 'viewed' | 'schema' | null>(null);
+  /** Shema za Custom GPT Action, prebrana na zahtevo. Ni del izdaje ključa: isti GPT se postavi
+   * enkrat, ključ pa se ob kratki veljavnosti zamenja mnogokrat. */
+  readonly schema = signal<string | null>(null);
   readonly selected = new Set<string>();
 
   newLabel = '';
-  newExpiryDays: number | null = 90;
+  newExpiryMinutes: number | null = 10;
 
   /**
    * Navadna METODA in ne `computed()`.
@@ -270,7 +308,12 @@ export class AgentKeysSettingsComponent implements OnInit {
     const date = new Date(key.expiresAt);
     // Datum se izriše v uporabnikovem časovnem pasu prek `Intl` in ne z ročnim rezanjem ISO
     // niza — člen V.4 (koledarski dan se nikoli ne računa prek UTC).
-    const formatted = new Intl.DateTimeFormat('sl-SI', { dateStyle: 'medium' }).format(date);
+    // Ura in ne samo datum: privzeta veljavnost je deset MINUT, pri kateri sam datum ne pove
+    // ničesar. Prek `Intl` in ne z rezanjem ISO niza — člen V.4.
+    const formatted = new Intl.DateTimeFormat('sl-SI', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(date);
     return date.getTime() < Date.now() ? `Potekel ${formatted}` : `Velja do ${formatted}`;
   }
 
@@ -292,7 +335,7 @@ export class AgentKeysSettingsComponent implements OnInit {
           {
             label: this.newLabel.trim(),
             targets: [...this.selected],
-            expiresInDays: this.newExpiryDays,
+            expiresInMinutes: this.newExpiryMinutes,
           },
           { withCredentials: true },
         ),
@@ -307,6 +350,21 @@ export class AgentKeysSettingsComponent implements OnInit {
       // in brez tehničnih podrobnosti (problem.ts).
       const detail = (err as { error?: { detail?: string } }).error?.detail;
       this.error.set(detail ?? 'Ključa ni bilo mogoče izdati. Poskusi znova.');
+    }
+  }
+
+  async loadSchema(): Promise<void> {
+    if (this.schema()) {
+      this.schema.set(null);
+      return;
+    }
+    try {
+      const doc = await firstValueFrom(
+        this.http.get<unknown>(apiUrl('/ingest/openapi.json'), { withCredentials: true }),
+      );
+      this.schema.set(JSON.stringify(doc, null, 2));
+    } catch {
+      this.error.set('Sheme ni bilo mogoče prebrati.');
     }
   }
 
@@ -341,11 +399,14 @@ export class AgentKeysSettingsComponent implements OnInit {
   }
 
   async copy(text: string): Promise<void> {
-    const which = this.created()
-      ? text === this.created()!.secret
-        ? ('secret' as const)
-        : ('instructions' as const)
-      : ('viewed' as const);
+    const which =
+      text === this.schema()
+        ? ('schema' as const)
+        : this.created()
+          ? text === this.created()!.secret
+            ? ('secret' as const)
+            : ('instructions' as const)
+          : ('viewed' as const);
     try {
       await navigator.clipboard.writeText(text);
       this.copied.set(which);
