@@ -256,11 +256,30 @@ import {
         justify-content: flex-end;
         padding: 4px 8px;
       }
+      /* ENA VRSTICA, VEDNO. Prelamljanje (flex-wrap: wrap) je bil prvotni krivec: pet čipov se je ob daljših
+         imenih (Zajtrk in brunch, visoko beljakovinsko) še vedno prelomilo v dve ali tri
+         vrstice in potisnilo prvi recept pod rob zaslona. Omejitev števila čipov tega ne reši,
+         ker so čipi različno široki — reši ga šele prepoved preloma.
+         Kar ne gre na zaslon, se doseže s podrsom vstran; nobena možnost ni nedosegljiva. */
       .filters {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         gap: 4px;
         padding: 4px 8px 8px;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        /* Drsnik bi v eni vrstici čipov vzel več prostora kot pove — na dotik ga ni, z miško pa
+           je drsenje vodoravno z Shift ali s sledilno ploščico. */
+        scrollbar-width: none;
+      }
+      .filters::-webkit-scrollbar {
+        display: none;
+      }
+      /* Brez tega flex čipe STISNE, da bi jih spravil v širino — dolga imena bi se prelomila
+         znotraj čipa in vrstica bi spet zrasla v višino. */
+      .filters ion-chip {
+        flex: 0 0 auto;
+        white-space: nowrap;
       }
       /* Oznake so vizualno podrejene kategorijam: kategorija je razvrstitev, oznaka je opis. */
       .filters.tags-row {
