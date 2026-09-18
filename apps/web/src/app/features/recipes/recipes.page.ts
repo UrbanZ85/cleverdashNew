@@ -17,6 +17,7 @@ import {
 } from '@ionic/angular/standalone';
 import { PageHeaderComponent } from '../../shared/layout/page-header.component.js';
 import { RecipeCategoryManagerComponent } from './category-manager.component.js';
+import { chipWindow } from './chip-window.js';
 import { RecipesApi } from './recipes.api.js';
 import {
   formatDuration,
@@ -109,12 +110,17 @@ import {
              da je izbira ena sama. -->
         <div class="filters">
           <ion-chip [outline]="activeCategory() !== null" (click)="setCategory(null)">Vse</ion-chip>
-          @for (category of categories(); track category.id) {
+          @for (category of shownCategories(); track category.id) {
             <ion-chip
               [outline]="activeCategory() !== category.name"
               (click)="setCategory(category.name)"
             >
               {{ category.name }}
+            </ion-chip>
+          }
+          @if (hiddenCategories() > 0) {
+            <ion-chip outline class="more" (click)="categoriesExpanded.set(true)">
+              +{{ hiddenCategories() }}
             </ion-chip>
           }
           <ion-chip outline class="manage" (click)="categoriesOpen.set(true)">
@@ -126,8 +132,13 @@ import {
         @if (tags().length > 0) {
           <div class="filters tags-row">
             <ion-chip [outline]="activeTag() !== null" (click)="setTag(null)">Vse oznake</ion-chip>
-            @for (tag of tags(); track tag) {
+            @for (tag of shownTags(); track tag) {
               <ion-chip [outline]="activeTag() !== tag" (click)="setTag(tag)">{{ tag }}</ion-chip>
+            }
+            @if (hiddenTags() > 0) {
+              <ion-chip outline class="more" (click)="tagsExpanded.set(true)">
+                +{{ hiddenTags() }}
+              </ion-chip>
             }
           </div>
         }
@@ -256,6 +267,12 @@ import {
         padding-top: 0;
         font-size: 0.85em;
       }
+      /* Števec skritih čipov je namenoma poudarjen: če bi bil videti kot navaden čip, bi ga
+         uporabnik bral kot še eno oznako in ne kot "tu jih je še pet". */
+      .filters .more {
+        font-weight: 600;
+        --color: var(--ion-color-primary);
+      }
       .filters .manage {
         margin-left: auto;
       }
@@ -379,6 +396,63 @@ export class RecipesPage implements OnInit, OnDestroy {
   readonly activeCategory = signal<string | null>(null);
   readonly categories = signal<RecipeCategory[]>([]);
   readonly categoriesOpen = signal(false);
+
+  // ── Krčenje vrstic filtrov na telefonu ────────────────────────────────────────────────
+  //
+  // Vrstici kategorij in oznak sta se na ozkem zaslonu prelomili v štiri ali pet vrstic in
+  // potisnili prvi recept pod rob zaslona. Vidnih je zato prvih CHIP_LIMIT, ostali pa se skrivajo
+  // za števcem "+N", ki jih na tap razpre. Izbira, kaj se pokaže, je ČISTA funkcija
+  // (`chip-window.ts`) in je testirana brez brskalnika.
+  readonly categoriesExpanded = signal(false);
+  readonly tagsExpanded = signal(false);
+
+  /**
+   * Ali je zaslon ozek. Prek `matchMedia` in NE prek ugibanja iz širine okna ob nalaganju:
+   * uporabnik telefon zavrti, okno na namizju pa spreminja širino, in krčenje se mora temu
+   * sproti prilagoditi.
+   *
+   * Meja 640px je ista kot drugod v tej aplikaciji za "telefon".
+   */
+  private readonly narrow = signal(false);
+  private mediaQuery: MediaQueryList | null = null;
+  private readonly onMediaChange = (event: MediaQueryListEvent) => this.narrow.set(event.matches);
+
+  readonly shownCategories = computed(
+    () =>
+      chipWindow(this.categories(), {
+        keyOf: (c) => c.name,
+        active: this.activeCategory(),
+        expanded: this.categoriesExpanded(),
+        narrow: this.narrow(),
+      }).shown,
+  );
+  readonly hiddenCategories = computed(
+    () =>
+      chipWindow(this.categories(), {
+        keyOf: (c) => c.name,
+        active: this.activeCategory(),
+        expanded: this.categoriesExpanded(),
+        narrow: this.narrow(),
+      }).hidden,
+  );
+  readonly shownTags = computed(
+    () =>
+      chipWindow(this.tags(), {
+        keyOf: (t) => t,
+        active: this.activeTag(),
+        expanded: this.tagsExpanded(),
+        narrow: this.narrow(),
+      }).shown,
+  );
+  readonly hiddenTags = computed(
+    () =>
+      chipWindow(this.tags(), {
+        keyOf: (t) => t,
+        active: this.activeTag(),
+        expanded: this.tagsExpanded(),
+        narrow: this.narrow(),
+      }).hidden,
+  );
   readonly scope = signal<RecipeScope>('all');
   readonly sort = signal<RecipeSort>('recent');
 
@@ -427,6 +501,14 @@ export class RecipesPage implements OnInit, OnDestroy {
   private initialised = false;
 
   async ngOnInit(): Promise<void> {
+    // `matchMedia` ni na voljo v vsakem okolju (strežniški izris, testi brez DOM) — brez njega
+    // ostane `narrow` na `false` in vrstici se ne krčita, kar je varno privzeto stanje.
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      this.mediaQuery = window.matchMedia('(max-width: 640px)');
+      this.narrow.set(this.mediaQuery.matches);
+      this.mediaQuery.addEventListener('change', this.onMediaChange);
+    }
+
     // Besednjak in recepti se naložita vzporedno: čipi kategorij so nad seznamom in bi ob
     // zaporednem nalaganju poskočili šele po tem, ko je seznam že izrisan.
     await Promise.all([this.loadCategories(), this.reload()]);
@@ -463,6 +545,7 @@ export class RecipesPage implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.releaseCovers();
+    this.mediaQuery?.removeEventListener('change', this.onMediaChange);
   }
 
   async reload(): Promise<void> {
