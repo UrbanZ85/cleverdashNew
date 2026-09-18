@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import {
   IonBadge,
   IonButton,
@@ -40,6 +40,7 @@ import {
   selector: 'app-recipes-page',
   standalone: true,
   imports: [
+    RouterLink,
     FormsModule,
     PageHeaderComponent,
     RecipeCategoryManagerComponent,
@@ -58,6 +59,12 @@ import {
   ],
   template: `
     <app-page-header title="Recepti" [subtitle]="subtitle()">
+      <!-- Uvoz iz ChatGPT je ob gumbu za nov recept, ker je to ISTO dejanje z drugim virom:
+           človek, ki hrani recept iz klepeta, ga išče tu in ne v Nastavitvah. Stran /uvoz ni
+           zavihek (ne pripada nobenemu modulu), zato do nje vodi povezava od tod. -->
+      <ion-button slot="end" routerLink="/uvoz" aria-label="Uvoz iz ChatGPT">
+        <ion-icon slot="icon-only" name="sparkles-outline"></ion-icon>
+      </ion-button>
       <ion-button slot="end" (click)="openNew()" aria-label="Nov recept">
         <ion-icon slot="icon-only" name="add-outline"></ion-icon>
       </ion-button>
@@ -142,6 +149,10 @@ import {
               <ion-button fill="outline" size="small" (click)="openNew()">
                 <ion-icon slot="start" name="add-outline" aria-hidden="true"></ion-icon>
                 Nov recept
+              </ion-button>
+              <ion-button fill="clear" size="small" routerLink="/uvoz">
+                <ion-icon slot="start" name="sparkles-outline" aria-hidden="true"></ion-icon>
+                Uvozi iz ChatGPT
               </ion-button>
             }
           </div>
@@ -264,6 +275,13 @@ import {
         gap: 12px;
         padding: 8px;
       }
+      /* Površina kartice je --cd-surface-raised. Prej je bila Ionicova stopenjska spremenljivka
+         z nadomestkom #f7f7f7 — te Ionic 8 ne definira nikjer, zato se je vedno uporabil svetel
+         nadomestek, tudi v temni temi, kjer je besedilo belo. Naslov recepta je bil bel na skoraj
+         belem in ga ni bilo mogoče prebrati. Lastne spremenljivke te aplikacije so definirane za
+         OBE temi (theme/variables.scss) in nadomestka sploh ne potrebujejo; da se stara raba ne
+         vrne, jo lovi tests/unit/theme-tokens.spec.ts.
+         (Opuscajev v tem komentarju ne sme biti: styles je predloga v opuscajih.) */
       .card {
         display: flex;
         flex-direction: column;
@@ -272,8 +290,8 @@ import {
         border: none;
         border-radius: 12px;
         overflow: hidden;
-        background: var(--ion-color-step-50, #f7f7f7);
-        color: inherit;
+        background: var(--cd-surface-raised);
+        color: var(--ion-text-color);
         cursor: pointer;
       }
       .thumb {
@@ -282,7 +300,7 @@ import {
         display: flex;
         align-items: center;
         justify-content: center;
-        background: var(--ion-color-step-100, #eee);
+        background: var(--cd-surface-sunken);
       }
       .thumb img {
         width: 100%;
@@ -301,10 +319,13 @@ import {
       .body {
         padding: 8px 10px 12px;
       }
+      /* Izrecna barva in ne podedovana: kartica je SVOJA površina in njeno besedilo ne sme biti
+         odvisno od tega, kar je pod njo. */
       .body h2 {
         margin: 0 0 4px;
         font-size: 0.95rem;
         line-height: 1.25;
+        color: var(--ion-text-color);
       }
       .meta,
       .cooked,
@@ -402,10 +423,29 @@ export class RecipesPage implements OnInit, OnDestroy {
     return count === 1 ? '1 recept' : `${count} receptov`;
   });
 
+  /** Ali je bila stran že enkrat naložena — glej ionViewWillEnter. */
+  private initialised = false;
+
   async ngOnInit(): Promise<void> {
     // Besednjak in recepti se naložita vzporedno: čipi kategorij so nad seznamom in bi ob
     // zaporednem nalaganju poskočili šele po tem, ko je seznam že izrisan.
     await Promise.all([this.loadCategories(), this.reload()]);
+    this.initialised = true;
+  }
+
+  /**
+   * Ionic strani PREDPOMNI: ob vrnitvi na že obiskano stran se komponenta ne ustvari znova in
+   * `ngOnInit` se ne izvede. Posledica je bila, da je izbrisan recept ostal na seznamu —
+   * urejevalnik ga izbriše in preusmeri na `/recipes`, ta stran pa je pokazala star seznam,
+   * dokler uporabnik ni osvežil cele strani (F5).
+   *
+   * Isti hrošč in isti popravek kot v `features/todos/todos.page.ts`; velja za VSAK povratek,
+   * ne le za brisanje — tudi nov recept in urejanje sta po tem takoj vidna.
+   *
+   * Prvi vstop pusti pri miru: takrat je naložil že `ngOnInit` in dvojno branje ni potrebno.
+   */
+  async ionViewWillEnter(): Promise<void> {
+    if (this.initialised) await Promise.all([this.loadCategories(), this.reload()]);
   }
 
   /** Besednjak kategorij za vrstico čipov.

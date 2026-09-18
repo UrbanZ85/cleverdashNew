@@ -123,7 +123,7 @@ import {
         margin-bottom: 16px;
       }
       .card {
-        border: 1px solid var(--ion-color-step-150, #e0e0e0);
+        border: 1px solid var(--cd-divider);
         border-radius: 10px;
         padding: 12px 14px;
       }
@@ -136,7 +136,7 @@ import {
       .integrity ul { margin: 6px 0 4px 20px; }
       .section-title { margin: 20px 0 8px; }
       .cd-table { width: 100%; border-collapse: collapse; }
-      .cd-table th, .cd-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--ion-color-step-100, #eee); vertical-align: top; }
+      .cd-table th, .cd-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--cd-divider); vertical-align: top; }
       .num { text-align: right; white-space: nowrap; }
       .bar { width: 30%; }
       .fill { display: block; height: 8px; border-radius: 4px; background: var(--ion-color-primary); min-width: 1px; }

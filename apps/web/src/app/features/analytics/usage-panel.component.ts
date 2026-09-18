@@ -103,12 +103,12 @@ import { coverageNotice, formatMoment, percentOf, type UsageSnapshot } from './a
         border-radius: 10px; padding: 10px 14px; margin-bottom: 16px;
       }
       .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-      .card { border: 1px solid var(--ion-color-step-150, #e0e0e0); border-radius: 10px; padding: 12px 14px; }
+      .card { border: 1px solid var(--cd-divider); border-radius: 10px; padding: 12px 14px; }
       .card h3 { margin: 0 0 4px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; opacity: 0.7; }
       .big { margin: 0 0 4px; font-size: 1.5rem; font-weight: 600; }
       .section-title { margin: 20px 0 8px; }
       .cd-table { width: 100%; border-collapse: collapse; }
-      .cd-table th, .cd-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--ion-color-step-100, #eee); vertical-align: top; }
+      .cd-table th, .cd-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--cd-divider); vertical-align: top; }
       .num { text-align: right; white-space: nowrap; }
       .bar { width: 30%; }
       .fill { display: block; height: 8px; border-radius: 4px; background: var(--ion-color-primary); min-width: 1px; }

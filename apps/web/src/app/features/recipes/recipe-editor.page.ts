@@ -532,7 +532,7 @@ import {
         width: 160px;
         border-radius: 10px;
         overflow: hidden;
-        background: var(--ion-color-step-100, #eee);
+        background: var(--cd-surface-sunken);
       }
       .shot.cover {
         outline: 2px solid var(--ion-color-primary);
@@ -681,7 +681,7 @@ import {
         width: 100%;
         margin-top: 12px;
         padding: 10px 12px;
-        border: 1px solid var(--ion-color-step-150, #ddd);
+        border: 1px solid var(--cd-divider);
         border-radius: 10px;
         background: transparent;
         color: inherit;
@@ -715,7 +715,7 @@ import {
         gap: 8px;
         padding: 4px 8px;
         background: var(--ion-background-color, #fff);
-        border-bottom: 1px solid var(--ion-color-step-150, #ddd);
+        border-bottom: 1px solid var(--cd-divider);
       }
       .cook-title {
         font-weight: 600;
