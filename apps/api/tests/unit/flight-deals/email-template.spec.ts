@@ -83,7 +83,7 @@ describe('renderDigest', () => {
 
   it('zadeva šteje po vrstah; pri deljenem iskanju je naveden lastnik', () => {
     const items = [item({ changeType: 'NEW', previousPrice: null }), item({ changeType: 'NEW', previousPrice: null, offerId: 'b' }), item(), item({ ruleOwnerName: 'Ana Novak', changeType: 'PRICE_UP' })];
-    expect(digestSubject(items, 'CleverDash')).toBe('CleverDash · Leti: 2 novi ponudbi, 1 pocenitev, 1 podražitev');
+    expect(digestSubject(items, 'CleverDash')).toBe('CleverDash - [Leti] 2 novi ponudbi, 1 pocenitev, 1 podražitev');
     expect(renderDigest(items, ctx).html).toContain('deli Ana Novak');
   });
 

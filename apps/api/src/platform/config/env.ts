@@ -146,6 +146,8 @@ const envSchema = z.object({
   // (privzeto vedenje na 587), `true` pomeni TLS od prvega bajta (465). Pošiljanje samo uporablja
   // obstoječi sklop zgoraj — dvojne konfiguracije ni (specs/015-flight-deals/research.md §9).
   SMTP_SECURE: boolFromString.default('false'),
+  // Naslov za odgovore, kadar pošiljatelj (`SMTP_FROM`) ne sprejema pošte (no-reply). Oblika `Ime <naslov>`.
+  SMTP_REPLY_TO: z.string().optional().or(z.literal('')),
 
   // Brskalnik (002, research.md §2/§14) — .env.example jih je 001 predvidela, a shema jih
   // do zdaj ni validirala, kar je natanko past iz docs/env-reference.md §6 (SALT_ROUNDS → NaN).

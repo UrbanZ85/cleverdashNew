@@ -55,7 +55,7 @@ describe('en dopis na prejemnika na zagon (FR-033, FR-034)', () => {
     expect(mockSendMail).toHaveBeenCalledTimes(1);
     const first = mockSendMail.mock.calls[0]![0] as { to: string; subject: string; html: string };
     expect(first.to).toBe('ana@example.com');
-    expect(first.subject).toContain('2 novi ponudbi');
+    expect(first.subject).toBe('CleverDash - [Leti] 2 novi ponudbi');
     expect(first.html).toContain('NOVO');
     expect(first.html).not.toContain('<s ');
     expect(await FlightNotificationModel.countDocuments({ status: 'sent' })).toBe(1);

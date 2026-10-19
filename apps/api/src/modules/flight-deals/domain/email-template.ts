@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon';
+import { emailSubject } from '../../../platform/email/mailer.service.js';
 import type { Airport, ChangeType, Money } from './types.js';
 
 // Zbirni dopis (FR-035). Čista funkcija: iz postavk sestavi zadevo, HTML in golo besedilo.
@@ -104,7 +105,8 @@ function pluralize(n: number, one: string, two: string, few: string, many: strin
   return `${n} ${many}`;
 }
 
-export function digestSubject(items: readonly DigestItem[], appName: string): string {
+/** "2 novi ponudbi, 1 pocenitev" — besedilo brez predpone aplikacije. */
+export function digestSummary(items: readonly DigestItem[]): string {
   const news = items.filter((i) => i.changeType === 'NEW').length;
   const downs = items.filter((i) => i.changeType === 'PRICE_DOWN').length;
   const ups = items.filter((i) => i.changeType === 'PRICE_UP').length;
@@ -112,7 +114,12 @@ export function digestSubject(items: readonly DigestItem[], appName: string): st
   if (news > 0) parts.push(pluralize(news, 'nova ponudba', 'novi ponudbi', 'nove ponudbe', 'novih ponudb'));
   if (downs > 0) parts.push(pluralize(downs, 'pocenitev', 'pocenitvi', 'pocenitve', 'pocenitev'));
   if (ups > 0) parts.push(pluralize(ups, 'podražitev', 'podražitvi', 'podražitve', 'podražitev'));
-  return `${appName} · Leti: ${parts.join(', ') || 'spremembe ponudb'}`;
+  return parts.join(', ') || 'spremembe ponudb';
+}
+
+/** `CleverDash - [Leti] 2 novi ponudbi, 1 pocenitev` (skupna oblika zadeve, platform/email). */
+export function digestSubject(items: readonly DigestItem[], appName: string): string {
+  return emailSubject(appName, 'Leti', digestSummary(items));
 }
 
 function esc(s: string): string {
@@ -207,18 +214,19 @@ function renderItemText(item: DigestItem, ctx: DigestContext): string {
 
 export function renderDigest(items: readonly DigestItem[], ctx: DigestContext): RenderedDigest {
   const subject = digestSubject(items, ctx.appName);
+  const summary = digestSummary(items);
   const checked = formatLocalDateTime(ctx.checkedAt, 'Europe/Ljubljana');
   const html = `<!doctype html>
 <html lang="sl"><body style="margin:0;padding:0;background:#f1f3f6;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border-radius:12px;padding:20px 24px">
-  <tr><td style="font-size:20px;font-weight:700;padding-bottom:4px">Leti — ${esc(subject.replace(/^.*?: /, ''))}</td></tr>
+  <tr><td style="font-size:20px;font-weight:700;padding-bottom:4px">Leti — ${esc(summary)}</td></tr>
   <tr><td style="font-size:13px;color:${EMAIL_MUTED};padding-bottom:8px">Preverjeno ${esc(checked)} (Europe/Ljubljana). Cene so take, kot jih je ob preverjanju pokazal vir; ob rezervaciji preveri znova.</td></tr>
   ${items.map((i) => renderItemHtml(i, ctx)).join('\n')}
   <tr><td style="font-size:12px;color:${EMAIL_MUTED};padding-top:14px">Ta dopis dobivaš, ker si lastnik ali prejemnik iskanja v ${esc(ctx.appName)}. Prejemnike ureja lastnik iskanja v aplikaciji: <a href="${esc(ctx.baseUrl)}/flight-deals" style="color:#1f6feb">${esc(ctx.baseUrl)}/flight-deals</a></td></tr>
 </table></td></tr></table></body></html>`;
   const text = [
-    `Leti — ${subject}`,
+    `${subject}`,
     `Preverjeno ${checked} (Europe/Ljubljana).`,
     '',
     ...items.map((i) => renderItemText(i, ctx)),

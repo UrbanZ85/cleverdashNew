@@ -339,7 +339,8 @@ v aplikaciji (zbirka `FlightSchedulerSettings`), ker mora sprememba veljati brez
 | `FLIGHT_MAX_QUERIES_PER_RULE` | `60` | Poizvedbe na vir na eno iskanje; preseženo je vidno kot `truncated` |
 | `FLIGHT_MAX_RECIPIENTS` | `10` | Prejemniki obvestil na iskanje |
 | `FLIGHT_MAX_FLEX_DAYS` | `60` | Zgornja meja fleksibilnosti po meri |
-| `SMTP_SECURE` | `false` | Edina NOVA poštna spremenljivka: `true` = TLS od prvega bajta (465), `false` = STARTTLS na 587 |
+| `SMTP_SECURE` | `false` | `true` = TLS od prvega bajta (465), `false` = STARTTLS na 587 |
+| `SMTP_REPLY_TO` | *(prazno)* | Naslov za odgovore (`Ime <naslov>`), kadar je `SMTP_FROM` no-reply |
 
 **Zakaj je Ryanair privzeto izklopljen.** Ryanair javnega vmesnika nima; neuradni iskalnik cen
 deluje brez prijave, a `robots.txt` prepoveduje `/api`, pogoji uporabe pa dovoljujejo samo zasebno
@@ -511,6 +512,7 @@ FLIGHT_MAX_QUERIES_PER_RULE=60
 FLIGHT_MAX_RECIPIENTS=10
 FLIGHT_MAX_FLEX_DAYS=60
 SMTP_SECURE=false
+SMTP_REPLY_TO=
 ```
 
 ## 6. Sintaksa — past iz starega `.env`

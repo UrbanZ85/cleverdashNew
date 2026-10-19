@@ -9,7 +9,7 @@ const { mockSendMail, mockCreateTransport } = vi.hoisted(() => {
 });
 vi.mock('nodemailer', () => ({ createTransport: mockCreateTransport, default: { createTransport: mockCreateTransport } }));
 
-const { isEmailConfigured, resetMailerForTests, scrub, sendEmail } = await import('../../../src/platform/email/mailer.service.js');
+const { emailSubject, isEmailConfigured, resetMailerForTests, scrub, sendEmail } = await import('../../../src/platform/email/mailer.service.js');
 const { loadEnv, resetEnvCacheForTests } = await import('../../../src/platform/config/env.js');
 
 const BASE = {
@@ -67,6 +67,18 @@ describe('mailer.service', () => {
     const res = await sendEmail(e, message);
     expect(res).toMatchObject({ ok: false, permanent: true, code: 'EAUTH' });
     expect((res as { message: string }).message).not.toContain('ana@example.com');
+  });
+
+  it('replyTo se pošlje samo, kadar je SMTP_REPLY_TO nastavljen; zadeva ima obliko App - [Modul] besedilo', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'm', accepted: ['x'], rejected: [] });
+    const withReply = env({ SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'no-reply@example.com', SMTP_REPLY_TO: 'Planego <info@example.com>' });
+    await sendEmail(withReply, message);
+    expect(mockSendMail).toHaveBeenLastCalledWith(expect.objectContaining({ replyTo: 'Planego <info@example.com>' }));
+    resetMailerForTests();
+    const without = env({ SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'no-reply@example.com' });
+    await sendEmail(without, message);
+    expect(mockSendMail.mock.calls.at(-1)![0]).not.toHaveProperty('replyTo');
+    expect(emailSubject('CleverDash', 'Leti', '2 novi ponudbi')).toBe('CleverDash - [Leti] 2 novi ponudbi');
   });
 
   it('scrub zamenja e-naslove', () => {

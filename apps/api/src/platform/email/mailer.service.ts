@@ -16,6 +16,14 @@ import type { Env } from '../config/env.js';
 // (modules/flight-deals/services/notification-sender.service.ts), ker je pravilo "en dopis na
 // prejemnika na zagon" domensko in tu ni vidno.
 
+/**
+ * Enotna zadeva vseh dopisov aplikacije: `CleverDash - [Modul] besedilo`. Oglati oklepaj nosi ime modula
+ * ("Leti", "Beleženje časa" …), da je v poštnem predalu razvidno, od kod dopis, in da se da po njem filtrirati.
+ */
+export function emailSubject(appName: string, moduleLabel: string, text: string): string {
+  return `${appName} - [${moduleLabel}] ${text}`;
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;
@@ -70,6 +78,7 @@ export async function sendEmail(env: Env, message: EmailMessage): Promise<SendEm
   try {
     const info = await transportFor(env).sendMail({
       from: env.SMTP_FROM,
+      ...(env.SMTP_REPLY_TO ? { replyTo: env.SMTP_REPLY_TO } : {}),
       to: message.to,
       subject: message.subject,
       text: message.text,
