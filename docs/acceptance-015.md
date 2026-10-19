@@ -147,3 +147,35 @@ cena (z zneskom na osebo). Čiste funkcije so v `flight-deals.model.ts` (razdele
 pokrite s `tests/unit/flight-deals-offer-table.spec.ts`; kartica ponudbe (podrobnosti, deljene)
 uporablja isto `offerStatus` in zato zdaj pozna tudi značko "Pretečeno". Preverjeno: vitest, tsc,
 eslint, `ng build --configuration production`; zaslon v brskalniku v tej seji ni bil pogledan.
+
+## Dopolnitev 19. 10. 2026 (popoldne) — vrstni red, analiza preverjanja, prevozniki
+
+Lastnikove zahteve po prvem produkcijskem dnevu:
+
+- **Tabela ponudb je privzeto po datumu odhoda** (`DEFAULT_OFFER_SORT`), cena je drugi ključ; klik na
+  stolpec še vedno preklaplja.
+- **Analiza zadnjega preverjanja** na iskanju: `lastCheck.analysis = { returned, matched, rejected[] }`
+  (model, `reconcile.service.ts`, pogodba `SearchCheckState.analysis`). Vsaka ponudba, ki jo je vir
+  vrnil za poizvedbe iskanja, se šteje enkrat; zavrnjene po PRVEM neizpolnjenem pogoju z razlago iz
+  `describeMatchFail`. Prikaz v Moja iskanja in pod čipi na nadzorni plošči (`checkAnalysisText`):
+  "viri vrnili 1.240 ponudb · 10 ujemanj · zavrnjeno: cena na osebo nad mejo 900, …". Starejši zapisi
+  imajo `analysis: null` in vrstice ne pokažejo.
+- **Prevozniki z imeni**: nova tabela `domain/airlines.ts` (IATA → ime, ~120 evropskih in bližnjih
+  prevoznikov; neznana koda ostane koda). Travelpayouts polni `airlineName`; odgovor ponudbe dobi
+  `airlines: [{ code, name }]` iz glavne kode in številk letov obeh smeri, da se pri mešanih
+  povratnih vozovnicah pokažeta oba ("Ryanair + Wizz Air"). Tabela, kartica, podrobnosti in dopis
+  uporabljajo isti seznam. Omejitev vira: Travelpayouts da eno kodo in eno številko leta (odhod), zato
+  je povratni prevoznik znan samo, kadar ga vir navede.
+
+Preverjeno: API modul 25 datotek / 211 testov, web 3 datoteke / 42 testov, `eslint` čist, tsc modula
+čist, Redocly 0 napak, `ng build --configuration production` uspešen.
+
+## Dopolnitev 19. 10. 2026 — tabela tudi za Deljene ponudbe, zapomnjen pogled
+
+Tabela s filtri je izločena v skupno komponento `offer-table.component.ts`; uporabljata jo glavna stran in
+Deljene ponudbe (prej kartice v skupinah po iskanju; zdaj isti stolpci, lastnik je v stolpcu Iskanje).
+Na glavni strani je dodan obseg Vse / Moje / Deljene z mano (segment; pokaže se samo, kadar so lastne in
+deljene ponudbe hkrati). Pogled — obseg, izbrano iskanje, vrsta, samo direktni, pretečene, razvrščanje —
+se ob vsakem pritisku shrani v `localStorage` po uporabniku in strani (`offer-view.store.ts`) in je ob
+naslednjem obisku privzet; besedilo iskalnika se ne shranjuje. Branje je obrambno po poljih
+(`parseOfferView`, test `flight-deals-offer-view.spec.ts`). Preverjeno: vitest, tsc, eslint, ng build.

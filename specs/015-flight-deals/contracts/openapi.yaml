@@ -829,6 +829,23 @@ components:
               message: { type: string, description: "Slovensko, za uporabnika" }
               queries: { type: integer }
               offers: { type: integer }
+        analysis:
+          type: [object, 'null']
+          description: "Analiza zadnjega preverjanja: koliko ponudb so viri za to iskanje vrnili, koliko jih ustreza in zakaj so bile druge zavrnjene. `null` pri preverjanjih izpred uvedbe (19. 10. 2026)."
+          required: [returned, matched, rejected]
+          properties:
+            returned: { type: integer, description: "Različnih ponudb, ki so jih viri vrnili za poizvedbe tega iskanja" }
+            matched: { type: integer, description: "Ponudb, ki ustrezajo vsem pogojem iskanja" }
+            rejected:
+              type: array
+              description: "Zavrnjene po PRVEM razlogu, ki ni izpolnjen; padajoče po številu"
+              items:
+                type: object
+                required: [reason, label, count]
+                properties:
+                  reason: { type: string, description: "Koda (npr. `pricePerPerson`, `outboundWeekday`, `minStay`)" }
+                  label: { type: string, description: "Slovensko, za prikaz" }
+                  count: { type: integer }
 
     SearchPreview:
       type: object
@@ -922,15 +939,24 @@ components:
     Offer:
       type: object
       required:
-        [id, providerId, providerLabel, providerOfficial, airline, airlineName, origin, destination, outbound, inbound, nights,
+        [id, providerId, providerLabel, providerOfficial, airline, airlineName, airlines, origin, destination, outbound, inbound, nights,
          price, pricePerPerson, priceIncludes, previousPrice, change, passengers, bookingUrl, dataAt, lastCheckedAt, availability, matches]
       properties:
         id: { type: string }
         providerId: { type: string }
         providerLabel: { type: string }
         providerOfficial: { type: boolean, description: '`false` = neuradni vir; vmesnik to označi (FR-020)' }
-        airline: { type: string }
+        airline: { type: string, description: "Glavni prevoznik (IATA koda), kot ga navede vir" }
         airlineName: { type: [string, 'null'] }
+        airlines:
+          type: array
+          description: "Vsi prevozniki ponudbe brez dvojnikov: glavni, nato tisti iz številk letov obeh smeri. Ime je `null`, kadar koda ni v tabeli."
+          items:
+            type: object
+            required: [code, name]
+            properties:
+              code: { type: string }
+              name: { type: [string, 'null'] }
         origin: { $ref: '#/components/schemas/Airport' }
         destination: { $ref: '#/components/schemas/Airport' }
         outbound: { $ref: '#/components/schemas/Segment' }

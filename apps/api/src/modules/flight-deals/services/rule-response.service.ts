@@ -4,7 +4,7 @@ import { readUserSummaries, type UserSummary } from '../../../platform/users/dir
 import { FlightSearchMatchModel } from '../models/flight-search-match.model.js';
 import { buildPreview, type SearchPreview } from '../domain/date-window.js';
 import { findAirport } from '../domain/airports.js';
-import { ruleToInput, type RuleLean } from './rule-access.service.js';
+import { ruleToInput, type RuleCheckAnalysisLean, type RuleCheckOutcomeLean, type RuleLean } from './rule-access.service.js';
 
 // Odgovor `FlightSearch` iz pogodbe. Imena prejemnikov se razrešijo ob branju v ENI poizvedbi za
 // vsa iskanja (brez N+1), e-pošta pri prejemnikih je zamaskirana (`emailHint`), kot v imeniku.
@@ -42,7 +42,9 @@ export interface SearchResponse {
   lastCheck: {
     runId: string;
     at: string;
-    outcomes: RuleLean['lastCheck'] extends infer T ? (T extends { outcomes: infer O } ? O : never) : never;
+    outcomes: RuleCheckOutcomeLean[];
+    /** `null` pri preverjanjih izpred uvedbe analize. */
+    analysis: RuleCheckAnalysisLean | null;
   } | null;
   lastSuccessfulCheckAt: string | null;
   offerCount: number;
@@ -116,7 +118,12 @@ export function toSearchResponse(
       .filter((r): r is NonNullable<typeof r> => r !== null),
     preview,
     lastCheck: rule.lastCheck
-      ? { runId: String(rule.lastCheck.runId), at: rule.lastCheck.at.toISOString(), outcomes: rule.lastCheck.outcomes }
+      ? {
+          runId: String(rule.lastCheck.runId),
+          at: rule.lastCheck.at.toISOString(),
+          outcomes: rule.lastCheck.outcomes,
+          analysis: rule.lastCheck.analysis ?? null,
+        }
       : null,
     lastSuccessfulCheckAt: rule.lastSuccessfulCheckAt ? rule.lastSuccessfulCheckAt.toISOString() : null,
     offerCount,

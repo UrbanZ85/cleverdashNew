@@ -77,7 +77,7 @@ Test `tests/unit/no-owner-fields.spec.ts` dobi tri nove vrstice: `FlightSearchRu
 | `maxStops` | `Number` 0–3, default `0` | `0` = samo direktni (FR-012) |
 | `baggage` | `'any' \| 'cabin' \| 'checked'`, default `'any'` | upošteva se le, če vir podatek da |
 | `recipients` | `[{ userId, notify: Boolean, addedAt }]`, `_id: false`, ≤ `FLIGHT_MAX_RECIPIENTS` | FR-040; imena se ne shranjujejo (010) |
-| `lastCheck` | `{ runId, at, outcomes: [{ providerId, outcome, message?, queries, offers }] }` ali `null` | stanje zadnjega preverjanja po virih (FR-017) |
+| `lastCheck` | `{ runId, at, outcomes: [{ providerId, outcome, message?, queries, offers }], analysis: { returned, matched, rejected: [{ reason, label, count }] } | null }` ali `null` | stanje zadnjega preverjanja po virih (FR-017); `analysis` (od 19. 10. 2026) pove, koliko ponudb so viri vrnili in zakaj so bile zavrnjene |
 | `lastSuccessfulCheckAt` | `Date \| null` | FR-032 |
 | `createdAt`, `updatedAt` | `Date` | `timestamps: true` |
 

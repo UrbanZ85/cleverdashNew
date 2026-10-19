@@ -55,6 +55,11 @@ describe('deduplikacija poizvedb', () => {
     const borMatches = await FlightSearchMatchModel.countDocuments({ ruleOwnerId: bor._id, status: 'active' });
     expect(anaMatches).toBe(1);
     expect(borMatches).toBe(0);
+    // Analiza zadnjega preverjanja (19. 10. 2026): koliko je vir vrnil in zakaj je bilo kaj zavrnjeno.
+    const anaRule = await FlightSearchRuleModel.findOne({ userId: ana._id }).lean();
+    expect(anaRule?.lastCheck?.analysis).toMatchObject({ returned: 1, matched: 1, rejected: [] });
+    const borRule = await FlightSearchRuleModel.findOne({ userId: bor._id }).lean();
+    expect(borRule?.lastCheck?.analysis).toMatchObject({ returned: 1, matched: 0, rejected: [{ reason: 'pricePerPerson', label: 'cena na osebo nad mejo', count: 1 }] });
 
     const before = calls.length;
     const second = await runOnce(new Date(Date.now() + 1000));

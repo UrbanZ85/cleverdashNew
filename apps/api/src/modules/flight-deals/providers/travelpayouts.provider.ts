@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon';
 import type { Env } from '../../../platform/config/env.js';
+import { airlineName } from '../domain/airlines.js';
 import { monthPairs, type DateRange } from '../domain/date-window.js';
 import type { ProviderQuery } from '../domain/query-plan.js';
 import type { AirportLookup } from '../domain/rule-matcher.js';
@@ -210,7 +211,7 @@ export const travelpayoutsProvider: FlightProvider = {
       offers.push({
         providerId: TRAVELPAYOUTS_ID,
         airline: airline.toUpperCase(),
-        airlineName: null,
+        airlineName: airlineName(airline),
         origin: origin.toUpperCase(),
         destination: destination.toUpperCase(),
         outbound: {

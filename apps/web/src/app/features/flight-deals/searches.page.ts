@@ -6,6 +6,7 @@ import { FlightDealsApi } from './flight-deals.api.js';
 import {
   dayWindowText,
   describeError,
+  checkAnalysisText,
   pluralNights,
   pluralSearches,
   searchStatusText,
@@ -57,6 +58,9 @@ import {
                 <p>{{ describe(s) }}</p>
                 <p>{{ windowLine(s) }}</p>
                 <p><ion-text [color]="status(s).color">{{ status(s).text }}</ion-text></p>
+                @if (analysis(s); as a) {
+                  <p>{{ a }}</p>
+                }
               </ion-label>
               <ion-toggle slot="end" [checked]="s.active" [disabled]="busy() === s.id" (click)="$event.stopPropagation()" (ionChange)="toggleActive(s, $any($event).detail.checked)" aria-label="Aktivno"></ion-toggle>
               <ion-button slot="end" fill="clear" color="danger" [disabled]="busy() === s.id" (click)="confirmDelete(s, $event)">
@@ -146,6 +150,10 @@ export class FlightSearchesPage implements OnInit {
 
   status(s: FlightSearch) {
     return searchStatusText(s);
+  }
+
+  analysis(s: FlightSearch): string | null {
+    return checkAnalysisText(s);
   }
 
   async toggleActive(s: FlightSearch, active: boolean): Promise<void> {

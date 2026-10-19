@@ -11,12 +11,12 @@ import { identityKey } from '../domain/identity.js';
 import { classifyChange } from '../domain/price-change.js';
 import { sanitizeBookingUrl } from '../domain/booking-url.js';
 import type { QueryPlan } from '../domain/query-plan.js';
-import { nightsAtDestination, offerMatchesRule } from '../domain/rule-matcher.js';
+import { describeMatchFail, nightsAtDestination, offerMatchesRule, type MatchFailReason } from '../domain/rule-matcher.js';
 import type { ChangeType, Money, NormalizedOffer, ProviderId, ProviderOutcome } from '../domain/types.js';
 import { providerById } from '../providers/index.js';
 import type { OfferLean } from './offer-query.service.js';
 import type { QueryExecution } from './provider-runner.service.js';
-import { ruleToInput, type RuleCheckOutcomeLean, type RuleLean } from './rule-access.service.js';
+import { ruleToInput, type RuleCheckAnalysisLean, type RuleCheckOutcomeLean, type RuleLean } from './rule-access.service.js';
 
 // Primerjava rezultatov zagona s stanjem v bazi (FR-026 do FR-029, FR-018, FR-028).
 //
@@ -299,6 +299,8 @@ export async function reconcileRun(params: {
     const rulePlan = plan.perRule.get(String(rule._id));
     const input = ruleToInput(rule);
     const matchedOfferIds = new Set<string>();
+    const evaluatedOfferIds = new Set<string>();
+    const rejectedByReason = new Map<MatchFailReason, number>();
     const outcomesByProvider = new Map<ProviderId, { outcomes: ProviderOutcome[]; queries: number; messages: string[] }>();
 
     for (const key of rulePlan?.queryKeys ?? []) {
@@ -311,12 +313,17 @@ export async function reconcileRun(params: {
       outcomesByProvider.set(exec.query.providerId, tally);
 
       for (const offerId of offersByKey.get(key) ?? []) {
-        if (matchedOfferIds.has(offerId)) continue;
+        // Ista ponudba iz dveh poizvedb (npr. "kamor koli" in cilj) se za analizo šteje enkrat.
+        if (evaluatedOfferIds.has(offerId)) continue;
+        evaluatedOfferIds.add(offerId);
         const offer = await loadOffer(offerId);
         if (!offer || offer.availability !== 'available') continue;
         const normalized = toNormalized(offer);
         const verdict = offerMatchesRule(normalized, input, { windows, airports: findAirport });
-        if (!verdict.ok) continue;
+        if (!verdict.ok) {
+          rejectedByReason.set(verdict.reason, (rejectedByReason.get(verdict.reason) ?? 0) + 1);
+          continue;
+        }
         matchedOfferIds.add(offerId);
 
         const change = changes.get(offerId);
@@ -388,11 +395,18 @@ export async function reconcileRun(params: {
       };
     });
     const success = outcomes.some((o) => SUCCESSFUL.has(o.outcome));
+    const analysis: RuleCheckAnalysisLean = {
+      returned: evaluatedOfferIds.size,
+      matched: matchedOfferIds.size,
+      rejected: [...rejectedByReason.entries()]
+        .map(([reason, count]) => ({ reason, label: describeMatchFail(reason), count }))
+        .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)),
+    };
     await FlightSearchRuleModel.updateOne(
       { _id: rule._id },
       {
         $set: {
-          lastCheck: { runId, at: now, outcomes },
+          lastCheck: { runId, at: now, outcomes, analysis },
           ...(success ? { lastSuccessfulCheckAt: now } : {}),
         },
       },

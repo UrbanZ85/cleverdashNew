@@ -25,6 +25,21 @@ export interface RuleCheckOutcomeLean {
   offers: number;
 }
 
+/** Analiza zadnjega preverjanja (glej model): vrnjeno / ujemanja / zavrnjeno po razlogih, padajoče po številu. */
+export interface RuleCheckAnalysisLean {
+  returned: number;
+  matched: number;
+  rejected: Array<{ reason: string; label: string; count: number }>;
+}
+
+export interface RuleCheckLean {
+  runId: Types.ObjectId;
+  at: Date;
+  outcomes: RuleCheckOutcomeLean[];
+  /** `null` pri zapisih izpred 19. 10. 2026. */
+  analysis?: RuleCheckAnalysisLean | null;
+}
+
 export interface RuleLean {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
@@ -54,7 +69,7 @@ export interface RuleLean {
   maxStops: number;
   baggage: BaggageOption;
   recipients: { userId: Types.ObjectId; notify: boolean; addedAt: Date }[];
-  lastCheck: { runId: Types.ObjectId; at: Date; outcomes: RuleCheckOutcomeLean[] } | null;
+  lastCheck: RuleCheckLean | null;
   lastSuccessfulCheckAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

@@ -53,6 +53,30 @@ const checkOutcomeSchema = new Schema(
   { _id: false },
 );
 
+/** Analiza zadnjega preverjanja: koliko ponudb so viri za to iskanje vrnili in zakaj so bile zavrnjene —
+ * da lastnik vidi, ali je malo zadetkov zaradi vira ali zaradi svojih pogojev. */
+const checkAnalysisSchema = new Schema(
+  {
+    returned: { type: Number, required: true, default: 0 },
+    matched: { type: Number, required: true, default: 0 },
+    rejected: {
+      type: [
+        new Schema(
+          {
+            reason: { type: String, required: true },
+            /** Slovensko (`describeMatchFail`), da odjemalec ne potrebuje lastne tabele. */
+            label: { type: String, required: true },
+            count: { type: Number, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+  },
+  { _id: false },
+);
+
 const flightSearchRuleSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -109,6 +133,7 @@ const flightSearchRuleSchema = new Schema(
           runId: { type: Schema.Types.ObjectId, ref: 'FlightSearchRun', required: true },
           at: { type: Date, required: true },
           outcomes: { type: [checkOutcomeSchema], default: [] },
+          analysis: { type: checkAnalysisSchema, default: null },
         },
         { _id: false },
       ),

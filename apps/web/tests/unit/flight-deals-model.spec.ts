@@ -10,6 +10,8 @@ import {
   formatPrice,
   pluralNights,
   quickValidate,
+  airlinesText,
+  checkAnalysisText,
   searchStatusText,
   toOptionalInt,
   toSearchInput,
@@ -201,6 +203,46 @@ describe('stanje iskanja in graf', () => {
     });
     expect(down.color).toBe('danger');
     expect(down.text).toContain('vir ni dosegljiv');
+  });
+
+  it('checkAnalysisText: brez analize null; nič vrnjenega; razlogi padajoče z "drugo" za presežek', () => {
+    expect(checkAnalysisText({ lastCheck: null })).toBeNull();
+    expect(checkAnalysisText({ lastCheck: { runId: 'r', at: '2026-10-19T09:30:00Z', outcomes: [] } })).toBeNull();
+    expect(checkAnalysisText({ lastCheck: { runId: 'r', at: '2026-10-19T09:30:00Z', outcomes: [], analysis: { returned: 0, matched: 0, rejected: [] } } })).toBe(
+      'viri za te poizvedbe niso vrnili nobene ponudbe',
+    );
+    const text = checkAnalysisText({
+      lastCheck: {
+        runId: 'r',
+        at: '2026-10-19T09:30:00Z',
+        outcomes: [],
+        analysis: {
+          returned: 1240,
+          matched: 10,
+          rejected: [
+            { reason: 'pricePerPerson', label: 'cena na osebo nad mejo', count: 900 },
+            { reason: 'outboundWeekday', label: 'odhod na nedovoljen dan', count: 280 },
+            { reason: 'minStay', label: 'prekratek čas na destinaciji', count: 30 },
+            { reason: 'nights', label: 'trajanje zunaj meja', count: 12 },
+            { reason: 'stops', label: 'preveč prestopov', count: 5 },
+            { reason: 'airline', label: 'drug prevoznik', count: 3 },
+          ],
+        },
+      },
+    });
+    expect(text).toContain('ponudb · 10 ujemanj · zavrnjeno: cena na osebo nad mejo 900, odhod na nedovoljen dan 280, prekratek čas na destinaciji 30, trajanje zunaj meja 12, drugo 8');
+    // sl-SI ločilo tisočic je pri štirimestnih številih odvisno od ICU (1240 ali 1.240).
+    expect((text ?? '').replace(/[\s.]/g, '')).toMatch(/^virivrnili1240ponudb/);
+    expect(checkAnalysisText({ lastCheck: { runId: 'r', at: 'x', outcomes: [], analysis: { returned: 2, matched: 1, rejected: [{ reason: 'nights', label: 'trajanje zunaj meja', count: 1 }] } } })).toBe(
+      'viri vrnili 2 ponudbi · 1 ujemanje · zavrnjeno: trajanje zunaj meja 1',
+    );
+  });
+
+  it('airlinesText: več prevoznikov s "+", neznana koda ostane koda, brez seznama glavni prevoznik', () => {
+    expect(airlinesText({ airline: 'FR', airlineName: 'Ryanair', airlines: [{ code: 'FR', name: 'Ryanair' }, { code: 'W6', name: 'Wizz Air' }] })).toBe('Ryanair + Wizz Air');
+    expect(airlinesText({ airline: 'MW', airlineName: null, airlines: [{ code: 'MW', name: null }] })).toBe('MW');
+    expect(airlinesText({ airline: 'OU', airlineName: 'Croatia Airlines' })).toBe('Croatia Airlines');
+    expect(airlinesText({ airline: 'OU', airlineName: null, airlines: [] })).toBe('OU');
   });
 
   it('chartPoints: UNAVAILABLE je vrzel (null), ne ničla', () => {

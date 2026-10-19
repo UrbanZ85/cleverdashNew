@@ -185,8 +185,8 @@ describe('offerCounts', () => {
 });
 
 describe('razvrščanje', () => {
-  it('privzeto po ceni naraščajoče; isti stolpec obrne smer, nov stolpec začne naraščajoče, čas podatka padajoče', () => {
-    expect(DEFAULT_OFFER_SORT).toEqual({ key: 'price', dir: 'asc' });
+  it('privzeto po datumu odhoda naraščajoče; isti stolpec obrne smer, nov stolpec začne naraščajoče, čas podatka padajoče', () => {
+    expect(DEFAULT_OFFER_SORT).toEqual({ key: 'departure', dir: 'asc' });
     expect(toggleOfferSort({ key: 'price', dir: 'asc' }, 'price')).toEqual({ key: 'price', dir: 'desc' });
     expect(toggleOfferSort({ key: 'price', dir: 'desc' }, 'departure')).toEqual({ key: 'departure', dir: 'asc' });
     expect(toggleOfferSort({ key: 'price', dir: 'asc' }, 'dataAt')).toEqual({ key: 'dataAt', dir: 'desc' });

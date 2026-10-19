@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon';
 import { emailSubject } from '../../../platform/email/mailer.service.js';
+import { airlinesLabel, offerAirlines } from './airlines.js';
 import type { Airport, ChangeType, Money } from './types.js';
 
 // Zbirni dopis (FR-035). Čista funkcija: iz postavk sestavi zadevo, HTML in golo besedilo.
@@ -165,7 +166,7 @@ function renderItemHtml(item: DigestItem, ctx: DigestContext): string {
   const deltaHtml = delta && color ? `<div style="color:${color};font-size:14px">${esc(delta)}</div>` : '';
   const owner = item.ruleOwnerName ? ` <span style="color:${EMAIL_MUTED}">(deli ${esc(item.ruleOwnerName)})</span>` : '';
   const nights = item.nights !== null ? ` · ${pluralize(item.nights, 'nočitev', 'nočitvi', 'nočitve', 'nočitev')}` : '';
-  const airline = item.airlineName ? `${esc(item.airlineName)} (${esc(item.airline)})` : esc(item.airline);
+  const airline = esc(airlinesLabel(offerAirlines(item)));
   const booking = item.bookingUrl
     ? `<a href="${esc(item.bookingUrl)}" style="color:#1f6feb">Rezervacija pri viru</a> · `
     : '';
@@ -193,7 +194,7 @@ function renderItemHtml(item: DigestItem, ctx: DigestContext): string {
 function renderItemText(item: DigestItem, ctx: DigestContext): string {
   const lines = [
     `[${changeLabel(item.changeType)}] ${item.ruleName}${item.ruleOwnerName ? ` (deli ${item.ruleOwnerName})` : ''}`,
-    `${item.origin.city} (${item.origin.iata}) → ${item.destination.city} (${item.destination.iata}) · ${item.airlineName ?? item.airline}`,
+    `${item.origin.city} (${item.origin.iata}) → ${item.destination.city} (${item.destination.iata}) · ${airlinesLabel(offerAirlines(item))}`,
     segmentLine('Odhod', item.outbound),
   ];
   if (item.inbound) lines.push(segmentLine('Povratek', item.inbound));

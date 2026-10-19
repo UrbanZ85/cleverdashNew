@@ -2,6 +2,7 @@ import { Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonBadge, IonIcon, IonText } from '@ionic/angular/standalone';
 import {
+  airlinesText,
   changeColor,
   changeText,
   formatLjubljana,
@@ -66,7 +67,7 @@ import {
       </div>
 
       <div class="meta">
-        {{ offer().airlineName ?? offer().airline }} · {{ passengers() }}
+        {{ airlines() }} · {{ passengers() }}
         @if (showSearches() && offer().matches.length > 0) {
           · {{ searchNames() }}
         }
@@ -196,6 +197,7 @@ export class FlightOfferCardComponent {
   readonly nights = computed(() => pluralNights(this.offer().nights));
   readonly stops = computed(() => stopsText(this.offer()));
   readonly passengers = computed(() => passengersText(this.offer().passengers));
+  readonly airlines = computed(() => airlinesText(this.offer()));
   readonly dataAt = computed(() => formatLjubljana(this.offer().dataAt));
   readonly searchNames = computed(() => searchNamesText(this.offer()));
 }

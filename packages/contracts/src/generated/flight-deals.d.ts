@@ -515,6 +515,21 @@ export interface components {
                 queries: number;
                 offers: number;
             }[];
+            /** @description Analiza zadnjega preverjanja: koliko ponudb so viri za to iskanje vrnili, koliko jih ustreza in zakaj so bile druge zavrnjene. `null` pri preverjanjih izpred uvedbe (19. 10. 2026). */
+            analysis?: {
+                /** @description Različnih ponudb, ki so jih viri vrnili za poizvedbe tega iskanja */
+                returned: number;
+                /** @description Ponudb, ki ustrezajo vsem pogojem iskanja */
+                matched: number;
+                /** @description Zavrnjene po PRVEM razlogu, ki ni izpolnjen; padajoče po številu */
+                rejected: {
+                    /** @description Koda (npr. `pricePerPerson`, `outboundWeekday`, `minStay`) */
+                    reason: string;
+                    /** @description Slovensko, za prikaz */
+                    label: string;
+                    count: number;
+                }[];
+            } | null;
         };
         SearchPreview: {
             outboundWindow: {
@@ -598,8 +613,14 @@ export interface components {
             providerLabel: string;
             /** @description `false` = neuradni vir; vmesnik to označi (FR-020) */
             providerOfficial: boolean;
+            /** @description Glavni prevoznik (IATA koda), kot ga navede vir */
             airline: string;
             airlineName: string | null;
+            /** @description Vsi prevozniki ponudbe brez dvojnikov: glavni, nato tisti iz številk letov obeh smeri. Ime je `null`, kadar koda ni v tabeli. */
+            airlines: {
+                code: string;
+                name: string | null;
+            }[];
             origin: components["schemas"]["Airport"];
             destination: components["schemas"]["Airport"];
             outbound: components["schemas"]["Segment"];
@@ -629,6 +650,8 @@ export interface components {
             };
             /** @description Samo, če gostitelj pripada viru */
             bookingUrl: string | null;
+            /** @description Prejšnja cena, kot jo navede VIR sam (Ryanair); ne vpliva na `change` */
+            providerPreviousPrice?: components["schemas"]["Money"] | null;
             /**
              * Format: date-time
              * @description Čas podatka pri viru — pri predpomnjenih virih starejši od `lastCheckedAt`

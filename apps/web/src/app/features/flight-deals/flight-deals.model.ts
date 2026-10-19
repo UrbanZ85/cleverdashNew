@@ -88,12 +88,19 @@ export interface CheckOutcome {
   offers: number;
 }
 
+/** Analiza zadnjega preverjanja: vrnjeno / ujemanja / zavrnjeno po razlogih (padajoče). */
+export interface CheckAnalysis {
+  returned: number;
+  matched: number;
+  rejected: Array<{ reason: string; label: string; count: number }>;
+}
+
 export interface FlightSearch extends SearchInput {
   id: string;
   isOwn: true;
   recipients: Recipient[];
   preview: SearchPreview;
-  lastCheck: { runId: string; at: string; outcomes: CheckOutcome[] } | null;
+  lastCheck: { runId: string; at: string; outcomes: CheckOutcome[]; analysis?: CheckAnalysis | null } | null;
   lastSuccessfulCheckAt: string | null;
   offerCount: number;
   createdAt: string;
@@ -157,6 +164,8 @@ export interface Offer {
   providerOfficial: boolean;
   airline: string;
   airlineName: string | null;
+  /** Vsi prevozniki (glavni + iz številk letov); strežnik jih sestavi, ime je `null` pri neznani kodi. */
+  airlines?: Array<{ code: string; name: string | null }>;
   origin: Airport;
   destination: Airport;
   outbound: Segment;
@@ -470,6 +479,36 @@ export function searchStatusText(search: Pick<FlightSearch, 'active' | 'lastChec
   return { text: `preverjeno ${formatLjubljana(search.lastCheck.at)}`, color: 'success' };
 }
 
+/**
+ * Analiza zadnjega preverjanja v eni vrstici: "vir vrnil 1.240 ponudb · 10 ujemanj · zavrnjeno: cena na osebo
+ * nad mejo 900, odhod na nedovoljen dan 280". `null`, kadar preverjanja ali analize (starejši zapisi) ni.
+ */
+export function checkAnalysisText(search: Pick<FlightSearch, 'lastCheck'>, maxReasons = 4): string | null {
+  const a = search.lastCheck?.analysis;
+  if (!a) return null;
+  if (a.returned === 0) return 'viri za te poizvedbe niso vrnili nobene ponudbe';
+  const parts = [`viri vrnili ${formatCount(a.returned, 'ponudbo', 'ponudbi', 'ponudbe', 'ponudb')}`, formatCount(a.matched, 'ujemanje', 'ujemanji', 'ujemanja', 'ujemanj')];
+  if (a.rejected.length > 0) {
+    const top = a.rejected.slice(0, maxReasons).map((r) => `${r.label} ${r.count.toLocaleString('sl-SI')}`);
+    const rest = a.rejected.slice(maxReasons).reduce((sum, r) => sum + r.count, 0);
+    parts.push(`zavrnjeno: ${top.join(', ')}${rest > 0 ? `, drugo ${rest.toLocaleString('sl-SI')}` : ''}`);
+  }
+  return parts.join(' · ');
+}
+
+function formatCount(n: number, one: string, two: string, few: string, many: string): string {
+  const mod100 = n % 100;
+  const word = mod100 === 1 ? one : mod100 === 2 ? two : mod100 === 3 || mod100 === 4 ? few : many;
+  return `${n.toLocaleString('sl-SI')} ${word}`;
+}
+
+/** "Ryanair + Wizz Air" (ali koda, kadar ime ni znano); brez seznama pade na glavnega prevoznika. */
+export function airlinesText(offer: Pick<Offer, 'airline' | 'airlineName' | 'airlines'>): string {
+  const list = offer.airlines ?? [];
+  if (list.length === 0) return offer.airlineName ?? offer.airline;
+  return list.map((a) => a.name ?? a.code).join(' + ');
+}
+
 /** Točke za graf cen: `UNAVAILABLE` je vrzel (null), ne ničla. */
 export function chartPoints(history: readonly HistoryPoint[]): { labels: string[]; values: (number | null)[] } {
   return {
@@ -730,6 +769,7 @@ export function describeError(err: unknown, fallback: string): string {
 
 export type OfferKind = 'new' | 'down' | 'up' | 'plain';
 export type OfferKindFilter = 'all' | 'new' | 'down' | 'up';
+export type OfferScope = 'all' | 'own' | 'shared';
 export type OfferStatusKey = 'unavailable' | 'departed' | OfferKind;
 
 export interface OfferStatus {
@@ -750,6 +790,8 @@ export interface OfferFilters {
   query: string;
   searchId: string | null;
   kind: OfferKindFilter;
+  /** Lastna iskanja, deljena z mano ali vsa (po `isOwn` ujemanj). */
+  scope: OfferScope;
   directOnly: boolean;
   showExpired: boolean;
 }
@@ -836,6 +878,7 @@ function offerSearchText(offer: Offer): string {
     offer.destination.countryName,
     offer.airline,
     offer.airlineName,
+    ...(offer.airlines ?? []).flatMap((a) => [a.code, a.name]),
     offer.providerLabel,
     ...offer.matches.flatMap((m) => [m.searchName, m.owner?.displayName]),
   ];
@@ -854,13 +897,14 @@ export function offerMatchesQuery(offer: Offer, query: string): boolean {
 }
 
 export function emptyOfferFilters(): OfferFilters {
-  return { query: '', searchId: null, kind: 'all', directOnly: false, showExpired: false };
+  return { query: '', scope: 'all', searchId: null, kind: 'all', directOnly: false, showExpired: false };
 }
 
 export function filterOffers(offers: readonly Offer[], filters: OfferFilters, now: Date | number = Date.now()): Offer[] {
   return offers.filter(
     (o) =>
       (filters.showExpired || !isExpiredOffer(o, now)) &&
+      matchesScope(o, filters.scope) &&
       (!filters.searchId || o.matches.some((m) => m.searchId === filters.searchId)) &&
       (!filters.directOnly || isDirect(o)) &&
       (filters.kind === 'all' || offerKind(o) === filters.kind) &&
@@ -881,7 +925,8 @@ export function offerCounts(offers: readonly Offer[], filters: OfferFilters, now
   return counts;
 }
 
-export const DEFAULT_OFFER_SORT: OfferTableSort = { key: 'price', dir: 'asc' };
+/** Privzeto po datumu odhoda (lastnikova želja 19. 10. 2026): bližnji vikendi najprej, cena je drugi ključ. */
+export const DEFAULT_OFFER_SORT: OfferTableSort = { key: 'departure', dir: 'asc' };
 
 /** Klik na isti stolpec obrne smer; nov stolpec začne z naravno smerjo (čas podatka: najnovejše najprej). */
 export function toggleOfferSort(current: OfferTableSort, key: OfferSortKey): OfferTableSort {
@@ -927,4 +972,84 @@ export function sortOffers(offers: readonly Offer[], sort: OfferTableSort): Offe
       a.price.amount - b.price.amount ||
       new Date(a.outbound.departureAt).getTime() - new Date(b.outbound.departureAt).getTime(),
   );
+}
+
+// ─── zapomnjen pogled tabele ──────────────────────────────────────────────────────────────────
+//
+// Kar uporabnik pritisne (obseg Vse/Moje/Deljene, izbrano iskanje, vrsta, samo direktni, pretečene,
+// razvrščanje), ostane njegov PRIVZETI pogled ob naslednjem obisku — shranjeno v `localStorage`
+// (offer-view.store.ts), ločeno za glavno stran in za Deljene ponudbe. Besedilo iskalnika se ne
+// shranjuje: to je trenutna poizvedba, ne nastavitev pogleda. Branje je obrambno — vsako polje
+// posebej pade na privzetek, da pokvarjen ali star zapis nikoli ne podre strani.
+
+export type OfferViewPage = 'overview' | 'shared';
+
+export interface OfferView {
+  scope: OfferScope;
+  searchId: string | null;
+  kind: OfferKindFilter;
+  directOnly: boolean;
+  showExpired: boolean;
+  sort: OfferTableSort;
+}
+
+export const DEFAULT_OFFER_VIEW: OfferView = {
+  scope: 'all',
+  searchId: null,
+  kind: 'all',
+  directOnly: false,
+  showExpired: false,
+  sort: DEFAULT_OFFER_SORT,
+};
+
+const OFFER_SCOPES: readonly OfferScope[] = ['all', 'own', 'shared'];
+const OFFER_KIND_FILTERS: readonly OfferKindFilter[] = ['all', 'new', 'down', 'up'];
+const OFFER_SORT_KEYS: readonly OfferSortKey[] = ['route', 'departure', 'return', 'price', 'perPerson', 'change', 'dataAt', 'search'];
+
+export function offerViewStorageKey(page: OfferViewPage, userId: string | null | undefined): string {
+  return `cd.flight-deals.view.${page}.${userId ?? 'anon'}`;
+}
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
+/** Shranjen zapis v pogled; manjkajoče ali neveljavno polje dobi privzetek, neveljaven JSON ves privzetek. */
+export function parseOfferView(raw: string | null | undefined, defaults: OfferView = DEFAULT_OFFER_VIEW): OfferView {
+  if (!raw) return { ...defaults };
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { ...defaults };
+  }
+  if (!data || typeof data !== 'object') return { ...defaults };
+  const d = data as Record<string, unknown>;
+  const sort = d['sort'] && typeof d['sort'] === 'object' ? (d['sort'] as Record<string, unknown>) : {};
+  return {
+    scope: oneOf(d['scope'], OFFER_SCOPES, defaults.scope),
+    searchId: typeof d['searchId'] === 'string' && d['searchId'].length > 0 ? d['searchId'] : null,
+    kind: oneOf(d['kind'], OFFER_KIND_FILTERS, defaults.kind),
+    directOnly: typeof d['directOnly'] === 'boolean' ? d['directOnly'] : defaults.directOnly,
+    showExpired: typeof d['showExpired'] === 'boolean' ? d['showExpired'] : defaults.showExpired,
+    sort: {
+      key: oneOf(sort['key'], OFFER_SORT_KEYS, defaults.sort.key),
+      dir: oneOf(sort['dir'], ['asc', 'desc'] as const, defaults.sort.dir),
+    },
+  };
+}
+
+export function serializeOfferView(view: OfferView): string {
+  return JSON.stringify(view);
+}
+
+/** Pogled + trenutna poizvedba = filtri tabele. */
+export function offerViewFilters(view: OfferView, query: string): OfferFilters {
+  return { query, scope: view.scope, searchId: view.searchId, kind: view.kind, directOnly: view.directOnly, showExpired: view.showExpired };
+}
+
+/** Obseg: "own" = vsaj eno lastno ujemanje, "shared" = vsaj eno deljeno; "all" ne filtrira. */
+export function matchesScope(offer: Pick<Offer, 'matches'>, scope: OfferScope): boolean {
+  if (scope === 'all') return true;
+  return offer.matches.some((m) => (scope === 'own' ? m.isOwn : !m.isOwn));
 }
