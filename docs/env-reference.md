@@ -328,10 +328,10 @@ v aplikaciji (zbirka `FlightSchedulerSettings`), ker mora sprememba veljati brez
 | `FLIGHT_RYANAIR_FALLBACK_URL` | `https://services-api.ryanair.com` | Rezervni gostitelj iste poti ob 403/5xx; prazno = brez |
 | `FLIGHT_RYANAIR_DAILY_RUN_LIMIT` | `2` | Največ zagonov na dan, v katerih je vir vprašan |
 | `FLIGHT_FAKE_PROVIDER_ENABLED` | `false` | Testni vir z IZMIŠLJENIMI podatki; v produkciji ga `loadEnv` **zavrne** |
-| `FLIGHT_SCHEDULER_TICK_SECONDS` | `60` | Tik, ki vpraša bazo, ali je zapadel termin urnika (člen V) |
-| `FLIGHT_RUN_STALE_MINUTES` | `30` | Zagon brez utripa → `interrupted`; obtičal dopis `sending` → nazaj v `pending` |
-| `FLIGHT_RUN_RETENTION_DAYS` | `90` | TTL zagonov in dopisov |
-| `FLIGHT_HISTORY_RETENTION_DAYS` | `180` | TTL zgodovine cen |
+| `FLIGHT_SCHEDULER_TICK_SECONDS` | — | **Zastarelo (016)**: nasledil `SCANNER_TICK_SECONDS`; staro ime velja kot rezerva z opozorilom `env.deprecated` |
+| `FLIGHT_RUN_STALE_MINUTES` | — | **Zastarelo (016)**: nasledil `SCANNER_RUN_STALE_MINUTES` |
+| `FLIGHT_RUN_RETENTION_DAYS` | — | **Zastarelo (016)**: nasledil `SCANNER_RUN_RETENTION_DAYS` |
+| `FLIGHT_HISTORY_RETENTION_DAYS` | `180` | TTL zgodovine cen letov (generična zgodovina rezultatov je `SCANNER_HISTORY_RETENTION_DAYS`) |
 | `FLIGHT_PROVIDER_TIMEOUT_MS` | `15000` | Časovna omejitev ene zahteve na vir |
 | `FLIGHT_PROVIDER_CONCURRENCY` | `2` | Hkratne zahteve na vire skupaj (Ryanair vedno 1, s 500 ms premora) |
 | `FLIGHT_PROVIDER_CACHE_SECONDS` | `3600` | TTL odgovorov virov v `platform/cache` (člen VIII) |
@@ -356,6 +356,29 @@ in **nista podprta**.
 **`FLIGHT_PROVIDER_CACHE_SECONDS` je pod urnikom, ne nad njim.** Pri dveh zagonih dnevno vsak zagon
 vir vpraša znova; ročni zagon v isti uri pa dobi predpomnjen odgovor. Vrednost nad 6 ur bi pri
 urniku "vsakih 6 ur" pomenila, da nekateri zagoni vira sploh ne vprašajo.
+
+### Skenerji — skupno jedro za preverjanje po urniku (016)
+
+Vse s privzetkom. Od 016 tik, zagoni, urnik tipa in outbox dopisov modula Leti živijo v skupnem
+jedru (`platform/scanner/`); tri spremenljivke `FLIGHT_*` zgoraj so zato zastarele in jih jedro
+bere samo kot rezervo. Urniki **niso** v okolju: urnik tipa (leti) nastavlja administrator v
+aplikaciji (zbirka `ScannerTypeSettings`), urnik posameznega skenerja njegov lastnik
+(`ScannerDefinition.schedule`).
+
+| Spremenljivka | Privzeto | Vloga |
+|---|---|---|
+| `SCANNER_TICK_SECONDS` | `60` | Tik, ki vpraša bazo, kateri termini (tipov in skenerjev) so zapadli (člen V) |
+| `SCANNER_RUN_STALE_MINUTES` | `30` | Zagon brez utripa → `interrupted`; obtičal dopis `sending` → nazaj v `pending` |
+| `SCANNER_RUN_RETENTION_DAYS` | `90` | TTL zagonov in dopisov vseh tipov |
+| `SCANNER_HISTORY_RETENTION_DAYS` | `180` | TTL zgodovine generičnih rezultatov (zgodovina cen letov ostaja pod `FLIGHT_HISTORY_RETENTION_DAYS`) |
+| `SCANNER_MAX_CONCURRENT_RUNS` | `1` | Koliko zagonov RAZLIČNIH obsegov sme teči hkrati; isti obseg nikoli dvakrat. `1` je vedenje letov iz 015 |
+| `SCANNER_MAX_DEFINITIONS_PER_USER` | `20` | Meja skenerjev na uporabnika in tip (iskanja letov imajo `FLIGHT_MAX_RULES_PER_USER`) |
+| `SCANNER_ECHO_ENABLED` | `false` | Testni tip "echo" z IZMIŠLJENIMI rezultati; v produkciji ga `loadEnv` **zavrne** |
+
+**Kaj se zgodi s staro bazo.** Ob prvem zagonu po 016 jedro **dropne** zbirke
+`flightsearchruns`, `flightschedulersettings` in `flightnotifications` (odločitev lastnika
+19. 10. 2026: podatki so bili testni) in to zabeleži kot `scanner.legacy.dropped`. Iskanja,
+ponudbe, ujemanja in zgodovina cen letov ostanejo.
 
 ## 3. E-pošta — ali je še potrebna
 

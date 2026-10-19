@@ -347,6 +347,34 @@ const envSchema = z.object({
   // produkciji ga `loadEnv` zavrne (superRefine spodaj), da izmišljena ponudba nikoli ne pride v
   // dopis (FR-039).
   FLIGHT_FAKE_PROVIDER_ENABLED: boolFromString.default('false'),
+
+  // Skenerji (016, specs/016-scanner-engine/research.md §9) — skupno jedro, ki po urniku izvaja
+  // tipe skenerjev (leti, testni echo, bodoči). Vse s privzetkom (kakovostna vrata, točka 4).
+  //
+  // Tik je LASTEN jedru (ne scheduler modula 002, člen I) in po členu V: vsak tik vpraša bazo,
+  // kateri termini (tipov in skenerjev) so zapadli in nimajo zagona. Urniki so v bazi
+  // (`ScannerTypeSettings`, `ScannerDefinition.schedule`), ne tu.
+  //
+  // Tri spremenljivke so nasledile `FLIGHT_SCHEDULER_TICK_SECONDS`, `FLIGHT_RUN_STALE_MINUTES` in
+  // `FLIGHT_RUN_RETENTION_DAYS` iz 015. Stara imena se še sprejmejo kot REZERVA (glej
+  // `applyDeprecatedAliases` spodaj), da obstoječa namestitev ob nadgradnji ne odpove; novo ime
+  // ima prednost, kadar sta nastavljeni obe.
+  SCANNER_TICK_SECONDS: z.coerce.number().int().positive().default(60),
+  // Zagon `running`, ki toliko minut ni poslal utripa, je prekinjen (restart sredi dela) in se
+  // označi `interrupted`; isti prag vrne obtičal `sending` dopis v `pending`.
+  SCANNER_RUN_STALE_MINUTES: z.coerce.number().int().positive().default(30),
+  // Roka hrambe uveljavljata TTL indeksa, ne pometač. `SCANNER_HISTORY_RETENTION_DAYS` velja za
+  // GENERIČNO zgodovino rezultatov; zgodovina cen letov ostaja pod `FLIGHT_HISTORY_RETENTION_DAYS`.
+  SCANNER_RUN_RETENTION_DAYS: z.coerce.number().int().positive().max(3_650).default(90),
+  SCANNER_HISTORY_RETENTION_DAYS: z.coerce.number().int().positive().max(3_650).default(180),
+  // Koliko zagonov RAZLIČNIH obsegov sme teči hkrati; isti obseg nikoli dvakrat. 1 je današnje
+  // vedenje letov (en zagon naenkrat); več ima smisel šele z več tipi, ki ne delijo virov.
+  SCANNER_MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().max(8).default(1),
+  // Meja skenerjev na uporabnika IN tip (iskanja letov imajo svojo, FLIGHT_MAX_RULES_PER_USER).
+  SCANNER_MAX_DEFINITIONS_PER_USER: z.coerce.number().int().positive().max(500).default(20),
+  // Testni tip "echo" z IZMIŠLJENIMI rezultati — samo za razvoj in avtomatizirane teste (FR-046).
+  // V produkciji ga `loadEnv` zavrne (superRefine spodaj), kot `FLIGHT_FAKE_PROVIDER_ENABLED`.
+  SCANNER_ECHO_ENABLED: boolFromString.default('false'),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === 'production' && env.FLIGHT_FAKE_PROVIDER_ENABLED) {
     ctx.addIssue({
@@ -355,9 +383,48 @@ const envSchema = z.object({
       message: 'Testni vir letov z izmišljenimi podatki v produkciji ni dovoljen (015, FR-022/FR-039)',
     });
   }
+  if (env.NODE_ENV === 'production' && env.SCANNER_ECHO_ENABLED) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SCANNER_ECHO_ENABLED'],
+      message: 'Testni tip skenerja "echo" z izmišljenimi rezultati v produkciji ni dovoljen (016, FR-047)',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/**
+ * Zastarela imena iz 015 in njihovi nasledniki (016). Staro ime se upošteva SAMO, kadar novo ni
+ * nastavljeno; ime, ki je bilo tako uporabljeno, se zabeleži, da ga `main.ts` izpiše kot
+ * `env.deprecated` — `loadEnv` teče pred nastankom dnevnika in sam ne more pisati vanj.
+ */
+const DEPRECATED_ALIASES: ReadonlyArray<readonly [oldName: string, newName: string]> = [
+  ['FLIGHT_SCHEDULER_TICK_SECONDS', 'SCANNER_TICK_SECONDS'],
+  ['FLIGHT_RUN_STALE_MINUTES', 'SCANNER_RUN_STALE_MINUTES'],
+  ['FLIGHT_RUN_RETENTION_DAYS', 'SCANNER_RUN_RETENTION_DAYS'],
+];
+
+let usedDeprecated: Array<{ oldName: string; newName: string }> = [];
+
+function applyDeprecatedAliases(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  usedDeprecated = [];
+  const out: NodeJS.ProcessEnv = { ...source };
+  for (const [oldName, newName] of DEPRECATED_ALIASES) {
+    const oldValue = source[oldName];
+    const newValue = source[newName];
+    if ((newValue === undefined || newValue === '') && oldValue !== undefined && oldValue !== '') {
+      out[newName] = oldValue;
+      usedDeprecated.push({ oldName, newName });
+    }
+  }
+  return out;
+}
+
+/** Zastarela imena, ki so bila ob zadnjem `loadEnv` dejansko uporabljena kot rezerva. */
+export function deprecatedEnvNames(): ReadonlyArray<{ oldName: string; newName: string }> {
+  return usedDeprecated;
+}
 
 let cached: Env | undefined;
 
@@ -367,7 +434,7 @@ let cached: Env | undefined;
  */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (cached) return cached;
-  const parsed = envSchema.safeParse(source);
+  const parsed = envSchema.safeParse(applyDeprecatedAliases(source));
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`);
     throw new Error(

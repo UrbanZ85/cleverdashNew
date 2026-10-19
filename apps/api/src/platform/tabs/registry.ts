@@ -169,4 +169,19 @@ export const TAB_REGISTRY: TabDefinition[] = [
     requiredScopes: ['flight-deals:read'],
     enabled: true,
   },
+  // 016: skupni seznam skenerjev vseh tipov (leti, testni echo, bodoči). Zavihek je GENERIČEN in
+  // pripada jedru (platform/scanner/), ne modulu — zato tudi nima mape pod modules/; prispevki
+  // tipov (vrstice letov, obrazci, prikazi rezultatov) pridejo prek registra, ne prek uvoza.
+  //
+  // `order: 13`: 0–12 so zasedene (glej opombo pri `recipes` o nestabilnem vrstnem redu pri enakem
+  // `order`). Za Leti, ker je seznam nadpomenka in ga uporabnik v meniju lahko prestavi sam (005).
+  {
+    id: 'scanners',
+    title: 'Skenerji',
+    icon: 'scan-outline',
+    route: '/scanners',
+    order: 13,
+    requiredScopes: ['scanners:read'],
+    enabled: true,
+  },
 ];

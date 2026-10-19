@@ -23,6 +23,24 @@ const TAB_REGISTRY_ICONS = [
   'settings-outline', // settings — Nastavitve
   'stats-chart-outline', // analytics — Analitika (014, requiredScopes: ['admin'])
   'airplane-outline', // flight-deals — Leti (015)
+  'scan-outline', // scanners — Skenerji (016)
+];
+
+// 016: ikone zavihka Skenerji in testnega tipa echo. Ikona zavihka in ikone TIPOV prihajajo s
+// strežnika (`GET /scanners/types` vrne `icon` tipa), zato jih prevajalnik ne vidi.
+const SCANNERS_ICONS = [
+  'scan-outline', // zavihek
+  'layers-outline', // tip echo
+  'airplane-outline', // tip leti
+  'play-outline', // "Zaženi zdaj"
+  'stop-circle-outline', // "Prekini"
+  'refresh-outline',
+  'add-outline',
+  'create-outline',
+  'trash-outline',
+  'settings-outline', // administracija
+  'alert-circle-outline', // tip ni na voljo / zagon neuspešen
+  'chevron-forward-outline',
 ];
 
 // 015: ikone zavihka Leti. Smer spremembe cene je poleg barve edini znak, ki loči pocenitev od
@@ -169,6 +187,12 @@ describe('register-icons', () => {
       expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz zavihka Recepti ni registrirana`).toContain(
         name,
       );
+    }
+  });
+
+  it('registrira vsako ikono, ki jo uporablja zavihek Skenerji (016)', () => {
+    for (const name of SCANNERS_ICONS) {
+      expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz zavihka Skenerji ni registrirana`).toContain(name);
     }
   });
 

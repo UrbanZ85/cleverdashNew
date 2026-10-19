@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { loadEnv, resetEnvCacheForTests } from '../../src/platform/config/env.js';
+import { deprecatedEnvNames, loadEnv, resetEnvCacheForTests } from '../../src/platform/config/env.js';
 
 // research.md §12 / §13: manjkajoča obvezna spremenljivka MORA zaustaviti zagon z imenom
 // spremenljivke, ne pripeljati do `undefined`/`NaN` globoko v izvajanju.
@@ -256,6 +256,43 @@ describe('loadEnv', () => {
       expect(loadEnv({ ...VALID, NODE_ENV: 'test', FLIGHT_FAKE_PROVIDER_ENABLED: 'true' }).FLIGHT_FAKE_PROVIDER_ENABLED).toBe(
         true,
       );
+    });
+  });
+
+  // 016: jedro skenerjev je nasledilo tri spremenljivke modula Leti. Stara imena so REZERVA z
+  // opozorilom (research.md §9), da obstoječa namestitev ob nadgradnji ne odpove; testni tip
+  // "echo" v produkciji ne sme obstajati (FR-047), enako kot testni vir letov.
+  describe('Skenerji (016)', () => {
+    it('ima privzetke za tik, prekinitev, hrambo, sočasnost, mejo in testni tip', () => {
+      const env = loadEnv(VALID);
+      expect(env.SCANNER_TICK_SECONDS).toBe(60);
+      expect(env.SCANNER_RUN_STALE_MINUTES).toBe(30);
+      expect(env.SCANNER_RUN_RETENTION_DAYS).toBe(90);
+      expect(env.SCANNER_HISTORY_RETENTION_DAYS).toBe(180);
+      expect(env.SCANNER_MAX_CONCURRENT_RUNS).toBe(1);
+      expect(env.SCANNER_MAX_DEFINITIONS_PER_USER).toBe(20);
+      expect(env.SCANNER_ECHO_ENABLED).toBe(false);
+      expect(deprecatedEnvNames()).toEqual([]);
+    });
+
+    it('staro ime iz 015 velja kot rezerva, kadar novo ni nastavljeno, in se zabeleži', () => {
+      const env = loadEnv({ ...VALID, FLIGHT_RUN_STALE_MINUTES: '45' });
+      expect(env.SCANNER_RUN_STALE_MINUTES).toBe(45);
+      expect(deprecatedEnvNames()).toEqual([{ oldName: 'FLIGHT_RUN_STALE_MINUTES', newName: 'SCANNER_RUN_STALE_MINUTES' }]);
+    });
+
+    it('novo ime ima prednost, kadar sta nastavljeni obe', () => {
+      const env = loadEnv({ ...VALID, FLIGHT_RUN_STALE_MINUTES: '45', SCANNER_RUN_STALE_MINUTES: '12' });
+      expect(env.SCANNER_RUN_STALE_MINUTES).toBe(12);
+      expect(deprecatedEnvNames()).toEqual([]);
+    });
+
+    it('zavrne testni tip echo v produkciji in imenuje spremenljivko', () => {
+      expect(() => loadEnv({ ...VALID, NODE_ENV: 'production', SCANNER_ECHO_ENABLED: 'true' })).toThrowError(/SCANNER_ECHO_ENABLED/);
+    });
+
+    it('dovoli testni tip echo v razvoju in testih', () => {
+      expect(loadEnv({ ...VALID, NODE_ENV: 'test', SCANNER_ECHO_ENABLED: 'true' }).SCANNER_ECHO_ENABLED).toBe(true);
     });
   });
 });

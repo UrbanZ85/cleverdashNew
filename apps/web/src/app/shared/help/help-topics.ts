@@ -553,6 +553,38 @@ export const HELP_TOPICS = {
     ],
     ifEmpty: 'Brez vklopljenega vira zagon konča brez ponudb in to piše pri vsakem iskanju.',
   },
+  // ─── Skenerji (016) ───
+  'scanners.types': {
+    title: 'Tipi skenerjev',
+    what: 'Skener po urniku preveri zunanji vir, si zapomni, kaj je videl, zazna spremembe in te obvesti. Tip določa, KAJ se preverja (leti, testni echo, v prihodnje avti ali slike) in kakšen obrazec ima.',
+    how: [
+      'Na izbiro so samo tipi, ki so v tej namestitvi vgrajeni in vklopljeni; tip, ki ga ni, se ne ponuja.',
+      'Tip "Leti" preverja vsa iskanja vseh uporabnikov v enem zagonu po urniku, ki ga določi administrator — zato iskanje letov nima lastnega urnika.',
+      'Drugi tipi tečejo vsak po svojem urniku, ki ga nastaviš sam pri skenerju.',
+      'Skener tipa, ki je bil pozneje odstranjen ali izklopljen, ostane na seznamu z oznako in se ne izvaja; lahko ga izbrišeš.',
+    ],
+  },
+  'scanners.schedule': {
+    title: 'Urnik skenerja',
+    what: 'Kdaj se skener izvede. Pri tipih z lastnim urnikom ga nastaviš sam; pri tipu "Leti" velja urnik tipa, ki ga nastavlja izključno administrator, ker so viri skupni vsem uporabnikom.',
+    how: [
+      'Preprosti urniki (vsako uro; vsak dan ob 6:00; ob 6:00 in 18:00; vsakih 6 ur; vsak ponedeljek ob 8:00) ali cron izraz s petimi polji in časovnim pasom.',
+      'Sprememba velja ob naslednjem tiku (največ minuta), brez ponovnega zagona aplikacije.',
+      'Če je bila aplikacija izklopljena, se ob zagonu izvede samo zadnji zamujeni termin — dopis po enem zagonu že nosi vse spremembe.',
+      '"Zaženi zdaj" sproži zagon takoj, tudi pri izklopljenem skenerju; dva zagona istega skenerja hkrati nista mogoča.',
+    ],
+    example: '0 6,18 * * * — vsak dan ob 6:00 in 18:00 po Europe/Ljubljana.',
+  },
+  'scanners.results': {
+    title: 'Rezultati in spremembe',
+    what: 'Vsak rezultat ima stabilno identiteto: ob naslednjem zagonu se ista stvar ne pojavi kot nova, ampak se posodobi čas zadnjega ogleda. Sprememba cene ali vsebine je zabeležena v zgodovini.',
+    how: [
+      'NOVO pomeni, da je rezultat prvič ustrezal temu skenerju; POCENITEV in PODRAŽITEV se nanašata na ceno, kadar jo vir da.',
+      'NEDOSEGLJIVO se označi samo, kadar je vir uspešno odgovoril in rezultata ni več — ob napaki vira rezultati ostanejo.',
+      'Dopis prideš samo ob novem rezultatu ali spremembi; če se ni zgodilo nič, dopisa ni.',
+    ],
+    ifEmpty: 'Dokler zagon ni tekel, seznam rezultatov je prazen in piše, kdaj bo prvi termin.',
+  },
 } as const satisfies Record<string, HelpTopic>;
 
 export type HelpTopicId = keyof typeof HELP_TOPICS;

@@ -70,6 +70,13 @@ const BASE_USER_SCOPES: readonly string[] = [
   'flight-deals:read',
   'flight-deals:write',
   'flight-deals:share',
+  // 016 — brez teh dveh bi zavihek "Skenerji" delal samo administratorju (docs/adding-a-tab.md,
+  // korak 5). Nizi so PREPISANI, ne uvoženi iz jedra (platform/scanner/scopes.ts) — isti dogovor
+  // kot pri modulih, čeprav je jedro v platform/: register obsegov ne sme biti odvisen od tega,
+  // kateri moduli in zmogljivosti so v tej namestitvi sploh vpeti. Obsegi posameznih TIPOV
+  // skenerjev (npr. `flight-deals:*` zgoraj) ostanejo last tipa.
+  'scanners:read',
+  'scanners:write',
 ];
 
 /** Preslika seznam Keycloak vlog/skupin (iz `realm_access.roles` ali `groups` claima) v
