@@ -78,7 +78,7 @@ ob preseganju, glave `X-Rate-Limit-Remaining` in `X-Rate-Limit-Reset`.
 | `origin` | odhodno letališče iskanja (ena poizvedba na letališče) |
 | `destination` | IATA letališča ali **izpuščen** pri načinu `any`; pri načinu `countries` je izpuščen in filtrira se lokalno po državi (vir filtra po državi nima) |
 | `departure_at` | `YYYY-MM` — ena poizvedba na mesec okna odhodov |
-| `return_at` | `YYYY-MM` meseca povratka ali izpuščen pri enosmernem |
+| `return_at` | `YYYY-MM` meseca povratka ali izpuščen pri enosmernem. Vir vrne SAMO povratke v tem mesecu, zato `monthPairs` (date-window.ts) za vsak mesec odhoda naredi par z vsakim mesecem, ki ga pokriva [prvi odhod + min nočitev, zadnji odhod + max nočitev] ∩ povratno okno — pri 1–3 nočitvah sta to mesec odhoda in naslednji (vikend 30. 10. → 1. 11.). Napaka, najdena 19. 10. 2026 na produkciji: vsi pari so nosili mesec začetka povratnega okna, od novembra naprej je vir vračal prazno in iskanje je našlo samo prvi vikend. |
 | `one_way` | `false` pri povratnem (sicer vrne eno vozovnico na datum) |
 | `direct` | `true`, kadar `maxStops === 0` |
 | `currency` | `price.currency` iskanja, male črke (`eur`) |
@@ -218,9 +218,11 @@ privzeto 2, Ryanair vedno 1) — brez nove odvisnosti. Timeout `FLIGHT_PROVIDER_
 (15 000) prek `AbortSignal.timeout`. Ponovitev ob `5xx`/omrežni napaki: dvakrat, z zamikom 2 s in
 8 s; `429` se NE ponavlja v istem zagonu (izid `rateLimited`).
 
-Meja poizvedb na iskanje `FLIGHT_MAX_QUERIES_PER_RULE` (60): 5 letališč × "kamor koli" × 6
-mesecev je 30 poizvedb pri Travelpayouts; ob preseganju se vzamejo prvi meseci in iskanje dobi
-opozorilo `truncated` (FR-015, edge case "zelo veliko kombinacij").
+Meja poizvedb na iskanje `FLIGHT_MAX_QUERIES_PER_RULE` (120): 5 letališč × "kamor koli" × 6
+mesecev (7 koledarskih, vsak s parom za mesec odhoda in naslednjega) je 70 poizvedb pri
+Travelpayouts; ob preseganju se vzamejo prvi meseci in iskanje dobi opozorilo `truncated` (FR-015,
+edge case "zelo veliko kombinacij"). Privzetek je bil 60, dvignjen 19. 10. 2026, ko so pari mesecev
+število poizvedb približno podvojili (9 letališč × 6 mesecev = 99); vir dovoli 600 zahtev na minuto.
 
 ## §9 — E-pošta: skupna storitev, outbox, en dopis na prejemnika
 
@@ -364,7 +366,7 @@ zagon pove "ni vklopljenih virov".
 | `FLIGHT_PROVIDER_CONCURRENCY` | `2` | semafor §8 |
 | `FLIGHT_PROVIDER_CACHE_SECONDS` | `3600` | TTL predpomnilnika poizvedb |
 | `FLIGHT_MAX_RULES_PER_USER` | `20` | FR-015 |
-| `FLIGHT_MAX_QUERIES_PER_RULE` | `60` | FR-015 |
+| `FLIGHT_MAX_QUERIES_PER_RULE` | `120` | FR-015 |
 | `FLIGHT_MAX_RECIPIENTS` | `10` | |
 | `FLIGHT_MAX_FLEX_DAYS` | `60` | |
 | `FLIGHT_TRAVELPAYOUTS_TOKEN` | *(prazno = vir izklopljen)* | skrivnost |

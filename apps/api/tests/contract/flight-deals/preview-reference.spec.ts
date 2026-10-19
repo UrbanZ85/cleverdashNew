@@ -31,7 +31,7 @@ describe('POST /flight-deals/searches/preview', () => {
     expect(res.body).toMatchObject({
       outboundWindow: { from: '2026-10-20', to: '2026-11-03' },
       returnWindow: { from: '2026-10-22', to: '2026-11-03' },
-      queries: 4,
+      queries: 6,
       truncated: false,
     });
     expect(res.body.dateCombinations).toBeGreaterThanOrEqual(0);

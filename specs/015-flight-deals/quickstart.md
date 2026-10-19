@@ -56,8 +56,8 @@ Ryanaira (`FLIGHT_RYANAIR_ENABLED=true`), ne razlog za spremembo načrta.
 3. Cilj: *Kamor koli*. Datumi: *Obdobje* 22. 10. 2026 – 1. 11. 2026, fleksibilnost ±2.
 4. Nočitve 2–3. Odhod: petek, po 15:00. Povratek: nedelja.
 5. **Predogled** mora pisati: odhodi 20. 10. – 3. 11. 2026, povratki po pravilu, 2 kombinaciji
-   datumov (pet 23. 10. → ned 25. 10. in pet 30. 10. → ned 1. 11.), poizvedbe = 2 letališči × 2
-   meseca = 4.
+   datumov (pet 23. 10. → ned 25. 10. in pet 30. 10. → ned 1. 11.), poizvedbe = 2 letališči × 3
+   pari mesecev (okt→okt, okt→nov, nov→nov) = 6.
 6. Shrani → na seznamu Moja iskanja z "še ni preverjeno".
 
 Negativni primeri: največ 2 nočitvi + najmanj 3 → sporočilo o trajanju; fleksibilnost `-1` ali

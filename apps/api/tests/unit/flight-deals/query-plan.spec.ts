@@ -29,11 +29,15 @@ describe('buildQueryPlan', () => {
     expect(plan.perRule.get('a')?.queryKeys).toEqual(plan.perRule.get('b')?.queryKeys);
   });
 
-  it('Travelpayouts: 5 letališč × kamor koli × 6 mesecev = 35 poizvedb (6 mesecev od oktobra pokrije 7 koledarskih)', () => {
+  it('Travelpayouts: 5 letališč × kamor koli × 6 mesecev = 70 poizvedb (7 koledarskih mesecev, vsak s parom za povratek v istem in naslednjem mesecu)', () => {
     const rule = weekendRule({ departureAirports: ['LJU', 'ZAG', 'TRS', 'VCE', 'GRZ'], dates: { mode: 'rolling', months: 6 } });
     const queries = travelpayoutsProvider.buildQueries(ctx(rule, 'r'));
-    expect(queries.length).toBe(5 * 7);
+    expect(queries.length).toBe(5 * 7 * 2);
     expect(queries.every((q) => q.destination === null)).toBe(true);
+    // Vsak par ima cel mesec povratka v oknu; ključi parov istega meseca odhoda se razlikujejo po povratku.
+    const lju = queries.filter((q) => q.origin === 'LJU' && q.outbound.from === '2026-10-01');
+    expect(lju.map((q) => q.inbound?.from)).toEqual(['2026-10-01', '2026-11-01']);
+    expect(new Set(queries.map(queryKeyOf)).size).toBe(queries.length);
   });
 
   it('Ryanair: ena poizvedba na letališče in cilj, "kamor koli" je ena', () => {

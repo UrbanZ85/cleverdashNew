@@ -6,6 +6,7 @@ import {
   countDateCombinations,
   daysBetween,
   eachDay,
+  monthPairs,
   monthsCovered,
 } from '../../../src/modules/flight-deals/domain/date-window.js';
 import { NOW, weekendRule } from './_fixtures.js';
@@ -138,6 +139,38 @@ describe('countDateCombinations', () => {
 });
 
 describe('pomožne funkcije', () => {
+  it('monthPairs: vikend 30. 10. → 1. 11. da par (oktober, november); november samo (november, november)', () => {
+    // Odhodi 20. 10.–3. 11., povratki 22. 10.–3. 11., 2–3 nočitvi (weekendRule).
+    expect(monthPairs(computeWindows(weekendRule(), NOW, TZ))).toEqual([
+      { outbound: '2026-10', inbound: '2026-10' },
+      { outbound: '2026-10', inbound: '2026-11' },
+      { outbound: '2026-11', inbound: '2026-11' },
+    ]);
+  });
+
+  it('monthPairs: 5 mesecev vnaprej z 1–3 nočitvami da za VSAK mesec odhoda mesec povratka in naslednjega (napaka 19. 10. 2026)', () => {
+    const rule = weekendRule({ dates: { mode: 'rolling', months: 5 }, minNights: 1, maxNights: 3 });
+    const pairs = monthPairs(computeWindows(rule, NOW, TZ));
+    const byOutbound = new Map<string, string[]>();
+    for (const p of pairs) byOutbound.set(p.outbound, [...(byOutbound.get(p.outbound) ?? []), p.inbound!]);
+    expect([...byOutbound.keys()]).toEqual(['2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03']);
+    expect(byOutbound.get('2026-10')).toEqual(['2026-10', '2026-11']);
+    expect(byOutbound.get('2027-03')).toEqual(['2027-03', '2027-04']);
+    expect(pairs.length).toBe(12);
+  });
+
+  it('monthPairs: enosmerno iskanje ima en par na mesec brez povratka; dolgo trajanje preskoči mesece brez možnega povratka', () => {
+    const oneWay = weekendRule({ minNights: null, maxNights: null, inbound: { weekdays: [], earliest: null, latest: null } });
+    expect(monthPairs(computeWindows(oneWay, NOW, TZ))).toEqual([
+      { outbound: '2026-10', inbound: null },
+      { outbound: '2026-11', inbound: null },
+    ]);
+    // Povratek v oknu, a najmanj 14 nočitev: iz novembra (odhodi 1.–3. 11.) povratek ne more biti do 3. 11.
+    const long = weekendRule({ minNights: 14, maxNights: 20 });
+    expect(monthPairs(computeWindows(long, NOW, TZ)).every((p) => p.outbound === '2026-10')).toBe(true);
+    expect(monthPairs({ ...computeWindows(weekendRule(), NOW, TZ), empty: true })).toEqual([]);
+  });
+
   it('monthsCovered: 20. 10.–3. 11. pokriva oktober in november', () => {
     expect(monthsCovered({ from: '2026-10-20', to: '2026-11-03' })).toEqual(['2026-10', '2026-11']);
   });
@@ -150,10 +183,10 @@ describe('pomožne funkcije', () => {
 });
 
 describe('buildPreview', () => {
-  it('poizvedbe = letališča × cilji × meseci; "kamor koli" šteje kot en cilj z opozorilom', () => {
+  it('poizvedbe = letališča × cilji × pari mesecev; "kamor koli" šteje kot en cilj z opozorilom', () => {
     const preview = buildPreview(weekendRule(), NOW, TZ, { maxQueriesPerRule: 60 });
     expect(preview.outboundWindow).toEqual({ from: '2026-10-20', to: '2026-11-03' });
-    expect(preview.queries).toBe(2 * 1 * 2);
+    expect(preview.queries).toBe(2 * 1 * 3);
     expect(preview.truncated).toBe(false);
     expect(preview.warnings.some((x) => x.includes('kamor koli'))).toBe(true);
   });

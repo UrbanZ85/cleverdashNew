@@ -39,7 +39,7 @@ describe('POST /flight-deals/searches', () => {
       offerCount: 0,
     });
     expect(res.body.preview.outboundWindow).toEqual({ from: '2026-10-20', to: '2026-11-03' });
-    expect(res.body.preview.queries).toBe(4);
+    expect(res.body.preview.queries).toBe(6);
     expect(res.body.dates).toEqual({ mode: 'range', from: '2026-10-22', to: '2026-11-01' });
     expect(res.body.id).toMatch(/^[0-9a-f]{24}$/);
   });

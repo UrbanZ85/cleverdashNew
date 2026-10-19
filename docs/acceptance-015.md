@@ -117,3 +117,33 @@ sestavljanju URL-ja (`/api` predpona je izpadla). Novo: `FLIGHT_RYANAIR_FALLBACK
 `providerPreviousPrice` na ponudbi (pogodba, model, kartica), test
 `tests/integration/flight-deals/ryanair-fallback.spec.ts` in štirje enotski testi v
 `normalization.spec.ts`. Ponovno preverjeno: enotski in integracijski testi modula, lint, pogodba, tsc.
+
+## Dopolnitev 19. 10. 2026 — povratek v naslednjem mesecu (napaka s produkcije)
+
+Prvi produkcijski zagon iskanja "samo vikendi, 5 mesecev vnaprej, 1–3 nočitve" je našel samo
+vikend 23.–25. 10. Vzrok: Travelpayouts vrne samo povratke v mesecu `return_at`, modul pa je vsem
+mesečnim poizvedbam dal mesec ZAČETKA povratnega okna (oktober), zato so poizvedbe za november do
+marec vračale prazno. Popravek: `monthPairs` v `domain/date-window.ts` za vsak mesec odhoda
+sestavi par z vsakim mesecem, ki ga pokriva [prvi odhod + min nočitev, zadnji odhod + max nočitev]
+∩ povratno okno — vikend 30. 10. → 1. 11. je zdaj par (2026-10, 2026-11). Predogled šteje enako.
+Ker se število poizvedb pri kratkih potovanjih podvoji, je privzetek `FLIGHT_MAX_QUERIES_PER_RULE`
+dvignjen s 60 na 120 (`env.ts`, `.env.example`, `docs/env-reference.md`, research.md §4).
+Novi testi: `date-window.spec.ts` (trije za `monthPairs`), `normalization.spec.ts` (pari v URL-ju
+za 5 mesecev), `query-plan.spec.ts` (70 poizvedb, unikatni ključi); pogodbeni testi predogleda
+pričakujejo 6 namesto 4. Modul: 24 datotek, 207 testov; lint in tsc modula čista.
+
+## Dopolnitev 19. 10. 2026 — glavna stran kot tabela ponudb
+
+Lastniku razdelki s karticami (Nove ponudbe / Spremembe cen / Najugodnejše) niso ustrezali za hiter
+pregled. Glavna stran zdaj kaže ENO tabelo vseh ponudb (strežnik vrne do 200, z nedosegljivimi vred)
+z iskalnikom (letališče, mesto, država, prevoznik, ime iskanja — brez šumnikov), čipi vrste (Vse /
+Novo / Pocenitve / Podražitve s števci, Samo direktni), čipi iskanj in razvrščanjem po stolpcih
+(relacija, odhod, povratek, cena, na osebo, iskanje, čas podatka). Klik na vrstico odpre
+podrobnosti pod njo (oba leta, cena, vir, iskanja, gumba Zgodovina cene in Rezervacija pri viru).
+Pretečene ponudbe (vir jih ne ponuja več ali je odhod mimo) so privzeto skrite; potrditveno polje
+"Pokaži tudi pretečene" jih pokaže zasenčene — strežnik jih hrani teden po odhodu (data-model.md),
+dlje nazaj pogled ne seže. Na telefonu ostanejo stolpci stanje, relacija, odhod (s povratkom) in
+cena (z zneskom na osebo). Čiste funkcije so v `flight-deals.model.ts` (razdelek "tabela ponudb"),
+pokrite s `tests/unit/flight-deals-offer-table.spec.ts`; kartica ponudbe (podrobnosti, deljene)
+uporablja isto `offerStatus` in zato zdaj pozna tudi značko "Pretečeno". Preverjeno: vitest, tsc,
+eslint, `ng build --configuration production`; zaslon v brskalniku v tej seji ni bil pogledan.

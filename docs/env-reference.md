@@ -336,7 +336,7 @@ v aplikaciji (zbirka `FlightSchedulerSettings`), ker mora sprememba veljati brez
 | `FLIGHT_PROVIDER_CONCURRENCY` | `2` | Hkratne zahteve na vire skupaj (Ryanair vedno 1, s 500 ms premora) |
 | `FLIGHT_PROVIDER_CACHE_SECONDS` | `3600` | TTL odgovorov virov v `platform/cache` (člen VIII) |
 | `FLIGHT_MAX_RULES_PER_USER` | `20` | Meja iskanj na osebo |
-| `FLIGHT_MAX_QUERIES_PER_RULE` | `60` | Poizvedbe na vir na eno iskanje; preseženo je vidno kot `truncated` |
+| `FLIGHT_MAX_QUERIES_PER_RULE` | `120` | Poizvedbe na vir na eno iskanje (letališča × cilji × pari mesecev odhoda/povratka); preseženo je vidno kot `truncated` |
 | `FLIGHT_MAX_RECIPIENTS` | `10` | Prejemniki obvestil na iskanje |
 | `FLIGHT_MAX_FLEX_DAYS` | `60` | Zgornja meja fleksibilnosti po meri |
 | `SMTP_SECURE` | `false` | `true` = TLS od prvega bajta (465), `false` = STARTTLS na 587 |
@@ -508,7 +508,7 @@ FLIGHT_PROVIDER_TIMEOUT_MS=15000
 FLIGHT_PROVIDER_CONCURRENCY=2
 FLIGHT_PROVIDER_CACHE_SECONDS=3600
 FLIGHT_MAX_RULES_PER_USER=20
-FLIGHT_MAX_QUERIES_PER_RULE=60
+FLIGHT_MAX_QUERIES_PER_RULE=120
 FLIGHT_MAX_RECIPIENTS=10
 FLIGHT_MAX_FLEX_DAYS=60
 SMTP_SECURE=false

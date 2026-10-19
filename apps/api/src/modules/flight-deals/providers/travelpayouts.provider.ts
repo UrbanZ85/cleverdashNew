@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon';
 import type { Env } from '../../../platform/config/env.js';
-import { monthsCovered } from '../domain/date-window.js';
+import { monthPairs, type DateRange } from '../domain/date-window.js';
 import type { ProviderQuery } from '../domain/query-plan.js';
 import type { AirportLookup } from '../domain/rule-matcher.js';
 import { sanitizeBookingUrl } from '../domain/booking-url.js';
@@ -92,17 +92,19 @@ export const travelpayoutsProvider: FlightProvider = {
     const destinations: Array<string | null> =
       rule.destination.mode === 'airports' ? rule.destination.airports : [null];
     const out: ProviderQuery[] = [];
+    const pairs = monthPairs(windows);
     for (const origin of rule.departureAirports) {
       for (const destination of destinations) {
-        for (const month of monthsCovered(windows.outbound)) {
-          const monthStart = DateTime.fromFormat(month, 'yyyy-LL', { zone: 'utc' });
+        for (const pair of pairs) {
           out.push({
             providerId: TRAVELPAYOUTS_ID,
             origin,
             destination,
-            // Okno poizvedbe je MESEC; filtriranje na dejansko okno iskanja opravi rule-matcher.
-            outbound: { from: monthStart.toFormat('yyyy-LL-dd'), to: monthStart.endOf('month').toFormat('yyyy-LL-dd') },
-            inbound: windows.inbound ? { from: windows.inbound.from, to: windows.inbound.to } : null,
+            // Okni poizvedbe sta CELA MESECA odhoda in povratka (en par na poizvedbo); filtriranje na
+            // dejansko okno iskanja opravi rule-matcher. Cel mesec v ključu pomeni, da se poizvedbe
+            // iskanj z različnimi okni, a istim parom mesecev, zlijejo (SC-007).
+            outbound: monthRange(pair.outbound),
+            inbound: pair.inbound ? monthRange(pair.inbound) : null,
             direct: rule.maxStops === 0,
             currency: rule.price.currency,
             adults: rule.passengers.adults,
@@ -123,8 +125,8 @@ export const travelpayoutsProvider: FlightProvider = {
     if (query.destination) url.searchParams.set('destination', query.destination);
     url.searchParams.set('departure_at', query.outbound.from.slice(0, 7));
     if (query.inbound) {
-      // Mesec povratka: pri oknu čez dva meseca vzamemo mesec ZAČETKA povratnega okna; vir vrne
-      // tudi povratke v naslednjem mesecu, kadar so v istem iskanju.
+      // Mesec povratka iz para (buildQueries); vir vrne SAMO povratke v tem mesecu, zato ima vsak
+      // mesec odhoda svoj par za vsak možen mesec povratka.
       url.searchParams.set('return_at', query.inbound.from.slice(0, 7));
       url.searchParams.set('one_way', 'false');
     } else {
@@ -234,6 +236,12 @@ export const travelpayoutsProvider: FlightProvider = {
     return resultFromOffers(offers, incomplete, rows.length >= MAX_LIMIT);
   },
 };
+
+/** `yyyy-LL` → prvi in zadnji dan meseca. */
+function monthRange(month: string): DateRange {
+  const start = DateTime.fromFormat(month, 'yyyy-LL', { zone: 'utc' });
+  return { from: start.toFormat('yyyy-LL-dd'), to: start.endOf('month').toFormat('yyyy-LL-dd') };
+}
 
 function formatAmount(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ',');

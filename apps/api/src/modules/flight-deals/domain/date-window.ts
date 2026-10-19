@@ -178,6 +178,44 @@ export function monthsCovered(range: DateRange): string[] {
   return out;
 }
 
+export interface MonthPair {
+  /** `yyyy-LL` meseca odhoda. */
+  outbound: string;
+  /** `yyyy-LL` meseca povratka; `null` pri enosmernem iskanju. */
+  inbound: string | null;
+}
+
+/**
+ * Pari (mesec odhoda, mesec povratka) za vire, ki iščejo po mesecih. Za vsak mesec odhoda so
+ * meseci povratka tisti, ki jih pokriva [prvi odhod v mesecu + najmanj nočitev, zadnji odhod v
+ * mesecu + največ nočitev], presekano s povratnim oknom. Vikend 30. 10. → 1. 11. tako dobi par
+ * (2026-10, 2026-11); brez tega bi povratki v naslednjem mesecu izpadli (napaka, najdena 19. 10. 2026:
+ * vse mesečne poizvedbe so nosile mesec začetka povratnega okna in od novembra naprej vračale prazno).
+ */
+export function monthPairs(windows: Windows): MonthPair[] {
+  if (windows.empty) return [];
+  const out: MonthPair[] = [];
+  for (const month of monthsCovered(windows.outbound)) {
+    if (!windows.inbound) {
+      out.push({ outbound: month, inbound: null });
+      continue;
+    }
+    const monthStart = DateTime.fromFormat(month, 'yyyy-LL', { zone: 'utc' });
+    const depFrom = DateTime.max(monthStart, day(windows.outbound.from));
+    const depTo = DateTime.min(monthStart.endOf('month').startOf('day'), day(windows.outbound.to));
+    const retFrom = DateTime.max(depFrom.plus({ days: windows.nights?.min ?? 0 }), day(windows.inbound.from));
+    const retTo =
+      windows.nights === null
+        ? day(windows.inbound.to)
+        : DateTime.min(depTo.plus({ days: windows.nights.max }), day(windows.inbound.to));
+    if (retFrom > retTo) continue;
+    for (const inbound of monthsCovered({ from: fmt(retFrom), to: fmt(retTo) })) {
+      out.push({ outbound: month, inbound });
+    }
+  }
+  return out;
+}
+
 export interface SearchPreview {
   outboundWindow: DateRange;
   returnWindow: DateRange | null;
@@ -189,8 +227,8 @@ export interface SearchPreview {
 
 /**
  * Predogled za obrazec in za odgovor iskanja (FR-007). Število poizvedb je ocena za vir, ki
- * išče po mesecih: letališča × cilji × meseci; pri "kamor koli" se cilj šteje kot 1 in predogled
- * to pove, ker števila destinacij ne poznamo.
+ * išče po mesecih: letališča × cilji × pari mesecev (odhod, povratek); pri "kamor koli" se cilj
+ * šteje kot 1 in predogled to pove, ker števila destinacij ne poznamo.
  */
 export function buildPreview(
   rule: SearchInput,
@@ -211,9 +249,9 @@ export function buildPreview(
         ? Math.max(1, rule.destination.countries.length)
         : 1;
   if (rule.destination.mode === 'any') {
-    warnings.push('Pri cilju "kamor koli" je število poizvedb ocenjeno na eno na letališče in mesec; vir vrne vse destinacije hkrati.');
+    warnings.push('Pri cilju "kamor koli" je število poizvedb ocenjeno na eno na letališče in par mesecev odhoda/povratka; vir vrne vse destinacije hkrati.');
   }
-  const months = windows.empty ? 0 : monthsCovered(windows.outbound).length;
+  const months = monthPairs(windows).length;
   const queries = rule.departureAirports.length * (rule.destination.mode === 'countries' ? 1 : destinations) * months;
   const truncated = queries > limits.maxQueriesPerRule;
   if (truncated) {

@@ -325,7 +325,7 @@ const envSchema = z.object({
   FLIGHT_MAX_RULES_PER_USER: z.coerce.number().int().positive().max(500).default(20),
   // Poizvedbe na vire na ENO iskanje (letališče × cilj × mesec). 5 letališč × "kamor koli" × 6
   // mesecev je 30; ob preseganju iskanje dobi oznako `truncated`, ne tihega skrajšanja.
-  FLIGHT_MAX_QUERIES_PER_RULE: z.coerce.number().int().positive().max(1_000).default(60),
+  FLIGHT_MAX_QUERIES_PER_RULE: z.coerce.number().int().positive().max(1_000).default(120),
   FLIGHT_MAX_RECIPIENTS: z.coerce.number().int().positive().max(100).default(10),
   FLIGHT_MAX_FLEX_DAYS: z.coerce.number().int().nonnegative().max(365).default(60),
   // Travelpayouts/Aviasales Data API — brezplačen žeton partnerja (research.md §4). Prazno =

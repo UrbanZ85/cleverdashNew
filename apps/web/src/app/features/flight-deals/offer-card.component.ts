@@ -2,31 +2,35 @@ import { Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonBadge, IonIcon, IonText } from '@ionic/angular/standalone';
 import {
-  CHANGE_LABELS,
   changeColor,
   changeText,
   formatLjubljana,
   formatLocalDate,
   formatLocalTime,
   formatPrice,
+  offerStatus,
   passengersText,
   pluralNights,
+  searchNamesText,
+  stopsText,
   type Offer,
 } from './flight-deals.model.js';
 
 // Kartica ponudbe (FR-030, FR-032, FR-035): letališči, prevoznik, časi v LOKALNEM času letališča,
 // nočitve, potniki, cena, prečrtana stara cena z barvo spremembe, značka vira in čas podatka.
+// Uporablja jo stran s podrobnostmi in seznam deljenih ponudb; glavna stran kaže tabelo.
 //
 // Stara cena je `<s>` in nova obarvana z `ion-text color="success|danger"`: barva sama na nekaterih
 // zaslonih ni vidna, prečrtanje je. Pri NOVO ni prejšnje cene in ni primerjave (FR-030).
 // Neuradni vir ima opozorilno značko (FR-020); čas podatka je ločen od časa preverjanja (FR-019).
+// Značka (Novo / Pocenitev / Pretečeno …) je ista funkcija kot v tabeli (`offerStatus`).
 
 @Component({
   selector: 'app-flight-offer-card',
   standalone: true,
   imports: [RouterLink, IonBadge, IonIcon, IonText],
   template: `
-    <a class="card" [class.unavailable]="offer().availability === 'unavailable'" [routerLink]="['/flight-deals/offers', offer().id]">
+    <a class="card" [class.unavailable]="expired()" [routerLink]="['/flight-deals/offers', offer().id]">
       <div class="route">
         <span class="airport">
           <strong>{{ offer().origin.iata }}</strong>
@@ -58,11 +62,7 @@ import {
         @if (offer().nights !== null) {
           <span>· {{ nights() }}</span>
         }
-        @if (offer().outbound.stops > 0 || (offer().inbound?.stops ?? 0) > 0) {
-          <span>· s prestopom</span>
-        } @else {
-          <span>· direktno</span>
-        }
+        <span>· {{ stops() }}</span>
       </div>
 
       <div class="meta">
@@ -183,26 +183,19 @@ export class FlightOfferCardComponent {
 
   readonly color = computed(() => changeColor(this.offer().change?.type ?? null));
   readonly delta = computed(() => changeText(this.offer().change, this.offer().price.currency));
+  readonly status = computed(() => offerStatus(this.offer()));
+  readonly expired = computed(() => this.status().key === 'unavailable' || this.status().key === 'departed');
   readonly badge = computed(() => {
-    const o = this.offer();
-    if (o.availability === 'unavailable') return { label: CHANGE_LABELS.UNAVAILABLE, color: 'medium' };
-    const newest = o.matches.find((m) => m.changeType === 'NEW');
-    if (newest) return { label: CHANGE_LABELS.NEW, color: 'primary' };
-    const type = o.change?.type;
-    if (type === 'PRICE_DOWN') return { label: CHANGE_LABELS.PRICE_DOWN, color: 'success' };
-    if (type === 'PRICE_UP') return { label: CHANGE_LABELS.PRICE_UP, color: 'danger' };
-    return null;
+    const s = this.status();
+    return s.label ? { label: s.label, color: s.color ?? 'medium' } : null;
   });
   readonly outDate = computed(() => formatLocalDate(this.offer().outbound.departureAt, this.offer().outbound.departureTz));
   readonly outTime = computed(() => formatLocalTime(this.offer().outbound.departureAt, this.offer().outbound.departureTz));
   readonly inDate = computed(() => (this.offer().inbound ? formatLocalDate(this.offer().inbound!.departureAt, this.offer().inbound!.departureTz) : ''));
   readonly inTime = computed(() => (this.offer().inbound ? formatLocalTime(this.offer().inbound!.departureAt, this.offer().inbound!.departureTz) : ''));
   readonly nights = computed(() => pluralNights(this.offer().nights));
+  readonly stops = computed(() => stopsText(this.offer()));
   readonly passengers = computed(() => passengersText(this.offer().passengers));
   readonly dataAt = computed(() => formatLjubljana(this.offer().dataAt));
-  readonly searchNames = computed(() =>
-    this.offer()
-      .matches.map((m) => (m.isOwn ? m.searchName : `${m.searchName} (${m.owner?.displayName ?? 'deljeno'})`))
-      .join(', '),
-  );
+  readonly searchNames = computed(() => searchNamesText(this.offer()));
 }

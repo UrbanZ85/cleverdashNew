@@ -717,3 +717,214 @@ export function describeError(err: unknown, fallback: string): string {
   const detail = (err as { error?: { detail?: unknown } } | null)?.error?.detail;
   return typeof detail === 'string' && detail.length > 0 ? detail : fallback;
 }
+
+// ─── tabela ponudb ───────────────────────────────────────────────────────────────────────────
+//
+// Glavna stran modula kaže ponudbe kot TABELO z iskanjem, filtri in razvrščanjem; vse odločitve o
+// tem, katera vrstica se pokaže in v kakšnem redu, so tu (brez Angularja) in pokrite s testi
+// (tests/unit/flight-deals-offer-table.spec.ts). Komponenta samo veže stanje na te funkcije.
+//
+// "Pretečena" ponudba je taka, ki je vir ne ponuja več (`availability: unavailable`) ALI je odhod
+// že za nami. Privzeto je skrita; potrditveno polje "pokaži tudi pretečene" jo pokaže (strežnik jo
+// hrani še teden po odhodu, glej data-model.md), da je mogoče pogledati nazaj, kaj je bilo.
+
+export type OfferKind = 'new' | 'down' | 'up' | 'plain';
+export type OfferKindFilter = 'all' | 'new' | 'down' | 'up';
+export type OfferStatusKey = 'unavailable' | 'departed' | OfferKind;
+
+export interface OfferStatus {
+  key: OfferStatusKey;
+  label: string;
+  color: 'medium' | 'primary' | 'success' | 'danger' | null;
+}
+
+export type OfferSortKey = 'route' | 'departure' | 'return' | 'price' | 'perPerson' | 'change' | 'dataAt' | 'search';
+export type SortDirection = 'asc' | 'desc';
+
+export interface OfferTableSort {
+  key: OfferSortKey;
+  dir: SortDirection;
+}
+
+export interface OfferFilters {
+  query: string;
+  searchId: string | null;
+  kind: OfferKindFilter;
+  directOnly: boolean;
+  showExpired: boolean;
+}
+
+export interface OfferCounts {
+  all: number;
+  new: number;
+  down: number;
+  up: number;
+  /** Koliko ponudb skriva potrditveno polje "pokaži tudi pretečene" pri sicer enakih filtrih. */
+  expired: number;
+}
+
+type OfferLike = Pick<Offer, 'availability' | 'outbound' | 'inbound' | 'matches' | 'change'>;
+
+function toMs(now: Date | number): number {
+  return typeof now === 'number' ? now : now.getTime();
+}
+
+export function hasDeparted(offer: Pick<Offer, 'outbound'>, now: Date | number = Date.now()): boolean {
+  return new Date(offer.outbound.departureAt).getTime() < toMs(now);
+}
+
+export function isExpiredOffer(offer: Pick<Offer, 'availability' | 'outbound'>, now: Date | number = Date.now()): boolean {
+  return offer.availability === 'unavailable' || hasDeparted(offer, now);
+}
+
+/** Vrsta spremembe za filter: NOVO ima prednost pred pocenitvijo/podražitvijo (kot značka kartice). */
+export function offerKind(offer: Pick<Offer, 'matches' | 'change'>): OfferKind {
+  if (offer.matches.some((m) => m.changeType === 'NEW')) return 'new';
+  if (offer.change?.type === 'PRICE_DOWN') return 'down';
+  if (offer.change?.type === 'PRICE_UP') return 'up';
+  return 'plain';
+}
+
+/** Značka vrstice/kartice: pretečenost ima prednost pred spremembo cene. */
+export function offerStatus(offer: OfferLike, now: Date | number = Date.now()): OfferStatus {
+  if (offer.availability === 'unavailable') return { key: 'unavailable', label: CHANGE_LABELS.UNAVAILABLE, color: 'medium' };
+  if (hasDeparted(offer, now)) return { key: 'departed', label: 'Pretečeno', color: 'medium' };
+  const kind = offerKind(offer);
+  if (kind === 'new') return { key: 'new', label: CHANGE_LABELS.NEW, color: 'primary' };
+  if (kind === 'down') return { key: 'down', label: CHANGE_LABELS.PRICE_DOWN, color: 'success' };
+  if (kind === 'up') return { key: 'up', label: CHANGE_LABELS.PRICE_UP, color: 'danger' };
+  return { key: 'plain', label: '', color: null };
+}
+
+export function isDirect(offer: Pick<Offer, 'outbound' | 'inbound'>): boolean {
+  return offer.outbound.stops === 0 && (offer.inbound?.stops ?? 0) === 0;
+}
+
+/** "direktno" / "1 prestop" / "2 prestopa" — največ prestopov med tja in nazaj. */
+export function stopsText(offer: Pick<Offer, 'outbound' | 'inbound'>): string {
+  const stops = Math.max(offer.outbound.stops, offer.inbound?.stops ?? 0);
+  if (stops === 0) return 'direktno';
+  if (stops === 1) return '1 prestop';
+  if (stops === 2) return '2 prestopa';
+  if (stops <= 4) return `${stops} prestopi`;
+  return `${stops} prestopov`;
+}
+
+/** Imena iskanj, ki jim ponudba ustreza; pri deljenih z lastnikom v oklepaju. */
+export function searchNamesText(offer: Pick<Offer, 'matches'>): string {
+  return offer.matches.map((m) => (m.isOwn ? m.searchName : `${m.searchName} (${m.owner?.displayName ?? 'deljeno'})`)).join(', ');
+}
+
+/** Brez šumnikov in velikih črk, da "spanija" najde Španijo in "DUNAJ" Dunaj. */
+export function normalizeSearchText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function offerSearchText(offer: Offer): string {
+  const parts = [
+    offer.origin.iata,
+    offer.origin.city,
+    offer.origin.name,
+    offer.origin.countryName,
+    offer.destination.iata,
+    offer.destination.city,
+    offer.destination.name,
+    offer.destination.countryName,
+    offer.airline,
+    offer.airlineName,
+    offer.providerLabel,
+    ...offer.matches.flatMap((m) => [m.searchName, m.owner?.displayName]),
+  ];
+  return normalizeSearchText(parts.filter((p): p is string => typeof p === 'string' && p.length > 0).join(' '));
+}
+
+/** Vsaka beseda poizvedbe se mora pojaviti nekje v besedilu ponudbe (letališči, mesti, državi,
+ * prevoznik, vir, imena iskanj). Prazna poizvedba ustreza vsemu. */
+export function offerMatchesQuery(offer: Offer, query: string): boolean {
+  const terms = normalizeSearchText(query)
+    .split(/\s+/)
+    .filter((t) => t.length > 0);
+  if (terms.length === 0) return true;
+  const haystack = offerSearchText(offer);
+  return terms.every((t) => haystack.includes(t));
+}
+
+export function emptyOfferFilters(): OfferFilters {
+  return { query: '', searchId: null, kind: 'all', directOnly: false, showExpired: false };
+}
+
+export function filterOffers(offers: readonly Offer[], filters: OfferFilters, now: Date | number = Date.now()): Offer[] {
+  return offers.filter(
+    (o) =>
+      (filters.showExpired || !isExpiredOffer(o, now)) &&
+      (!filters.searchId || o.matches.some((m) => m.searchId === filters.searchId)) &&
+      (!filters.directOnly || isDirect(o)) &&
+      (filters.kind === 'all' || offerKind(o) === filters.kind) &&
+      offerMatchesQuery(o, filters.query),
+  );
+}
+
+/** Števci za čipe vrste (brez filtra vrste, da čip pove, koliko bi pokazal) in za skrite pretečene. */
+export function offerCounts(offers: readonly Offer[], filters: OfferFilters, now: Date | number = Date.now()): OfferCounts {
+  const base = filterOffers(offers, { ...filters, kind: 'all', showExpired: true }, now);
+  const expired = base.filter((o) => isExpiredOffer(o, now)).length;
+  const visible = filters.showExpired ? base : base.filter((o) => !isExpiredOffer(o, now));
+  const counts: OfferCounts = { all: visible.length, new: 0, down: 0, up: 0, expired };
+  for (const o of visible) {
+    const kind = offerKind(o);
+    if (kind !== 'plain') counts[kind] += 1;
+  }
+  return counts;
+}
+
+export const DEFAULT_OFFER_SORT: OfferTableSort = { key: 'price', dir: 'asc' };
+
+/** Klik na isti stolpec obrne smer; nov stolpec začne z naravno smerjo (čas podatka: najnovejše najprej). */
+export function toggleOfferSort(current: OfferTableSort, key: OfferSortKey): OfferTableSort {
+  if (current.key === key) return { key, dir: current.dir === 'asc' ? 'desc' : 'asc' };
+  return { key, dir: key === 'dataAt' ? 'desc' : 'asc' };
+}
+
+function sortValue(offer: Offer, key: OfferSortKey): number | string | null {
+  switch (key) {
+    case 'route':
+      return `${offer.origin.iata} ${offer.destination.iata}`;
+    case 'departure':
+      return new Date(offer.outbound.departureAt).getTime();
+    case 'return':
+      return offer.inbound ? new Date(offer.inbound.departureAt).getTime() : null;
+    case 'price':
+      return offer.price.amount;
+    case 'perPerson':
+      return offer.pricePerPerson.amount;
+    case 'change':
+      return offer.change && offer.change.type !== 'UNAVAILABLE' && offer.change.type !== 'NEW' ? offer.change.absolute : null;
+    case 'dataAt':
+      return new Date(offer.dataAt).getTime();
+    case 'search':
+      return searchNamesText(offer);
+  }
+}
+
+/** Stabilno razvrščanje; manjkajoča vrednost (enosmerno brez povratka, brez spremembe) je VEDNO
+ * na koncu, ne glede na smer. Izenačene vrstice loči cena, nato odhod. */
+export function sortOffers(offers: readonly Offer[], sort: OfferTableSort): Offer[] {
+  const sign = sort.dir === 'asc' ? 1 : -1;
+  const compare = (a: number | string | null, b: number | string | null): number => {
+    if (a === null && b === null) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    if (typeof a === 'string' || typeof b === 'string') return sign * String(a).localeCompare(String(b), 'sl');
+    return sign * (a - b);
+  };
+  return [...offers].sort(
+    (a, b) =>
+      compare(sortValue(a, sort.key), sortValue(b, sort.key)) ||
+      a.price.amount - b.price.amount ||
+      new Date(a.outbound.departureAt).getTime() - new Date(b.outbound.departureAt).getTime(),
+  );
+}

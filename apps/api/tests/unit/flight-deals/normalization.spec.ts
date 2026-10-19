@@ -4,7 +4,8 @@ import { loadEnv, resetEnvCacheForTests } from '../../../src/platform/config/env
 import type { ProviderQuery } from '../../../src/modules/flight-deals/domain/query-plan.js';
 import { dataAtFromLink, travelpayoutsProvider } from '../../../src/modules/flight-deals/providers/travelpayouts.provider.js';
 import { ryanairProvider } from '../../../src/modules/flight-deals/providers/ryanair.provider.js';
-import { NOW } from './_fixtures.js';
+import { computeWindows } from '../../../src/modules/flight-deals/domain/date-window.js';
+import { NOW, weekendRule } from './_fixtures.js';
 
 // FR-016, FR-017, edge case "neveljavne cene": razčlenitev odgovorov virov je čista (člen IX).
 // Primeri so iz dokumentacije virov (research.md §4, §5).
@@ -128,6 +129,26 @@ describe('Travelpayouts', () => {
     expect(req.url).toContain('one_way=false');
     expect(req.url).toContain('direct=true');
     expect(req.url).toContain('currency=eur');
+  });
+
+  it('request: 5 mesecev vnaprej z 1–3 nočitvami vpraša za vsak mesec odhoda tudi povratek v naslednjem mesecu (napaka 19. 10. 2026)', () => {
+    const rule = weekendRule({ departureAirports: ['LJU'], dates: { mode: 'rolling', months: 5 }, minNights: 1, maxNights: 3 });
+    const windows = computeWindows(rule, NOW, 'Europe/Ljubljana');
+    const queries = travelpayoutsProvider.buildQueries({ rule: { ...rule, id: 'r' }, windows, airports: findAirport });
+    const months = queries.map((q) => {
+      const u = new URL(travelpayoutsProvider.request(q, env()).url);
+      return `${u.searchParams.get('departure_at')}>${u.searchParams.get('return_at')}`;
+    });
+    expect(months).toEqual([
+      '2026-10>2026-10', '2026-10>2026-11',
+      '2026-11>2026-11', '2026-11>2026-12',
+      '2026-12>2026-12', '2026-12>2027-01',
+      '2027-01>2027-01', '2027-01>2027-02',
+      '2027-02>2027-02', '2027-02>2027-03',
+      '2027-03>2027-03', '2027-03>2027-04',
+    ]);
+    // Povratek nikoli pred odhodom.
+    expect(months.every((m) => m.split('>')[1]! >= m.split('>')[0]!)).toBe(true);
   });
 
   it('dataAtFromLink: brez search_date vrne čas preverjanja; datum v prihodnosti tudi', () => {
