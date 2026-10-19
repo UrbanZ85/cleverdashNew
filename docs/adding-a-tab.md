@@ -75,6 +75,13 @@ uveljavlja korak za korakom. Predloga za kopiranje je v `templates/tab-module/`.
    obvestila (`platform/notifications/router.ts`). Podrobno v
    [`docs/acting-as-another-user.md`](acting-as-another-user.md).
 
+   Tri oblike lastništva zapisa, ki jih `tests/unit/no-owner-fields.spec.ts` razlikuje:
+   `userId` (zaseben zapis, `{ _id, userId }` je pogoj dostopa — večina modulov), `ownerId` +
+   `members` (zapis, ki ga namenoma bere tudi kdo drug z vlogo — 010, 013) in `userId` +
+   `recipients` (015: prejemnik zapisa NE bere, bere samo izpeljanko prek vezne zbirke, zato
+   zapis ostane zaseben). Pred izbiro glej
+   [`specs/015-flight-deals/data-model.md`](../specs/015-flight-deals/data-model.md).
+
 8. **Neobvezno: cilj uvoza za agente (ChatGPT, n8n).**
 
    Če naj v tvoj modul piše tudi agent, dodaj `apps/api/src/modules/<modul>/ingest.ts` z eno

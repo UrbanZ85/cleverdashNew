@@ -22,6 +22,26 @@ const TAB_REGISTRY_ICONS = [
   'restaurant-outline', // recipes — Recepti (013)
   'settings-outline', // settings — Nastavitve
   'stats-chart-outline', // analytics — Analitika (014, requiredScopes: ['admin'])
+  'airplane-outline', // flight-deals — Leti (015)
+];
+
+// 015: ikone zavihka Leti. Smer spremembe cene je poleg barve edini znak, ki loči pocenitev od
+// podražitve — neregistrirana ikona bi pustila samo barvo, ki je na nekaterih zaslonih ni videti.
+const FLIGHT_DEALS_ICONS = [
+  'airplane-outline', // zavihek, prazno stanje
+  'trending-down-outline', // pocenitev
+  'trending-up-outline', // podražitev
+  'mail-outline', // prejemniki obvestil, outbox v adminu
+  'globe-outline', // destinacija "kamor koli"
+  'calendar-outline', // datumi
+  'people-outline', // prejemniki
+  'refresh-outline', // "Preveri zdaj"
+  'alert-circle-outline', // vir ni dosegljiv / neuradni vir
+  'close-circle', // odstrani letališče
+  'add-outline',
+  'trash-outline',
+  'open-outline', // povezava do rezervacije
+  'chevron-forward-outline',
 ];
 
 // 010: ikone, ki jih zavihek Opravila uporablja v svojih predlogah. Prevajalnik jih ne
@@ -149,6 +169,12 @@ describe('register-icons', () => {
       expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz zavihka Recepti ni registrirana`).toContain(
         name,
       );
+    }
+  });
+
+  it('registrira vsako ikono, ki jo uporablja zavihek Leti (015)', () => {
+    for (const name of FLIGHT_DEALS_ICONS) {
+      expect(AVAILABLE_ICON_NAMES, `ikona "${name}" iz zavihka Leti ni registrirana`).toContain(name);
     }
   });
 

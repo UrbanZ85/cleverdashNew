@@ -1,0 +1,1171 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash — Iskalnik letalskih ponudb (Leti)
+  version: 1.0.0
+  description: |
+    REST pogodba za zavihek Leti (015). Samostojna pogodba po vzorcu 003, 007, 009, 010, 013 in
+    014 — ne podvaja poti iz 001 (`/auth/*`, `/users`, `/settings`, `/health`), ki se v
+    produkciji strežejo iz istega Express app-a.
+
+    ## Tri polovice
+
+    | polovica | pot | kdo sme |
+    |---|---|---|
+    | **iskanja in ponudbe** | `/flight-deals/*` | prijavljen uporabnik ali API ključ z obsegi `flight-deals:read`, `flight-deals:write`, `flight-deals:share` |
+    | **referenčni podatki** | `/flight-deals/airports`, `/flight-deals/countries`, `/flight-deals/providers` | vsak prijavljen klicatelj; brez osebnih podatkov |
+    | **administracija** | `/flight-deals/admin/*` | izključno PRIJAVLJEN uporabnik z obsegom `admin` (FR-045) |
+
+    API ključ v administracijo ne pride, tudi s katerim koli obsegom — isti razlog in isti
+    zapis kot pri 014 (`modules/analytics/admin-guard.ts`): zapora, ki stoji na tem, da nekdo
+    drugje ni pozabil, ni zapora.
+
+    ## Dve zavrnitvi in vsaka ima svoj status
+
+    Tuje iskanje vrne **404** (obstoja ne razkrijemo — FR-014); prejemnik, ki poskusi iskanje
+    urediti, prav tako **404**, ker iskanja NE VIDI (FR-041) — za razliko od 010/013 tu ni vmesne
+    vloge, ki bi zapis videla brez pravice. **403** je rezerviran za manjkajoč obseg in za
+    administracijo. **409** vrne ročni zagon, kadar eno preverjanje že teče (FR-050).
+
+    ## Prevzem imena (012)
+
+    Vsa iskanja in ponudbe se filtrirajo po `req.auth.subjectId` — administrator, ki dela v imenu
+    drugega, vidi in ureja NJEGOVA iskanja. Izjema je administracija (`/admin/*`): ta pripada
+    administratorju samemu (`req.actor`), prevzeto ime nanjo ne vpliva, ročni zagon pa se
+    pripiše človeku, ki ga je sprožil.
+
+    ## Čas
+
+    Vsi trenutki so UTC (`date-time`). Vsak let nosi poleg `departureAt` tudi `departureTz`
+    (IANA cona letališča), da odjemalec prikaže lokalni čas, po katerem so bila pravila
+    presojana (FR-011). Koledarski datumi pravil (`departDate`, `from`, `to`) so `yyyy-LL-dd`
+    brez cone — pomenijo dan po lokalnem času odhodnega letališča.
+
+    ## Idempotentnost
+
+    Vse mutacije sprejemajo `Idempotency-Key` (člen III). `DELETE` vrne `200` s telesom in ne
+    `204`, da shranjen odgovor obstaja (isti razlog kot v 010).
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: searches
+    description: Uporabnikova iskanja (FlightSearchRule)
+  - name: offers
+    description: Ponudbe, ujemanja in zgodovina cen
+  - name: sharing
+    description: Prejemniki obvestil
+  - name: reference
+    description: Letališča, države, viri — brez osebnih podatkov
+  - name: admin
+    description: Urnik, zagoni, viri, outbox — samo administrator
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ───────────────────────────── pregled ─────────────────────────────
+  /flight-deals/overview:
+    get:
+      tags: [offers]
+      summary: Glavna stran modula v enem klicu
+      description: |
+        Aktivna in neaktivna iskanja klicatelja s stanjem zadnjega preverjanja, nove ponudbe in
+        spremembe cen od zadnjega zagona, najcenejše ponudbe, čas zadnjega uspešnega zagona
+        namestitve in meje modula. Seznami so omejeni (`limit`, privzeto 20) in nosijo `total`,
+        da vmesnik izpiše "… in še N" — paginacije v aplikaciji ni (FR-032).
+      operationId: getFlightDealsOverview
+      security:
+        - bearerAuth: [flight-deals:read]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Pregled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Overview' }
+
+  # ───────────────────────────── iskanja ─────────────────────────────
+  /flight-deals/searches:
+    get:
+      tags: [searches]
+      summary: Moja iskanja
+      operationId: listFlightSearches
+      security:
+        - bearerAuth: [flight-deals:read]
+      responses:
+        '200':
+          description: Iskanja klicatelja, najnovejše spremembe najprej
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [searches, limits]
+                properties:
+                  searches:
+                    type: array
+                    items: { $ref: '#/components/schemas/FlightSearch' }
+                  limits: { $ref: '#/components/schemas/Limits' }
+    post:
+      tags: [searches]
+      summary: Ustvari iskanje
+      description: |
+        `400` z razlogom, kadar: `maxNights < minNights`; `to < from`; `flexDays` ni nenegativno
+        celo število; letališče ni v naboru; način `countries`/`airports` brez vrednosti;
+        presežena meja iskanj na osebo (FR-015). Vsa sporočila so slovenski stavki za uporabnika.
+      operationId: createFlightSearch
+      security:
+        - bearerAuth: [flight-deals:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FlightSearchInput' }
+      responses:
+        '201':
+          description: Ustvarjeno iskanje s `preview`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightSearch' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /flight-deals/searches/preview:
+    post:
+      tags: [searches]
+      summary: Dejansko obdobje in ocena kombinacij za osnutek (FR-007)
+      description: |
+        Ne shrani ničesar. Sprejme isti vnos kot `POST /flight-deals/searches` in vrne, kaj bi
+        sistem iskal, če bi preverjanje teklo zdaj: razširjeno okno odhodov, okno povratkov,
+        število kombinacij datumov, število poizvedb na vire in opozorila (npr. "okno sega v
+        preteklost, dnevi pred danes so izpuščeni", "trajanje ne gre v obdobje — kombinacij ni",
+        "presežena meja poizvedb na iskanje"). Pot je deklarirana PRED `/{searchId}`.
+      operationId: previewFlightSearch
+      security:
+        - bearerAuth: [flight-deals:read]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FlightSearchInput' }
+      responses:
+        '200':
+          description: Predogled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchPreview' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /flight-deals/searches/{searchId}:
+    parameters:
+      - $ref: '#/components/parameters/SearchId'
+    get:
+      tags: [searches]
+      summary: Eno iskanje s stanjem zadnjega preverjanja
+      operationId: getFlightSearch
+      security:
+        - bearerAuth: [flight-deals:read]
+      responses:
+        '200':
+          description: Iskanje
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightSearch' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [searches]
+      summary: Uredi iskanje (tudi aktivacija in deaktivacija)
+      description: |
+        Delni vnos: izpuščeno polje pomeni "ne spreminjaj". Sprememba kriterijev NE pobriše
+        obstoječih ujemanj — ob naslednjem preverjanju tista, ki novim pravilom ne ustrezajo,
+        preidejo v `stale` in se ne obveščajo. `active: false` ustavi preverjanje in obveščanje,
+        ponudbe ostanejo vidne.
+      operationId: updateFlightSearch
+      security:
+        - bearerAuth: [flight-deals:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FlightSearchPatch' }
+      responses:
+        '200':
+          description: Posodobljeno iskanje
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightSearch' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [searches]
+      summary: Izbriši iskanje
+      description: |
+        Izbriše iskanje in njegova ujemanja. Ponudb in zgodovine cen NE briše — pripadajo tudi
+        drugim iskanjem, sicer pa potečejo s TTL. Zagon, ki teče, izbrisano iskanje preskoči.
+      operationId: deleteFlightSearch
+      security:
+        - bearerAuth: [flight-deals:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Izbrisano
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted: { type: boolean }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /flight-deals/searches/{searchId}/offers:
+    parameters:
+      - $ref: '#/components/parameters/SearchId'
+    get:
+      tags: [offers]
+      summary: Ponudbe enega iskanja
+      operationId: listFlightSearchOffers
+      security:
+        - bearerAuth: [flight-deals:read]
+      parameters:
+        - $ref: '#/components/parameters/OfferSort'
+        - $ref: '#/components/parameters/IncludeUnavailable'
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: Ponudbe, ki ustrezajo temu iskanju
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfferList' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /flight-deals/searches/{searchId}/recipients/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/SearchId'
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [sharing]
+      summary: Dodaj prejemnika obvestil ali mu vklopi/izklopi obveščanje
+      description: |
+        Idempotentno. `400`, kadar je `userId` lastnik (FR-040), kadar oseba ne obstaja ali se še
+        nikoli ni prijavila, ali kadar je presežena meja prejemnikov. Prejemnik od tega trenutka
+        vidi ponudbe tega iskanja v `GET /flight-deals/offers?scope=shared` in prejema dopise.
+      operationId: setFlightSearchRecipient
+      security:
+        - bearerAuth: [flight-deals:share]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notify: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Iskanje s posodobljenim seznamom prejemnikov
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightSearch' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [sharing]
+      summary: Odstrani prejemnika
+      description: |
+        Takojšen in idempotenten. Prejemnik ne dobi več dopisov tega iskanja in njegovih ponudb
+        ne vidi več (FR-042). Zbirni dopis, ki je v tem trenutku že v outboxu, se pred
+        pošiljanjem prečisti — postavke tega iskanja izpadejo.
+      operationId: removeFlightSearchRecipient
+      security:
+        - bearerAuth: [flight-deals:share]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Iskanje
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightSearch' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── ponudbe ─────────────────────────────
+  /flight-deals/offers:
+    get:
+      tags: [offers]
+      summary: Ponudbe, ki jih klicatelj sme videti
+      description: |
+        `scope=own` — ponudbe mojih iskanj; `scope=shared` — ponudbe iskanj, pri katerih sem
+        prejemnik (FR-031, FR-041); `scope=all` (privzeto) — oboje. Vsaka ponudba nosi `matches`:
+        za katera iskanja ustreza, s čim je bilo zadnje preverjanje zanjo (`NEW`, `PRICE_DOWN` …)
+        in — pri deljenih — ime lastnika. Konfiguracije tujega iskanja v odgovoru NI, samo ime.
+
+        `changed=true` vrne samo ponudbe, pri katerih je zadnje preverjanje prineslo spremembo
+        (NOVO, pocenitev, podražitev) — vir za razdelka "Nove ponudbe" in "Spremembe cen".
+      operationId: listFlightOffers
+      security:
+        - bearerAuth: [flight-deals:read]
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [all, own, shared], default: all } }
+        - { name: searchId, in: query, schema: { type: string }, description: Omeji na eno iskanje (lastno ali deljeno) }
+        - { name: changed, in: query, schema: { type: string, enum: ['true', 'false'] } }
+        - $ref: '#/components/parameters/OfferSort'
+        - $ref: '#/components/parameters/IncludeUnavailable'
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: Ponudbe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfferList' }
+
+  /flight-deals/offers/{offerId}:
+    parameters:
+      - { name: offerId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [offers]
+      summary: Podrobnosti ponudbe z zgodovino cen
+      description: |
+        `404`, kadar ponudba ne ustreza nobenemu iskanju, ki ga klicatelj sme videti — tudi če
+        ponudba v bazi obstaja (FR-031). `history` je naraščajoče po `checkedAt`, vključno z
+        `UNCHANGED` točkami za graf; `NEW` nima `previousPrice` (FR-030).
+      operationId: getFlightOffer
+      security:
+        - bearerAuth: [flight-deals:read]
+      responses:
+        '200':
+          description: Ponudba
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfferDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── referenčno ─────────────────────────────
+  /flight-deals/airports:
+    get:
+      tags: [reference]
+      summary: Iskanje letališč po imenu, mestu, kodi ali radiju (FR-003, FR-004)
+      description: |
+        Brez `near`: `q` išče po `iata`, `name` in `city`, neobčutljivo na velike črke in šumnike
+        (ista primerjava kot `core/search/fold-text.ts` na odjemalcu). Z `near`: letališča v
+        `radiusKm` od izhodišča, razvrščena po razdalji; izhodišče je IATA koda ali literal
+        `home` (domači kraj iz nastavitev poti — `400`, kadar ni nastavljen). Največ 50 zadetkov;
+        `total` pove, koliko jih je bilo.
+      operationId: searchAirports
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 60 } }
+        - { name: near, in: query, schema: { type: string }, description: IATA koda ali `home` }
+        - { name: radiusKm, in: query, schema: { type: integer, minimum: 10, maximum: 500, default: 150 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 25 } }
+      responses:
+        '200':
+          description: Letališča
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [airports, total]
+                properties:
+                  airports:
+                    type: array
+                    items: { $ref: '#/components/schemas/Airport' }
+                  total: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /flight-deals/countries:
+    get:
+      tags: [reference]
+      summary: Države z vsaj enim letališčem v naboru
+      operationId: listAirportCountries
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Države, razvrščene po slovenskem imenu
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [countries]
+                properties:
+                  countries:
+                    type: array
+                    items:
+                      type: object
+                      required: [code, name, airportCount]
+                      properties:
+                        code: { type: string, description: ISO 3166-1 alpha-2 }
+                        name: { type: string, description: Slovensko ime (Intl.DisplayNames) }
+                        airportCount: { type: integer }
+
+  /flight-deals/providers:
+    get:
+      tags: [reference]
+      summary: Viri podatkov, kot jih sme videti uporabnik
+      description: |
+        Oznaka, ime, ali je uraden, ali je vklopljen, čas zadnjega uspeha in opozorilo za
+        neuradni vir (FR-020). Zadnje NAPAKE tu ni — ta je administratorska (`/admin/providers`).
+      operationId: listFlightProviders
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Viri
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProviderPublic' }
+
+  # ───────────────────────────── administracija ─────────────────────────────
+  /flight-deals/admin/scheduler:
+    get:
+      tags: [admin]
+      summary: Nastavitve urnika z naslednjim terminom
+      operationId: getFlightScheduler
+      security:
+        - bearerAuth: [admin]
+      responses:
+        '200':
+          description: Nastavitve
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SchedulerSettings' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [admin]
+      summary: Spremeni urnik
+      description: |
+        `preset` različen od `custom` prepiše `cronExpression` s pripadajočim izrazom; pri
+        `custom` je `cronExpression` obvezen. Izraz se preveri pred shranjevanjem (FR-047) in
+        `400` pove, zakaj ni veljaven. Sprememba velja ob naslednjem tiku, brez ponovnega zagona
+        (FR-048). Odgovor nosi `nextRunAt` v UTC in `nextRunLocal` v coni urnika.
+      operationId: updateFlightScheduler
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                preset: { type: string, enum: [daily-06, daily-06-18, every-6h, monday-08, custom] }
+                cronExpression: { type: string, description: "Pet polj, standardna sintaksa" }
+                timezone: { type: string, description: IANA; privzeto Europe/Ljubljana }
+      responses:
+        '200':
+          description: Nastavitve
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SchedulerSettings' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /flight-deals/admin/runs:
+    get:
+      tags: [admin]
+      summary: Zgodovina zagonov
+      operationId: listFlightRuns
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 30 } }
+      responses:
+        '200':
+          description: Zagoni, najnovejši najprej
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs, active]
+                properties:
+                  runs:
+                    type: array
+                    items: { $ref: '#/components/schemas/Run' }
+                  active:
+                    oneOf:
+                      - $ref: '#/components/schemas/Run'
+                      - type: 'null'
+                    description: Zagon, ki trenutno teče ali čaka, sicer `null`
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin]
+      summary: Sproži preverjanje takoj
+      description: |
+        Ustvari zagon s sprožilcem `manual` in ga začne obdelovati brez čakanja na tik. Deluje
+        tudi pri izklopljenem urniku (FR-046). `409`, kadar zagon že teče ali čaka — telo je
+        tisti zagon (FR-050).
+      operationId: triggerFlightRun
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Zagon sprejet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Eno preverjanje že teče
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /flight-deals/admin/runs/{runId}:
+    parameters:
+      - { name: runId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [admin]
+      summary: En zagon z napakami
+      operationId: getFlightRun
+      security:
+        - bearerAuth: [admin]
+      responses:
+        '200':
+          description: Zagon
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /flight-deals/admin/runs/{runId}/cancel:
+    parameters:
+      - { name: runId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      summary: Zahtevaj prekinitev
+      description: |
+        Nastavi `cancelRequested`; zagon se ustavi po iskanju, ki ga ravnokar obdeluje, in konča
+        kot `cancelled`. Že zapisane spremembe ostanejo; obvestila za ta zagon se NE pošljejo.
+        Idempotentno; na končanem zagonu `409`.
+      operationId: cancelFlightRun
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Zagon
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Zagon je že končan
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /flight-deals/admin/providers:
+    get:
+      tags: [admin]
+      summary: Stanje virov z zadnjo napako (FR-053)
+      operationId: listFlightProvidersAdmin
+      security:
+        - bearerAuth: [admin]
+      responses:
+        '200':
+          description: Viri
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers, email]
+                properties:
+                  providers:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProviderAdmin' }
+                  email:
+                    type: object
+                    required: [configured]
+                    description: Ali je pošta nastavljena (FR-038). Gostitelja in uporabnika NI v odgovoru.
+                    properties:
+                      configured: { type: boolean }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /flight-deals/admin/notifications:
+    get:
+      tags: [admin]
+      summary: Outbox dopisov — zadržani, neuspeli, poslani
+      description: Prejemnik je naveden z imenom in zamaskirano e-pošto, nikoli s celo (FR-044).
+      operationId: listFlightNotificationsAdmin
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, sending, sent, failed, suppressed] } }
+        - { name: runId, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: Dopisi
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notifications]
+                properties:
+                  notifications:
+                    type: array
+                    items: { $ref: '#/components/schemas/NotificationAdmin' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Keycloakov dostopni žeton (relay) ali API ključ prek `X-Api-Key`. Klicatelj z API ključem
+        nima osebe — lastnik se razreši kot pri 009/010/013. Administracija API ključa ne sprejme.
+
+  parameters:
+    SearchId:
+      name: searchId
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, maxLength: 128 }
+    OfferSort:
+      name: sort
+      in: query
+      schema: { type: string, enum: [price, departure, appeared, change], default: price }
+      description: '`appeared` = po `firstMatchedAt` padajoče; `change` = največja pocenitev najprej'
+    IncludeUnavailable:
+      name: includeUnavailable
+      in: query
+      schema: { type: string, enum: ['true', 'false'], default: 'false' }
+
+  responses:
+    BadRequest:
+      description: Neveljavna zahteva
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Manjka obseg ali klicatelj ni administrator-človek
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Zapisa ni ALI ga klicatelj ne sme videti
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        correlationId: { type: string }
+
+    Person:
+      type: object
+      description: Ime iz imenika ob izpisu; e-pošte NI (010/013).
+      required: [id, displayName, initials]
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        initials: { type: string }
+
+    Limits:
+      type: object
+      required: [maxSearchesPerUser, maxRecipients, maxQueriesPerSearch, maxFlexDays]
+      properties:
+        maxSearchesPerUser: { type: integer }
+        maxRecipients: { type: integer }
+        maxQueriesPerSearch: { type: integer }
+        maxFlexDays: { type: integer }
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: number }
+        currency: { type: string, description: ISO 4217 }
+
+    ChangeType:
+      type: string
+      enum: [NEW, PRICE_DOWN, PRICE_UP, UNCHANGED, UNAVAILABLE]
+
+    ProviderOutcome:
+      type: string
+      enum: [ok, noFlights, unsupported, unreachable, rateLimited, incomplete, disabled]
+      description: FR-017; `disabled` = vir ni vklopljen v tej namestitvi
+
+    DayWindow:
+      type: object
+      required: [weekdays, earliest, latest]
+      properties:
+        weekdays:
+          type: array
+          items: { type: integer, minimum: 1, maximum: 7 }
+          description: ISO (1 = ponedeljek … 7 = nedelja); prazno = kateri koli dan
+        earliest: { type: [string, 'null'], pattern: '^\d{2}:\d{2}$', description: Lokalni čas letališča }
+        latest: { type: [string, 'null'], pattern: '^\d{2}:\d{2}$' }
+
+    FlightSearchInput:
+      type: object
+      required: [name, departureAirports, destination, dates, passengers]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        active: { type: boolean, default: true }
+        departureAirports:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: { type: string, pattern: '^[A-Z]{3}$' }
+        destination:
+          type: object
+          required: [mode]
+          properties:
+            mode: { type: string, enum: [any, countries, airports] }
+            countries: { type: array, items: { type: string, pattern: '^[A-Z]{2}$' }, maxItems: 50 }
+            airports: { type: array, items: { type: string, pattern: '^[A-Z]{3}$' }, maxItems: 50 }
+        excluded:
+          type: object
+          properties:
+            countries: { type: array, items: { type: string, pattern: '^[A-Z]{2}$' }, maxItems: 50 }
+            airports: { type: array, items: { type: string, pattern: '^[A-Z]{3}$' }, maxItems: 50 }
+        dates:
+          type: object
+          required: [mode]
+          description: |
+            `fixed`: `departDate` obvezen, `returnDate` ali `null` (enosmerno).
+            `range`: `from` in `to` obvezna, `from <= to`.
+            `rolling`: `months` 1–12; `flexDays` se ne upošteva.
+          properties:
+            mode: { type: string, enum: [fixed, range, rolling] }
+            departDate: { type: string, format: date }
+            returnDate: { type: [string, 'null'], format: date }
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+            months: { type: integer, minimum: 1, maximum: 12 }
+        flexDays: { type: integer, minimum: 0, maximum: 60, default: 0 }
+        returnWithinWindow: { type: boolean, default: true }
+        minNights: { type: [integer, 'null'], minimum: 0, maximum: 60 }
+        maxNights: { type: [integer, 'null'], minimum: 0, maximum: 60, description: '>= minNights' }
+        outbound: { $ref: '#/components/schemas/DayWindow' }
+        inbound: { $ref: '#/components/schemas/DayWindow' }
+        minStayHours: { type: [integer, 'null'], minimum: 0, maximum: 720 }
+        passengers:
+          type: object
+          required: [adults]
+          properties:
+            adults: { type: integer, minimum: 1, maximum: 9 }
+            childrenAges: { type: array, items: { type: integer, minimum: 0, maximum: 17 }, maxItems: 8, default: [] }
+        price:
+          type: object
+          properties:
+            maxPerPerson: { type: [number, 'null'], minimum: 1 }
+            maxTotal: { type: [number, 'null'], minimum: 1 }
+            currency: { type: string, pattern: '^[A-Z]{3}$', default: EUR }
+        airlines: { type: array, items: { type: string, maxLength: 3 }, maxItems: 20, default: [] }
+        maxStops: { type: integer, minimum: 0, maximum: 3, default: 0 }
+        baggage: { type: string, enum: [any, cabin, checked], default: any }
+
+    FlightSearchPatch:
+      description: Vsako polje iz `FlightSearchInput` neobvezno; izpuščeno = "ne spreminjaj".
+      allOf:
+        - $ref: '#/components/schemas/FlightSearchInput'
+      required: []
+
+    Recipient:
+      allOf:
+        - $ref: '#/components/schemas/Person'
+        - type: object
+          required: [notify, addedAt]
+          properties:
+            notify: { type: boolean }
+            addedAt: { type: string, format: date-time }
+
+    SearchCheckState:
+      type: object
+      description: Stanje ZADNJEGA preverjanja tega iskanja po virih (FR-017).
+      required: [runId, at, outcomes]
+      properties:
+        runId: { type: string }
+        at: { type: string, format: date-time }
+        outcomes:
+          type: array
+          items:
+            type: object
+            required: [providerId, outcome, queries, offers]
+            properties:
+              providerId: { type: string }
+              outcome: { $ref: '#/components/schemas/ProviderOutcome' }
+              message: { type: string, description: "Slovensko, za uporabnika" }
+              queries: { type: integer }
+              offers: { type: integer }
+
+    SearchPreview:
+      type: object
+      required: [outboundWindow, returnWindow, dateCombinations, queries, warnings]
+      properties:
+        outboundWindow:
+          type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        returnWindow:
+          oneOf:
+            - type: object
+              required: [from, to]
+              properties:
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+            - type: 'null'
+          description: '`null` pri enosmernem iskanju'
+        dateCombinations: { type: integer, description: "Pari (odhod, povratek), ki ustrezajo dnevom in trajanju" }
+        queries: { type: integer, description: Poizvedbe na vire (letališče × cilj × mesec) }
+        truncated: { type: boolean, description: Presežena meja poizvedb na iskanje — iskanje bo zajelo samo del }
+        warnings:
+          type: array
+          items: { type: string }
+
+    FlightSearch:
+      allOf:
+        - $ref: '#/components/schemas/FlightSearchInput'
+        - type: object
+          required: [id, isOwn, recipients, preview, lastCheck, lastSuccessfulCheckAt, offerCount, createdAt, updatedAt]
+          properties:
+            id: { type: string }
+            isOwn: { type: boolean, description: "Vedno `true` — tuje iskanje ni nikoli v odgovoru" }
+            recipients:
+              type: array
+              items: { $ref: '#/components/schemas/Recipient' }
+            preview: { $ref: '#/components/schemas/SearchPreview' }
+            lastCheck:
+              oneOf:
+                - $ref: '#/components/schemas/SearchCheckState'
+                - type: 'null'
+            lastSuccessfulCheckAt: { type: [string, 'null'], format: date-time }
+            offerCount: { type: integer, description: Aktivna ujemanja }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+
+    Segment:
+      type: object
+      required: [departureAt, departureTz, arrivalAt, arrivalTz, flightNumbers, stops]
+      properties:
+        departureAt: { type: string, format: date-time }
+        departureTz: { type: string, description: IANA cona odhodnega letališča (FR-011) }
+        arrivalAt: { type: [string, 'null'], format: date-time }
+        arrivalTz: { type: string }
+        flightNumbers: { type: array, items: { type: string } }
+        stops: { type: integer }
+
+    Airport:
+      type: object
+      required: [iata, name, city, country, countryName, latitude, longitude, timezone]
+      properties:
+        iata: { type: string }
+        name: { type: string }
+        city: { type: string }
+        country: { type: string, description: ISO 3166-1 alpha-2 }
+        countryName: { type: string, description: Slovensko ime }
+        latitude: { type: number }
+        longitude: { type: number }
+        timezone: { type: string }
+        distanceKm: { type: number, description: Samo pri iskanju po radiju }
+
+    OfferMatch:
+      type: object
+      description: Kaj ta ponudba pomeni za ENO iskanje, ki ga klicatelj sme videti.
+      required: [searchId, searchName, isOwn, changeType, firstMatchedAt, status]
+      properties:
+        searchId: { type: string }
+        searchName: { type: string }
+        isOwn: { type: boolean }
+        owner:
+          oneOf:
+            - $ref: '#/components/schemas/Person'
+            - type: 'null'
+          description: Samo pri deljenem iskanju (FR-041); pri lastnem `null`
+        changeType: { $ref: '#/components/schemas/ChangeType' }
+        firstMatchedAt: { type: string, format: date-time }
+        status: { type: string, enum: [active, unavailable, stale] }
+
+    Offer:
+      type: object
+      required:
+        [id, providerId, providerLabel, providerOfficial, airline, airlineName, origin, destination, outbound, inbound, nights,
+         price, pricePerPerson, priceIncludes, previousPrice, change, passengers, bookingUrl, dataAt, lastCheckedAt, availability, matches]
+      properties:
+        id: { type: string }
+        providerId: { type: string }
+        providerLabel: { type: string }
+        providerOfficial: { type: boolean, description: '`false` = neuradni vir; vmesnik to označi (FR-020)' }
+        airline: { type: string }
+        airlineName: { type: [string, 'null'] }
+        origin: { $ref: '#/components/schemas/Airport' }
+        destination: { $ref: '#/components/schemas/Airport' }
+        outbound: { $ref: '#/components/schemas/Segment' }
+        inbound:
+          oneOf:
+            - $ref: '#/components/schemas/Segment'
+            - type: 'null'
+        nights: { type: [integer, 'null'] }
+        price: { $ref: '#/components/schemas/Money' }
+        pricePerPerson: { $ref: '#/components/schemas/Money' }
+        priceIncludes: { type: [string, 'null'], description: "Kaj vir pravi, da cena vključuje (FR-013)" }
+        previousPrice:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: Zadnja DRUGAČNA cena; `null` pri NOVO (FR-030)
+        change:
+          oneOf:
+            - type: object
+              required: [type, absolute, percent]
+              properties:
+                type: { $ref: '#/components/schemas/ChangeType' }
+                absolute: { type: number, description: "Nova minus stara, v valuti ponudbe" }
+                percent: { type: number, description: Zaokroženo na eno decimalko }
+            - type: 'null'
+          description: '`null`, kadar zgodovinske cene ni — primerjave se NE prikaže'
+        passengers:
+          type: object
+          required: [adults, children]
+          properties:
+            adults: { type: integer }
+            children: { type: integer }
+        fare:
+          type: object
+          properties:
+            type: { type: [string, 'null'] }
+            baggage: { type: [string, 'null'] }
+        bookingUrl: { type: [string, 'null'], description: "Samo, če gostitelj pripada viru" }
+        providerPreviousPrice:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: Prejšnja cena, kot jo navede VIR sam (Ryanair); ne vpliva na `change`
+        dataAt: { type: string, format: date-time, description: "Čas podatka pri viru — pri predpomnjenih virih starejši od `lastCheckedAt`" }
+        lastCheckedAt: { type: string, format: date-time }
+        availability: { type: string, enum: [available, unavailable] }
+        matches:
+          type: array
+          items: { $ref: '#/components/schemas/OfferMatch' }
+
+    OfferList:
+      type: object
+      required: [offers, total]
+      properties:
+        offers:
+          type: array
+          items: { $ref: '#/components/schemas/Offer' }
+        total: { type: integer, description: "Koliko jih ustreza filtru; `offers` jih ima največ `limit`" }
+
+    HistoryPoint:
+      type: object
+      required: [checkedAt, price, previousPrice, changeType]
+      properties:
+        checkedAt: { type: string, format: date-time }
+        price:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        previousPrice:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        changeType: { $ref: '#/components/schemas/ChangeType' }
+
+    OfferDetail:
+      allOf:
+        - $ref: '#/components/schemas/Offer'
+        - type: object
+          required: [history]
+          properties:
+            history:
+              type: array
+              items: { $ref: '#/components/schemas/HistoryPoint' }
+
+    Overview:
+      type: object
+      required: [searches, newOffers, priceChanges, cheapest, lastRun, limits]
+      properties:
+        searches:
+          type: array
+          items: { $ref: '#/components/schemas/FlightSearch' }
+        newOffers: { $ref: '#/components/schemas/OfferList' }
+        priceChanges: { $ref: '#/components/schemas/OfferList' }
+        cheapest: { $ref: '#/components/schemas/OfferList' }
+        lastRun:
+          oneOf:
+            - type: object
+              required: [at, status]
+              properties:
+                at: { type: string, format: date-time }
+                status: { type: string }
+            - type: 'null'
+          description: Zadnji zagon namestitve, ki se je končal; `null`, dokler ni bilo nobenega
+        limits: { $ref: '#/components/schemas/Limits' }
+
+    ProviderPublic:
+      type: object
+      required: [id, label, official, enabled, lastSuccessAt, notice]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        official: { type: boolean }
+        enabled: { type: boolean }
+        lastSuccessAt: { type: [string, 'null'], format: date-time }
+        notice:
+          type: [string, 'null']
+          description: Slovensko opozorilo, npr. "podatki do 48 ur stari" ali "neuradni vir"
+
+    ProviderAdmin:
+      allOf:
+        - $ref: '#/components/schemas/ProviderPublic'
+        - type: object
+          required: [lastErrorAt, lastError, lastOutcome, requestsToday, dailyLimit]
+          properties:
+            lastErrorAt: { type: [string, 'null'], format: date-time }
+            lastError: { type: [string, 'null'] }
+            lastOutcome:
+              oneOf:
+                - $ref: '#/components/schemas/ProviderOutcome'
+                - type: 'null'
+            requestsToday: { type: integer, description: "Zagoni danes, v katerih je bil vir vprašan" }
+            dailyLimit: { type: [integer, 'null'], description: "Omejitev zagonov na dan (neuradni vir: 2); `null` = brez" }
+
+    SchedulerSettings:
+      type: object
+      required: [enabled, preset, cronExpression, timezone, nextRunAt, nextRunLocal, presets, updatedAt, updatedBy]
+      properties:
+        enabled: { type: boolean }
+        preset: { type: string, enum: [daily-06, daily-06-18, every-6h, monday-08, custom] }
+        cronExpression: { type: string }
+        timezone: { type: string }
+        nextRunAt: { type: [string, 'null'], format: date-time, description: '`null`, kadar je izklopljen' }
+        nextRunLocal: { type: [string, 'null'], description: "Isti trenutek, izpisan v coni urnika" }
+        presets:
+          type: array
+          description: Preprosti urniki z izrazi, ki jih vmesnik ponudi (FR-046)
+          items:
+            type: object
+            required: [id, label, cronExpression]
+            properties:
+              id: { type: string }
+              label: { type: string }
+              cronExpression: { type: string }
+        updatedAt: { type: string, format: date-time }
+        updatedBy:
+          oneOf:
+            - $ref: '#/components/schemas/Person'
+            - type: 'null'
+
+    Run:
+      type: object
+      required: [id, trigger, status, scheduledFor, startedAt, finishedAt, requestedBy, cancelRequested, counters, providers, errors]
+      properties:
+        id: { type: string }
+        trigger: { type: string, enum: [schedule, manual] }
+        status: { type: string, enum: [queued, running, succeeded, partial, failed, cancelled, interrupted] }
+        scheduledFor: { type: [string, 'null'], format: date-time }
+        startedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+        requestedBy:
+          oneOf:
+            - $ref: '#/components/schemas/Person'
+            - type: 'null'
+        cancelRequested: { type: boolean }
+        counters:
+          type: object
+          required: [rules, queries, providerRequests, offersSeen, newMatches, priceDrops, priceRises, unavailable, notificationsPending, notificationsSent, notificationsSuppressed, notificationsFailed]
+          properties:
+            rules: { type: integer }
+            queries: { type: integer }
+            providerRequests: { type: integer, description: "Dejanski klici na vire; manj od `queries`, kadar predpomnilnik zadene" }
+            offersSeen: { type: integer }
+            newMatches: { type: integer }
+            priceDrops: { type: integer }
+            priceRises: { type: integer }
+            unavailable: { type: integer }
+            notificationsPending: { type: integer }
+            notificationsSent: { type: integer }
+            notificationsSuppressed: { type: integer }
+            notificationsFailed: { type: integer }
+        providers:
+          type: array
+          items:
+            type: object
+            required: [providerId, enabled, ok, noFlights, unsupported, unreachable, rateLimited, incomplete]
+            properties:
+              providerId: { type: string }
+              enabled: { type: boolean }
+              ok: { type: integer }
+              noFlights: { type: integer }
+              unsupported: { type: integer }
+              unreachable: { type: integer }
+              rateLimited: { type: integer }
+              incomplete: { type: integer }
+        errors:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [at, code, message]
+            properties:
+              at: { type: string, format: date-time }
+              providerId: { type: string }
+              searchId: { type: string }
+              code: { type: string }
+              message: { type: string, description: Brez skrivnosti in brez e-naslovov (FR-054) }
+
+    NotificationAdmin:
+      type: object
+      required: [id, runId, recipient, status, suppressedReason, attemptCount, nextAttemptAt, sentAt, lastError, itemCount, createdAt]
+      properties:
+        id: { type: string }
+        runId: { type: string }
+        recipient:
+          allOf:
+            - $ref: '#/components/schemas/Person'
+            - type: object
+              required: [emailHint]
+              properties:
+                emailHint: { type: string, description: Zamaskirana e-pošta kot v imeniku }
+        status: { type: string, enum: [pending, sending, sent, failed, suppressed] }
+        suppressedReason: { type: [string, 'null'], enum: [smtp-not-configured, no-email, user-missing, null] }
+        attemptCount: { type: integer }
+        nextAttemptAt: { type: [string, 'null'], format: date-time }
+        sentAt: { type: [string, 'null'], format: date-time }
+        lastError: { type: [string, 'null'] }
+        itemCount: { type: integer }
+        createdAt: { type: string, format: date-time }

@@ -152,4 +152,21 @@ export const TAB_REGISTRY: TabDefinition[] = [
     requiredScopes: ['admin'],
     enabled: true,
   },
+  // 015: iskalnik letalskih ponudb. Prvi zavihek, ki piše po urniku, nastavljenem V APLIKACIJI
+  // (ne v okolju) in ki pošilja e-pošto. Za register to ni razlika — je pa razlog, da ima modul
+  // poleg zavihka še administratorsko podstran (`/flight-deals/admin`), ki NI ločen zavihek:
+  // urnik je lastnost modula in gre z njim, kadar se modul odstrani (člen I).
+  //
+  // `order: 12`: 0–11 so zasedene (glej opombo pri `recipes` o nestabilnem vrstnem redu pri
+  // enakem `order`). Za Analitiko in ne pred Nastavitvami, ker je zavihek nov in ga uporabnik v
+  // meniju lahko prestavi sam (005).
+  {
+    id: 'flight-deals',
+    title: 'Leti',
+    icon: 'airplane-outline',
+    route: '/flight-deals',
+    order: 12,
+    requiredScopes: ['flight-deals:read'],
+    enabled: true,
+  },
 ];

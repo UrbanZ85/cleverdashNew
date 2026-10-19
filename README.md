@@ -396,6 +396,54 @@ Branje zahteva obseg `admin` in **prijavljenega uporabnika** — API ključ anal
 na obsege; beleženje ogleda (`POST /usage/views`) pa sme vsak prijavljen uporabnik, ker gre za
 njegovo lastno uporabo.
 
+### Leti — iskalnik letalskih ponudb (015)
+
+Zavihek **Leti**: uporabnik enkrat opiše, kaj išče — eno ali več odhodnih letališč (iskanje po
+imenu, kodi ali slovenskem imenu: Trst, Benetke, Gradec; ali "vsa v radiju 150 km"), cilj ali
+"kamor koli", točna datuma, obdobje ali "naslednjih N mesecev", fleksibilnost ±N dni, razpon
+nočitev, dovoljene dneve in ure ter cenovne meje — sistem pa po urniku sam preverja ponudbe,
+si zapomni vsako ceno in pošlje **en zbirni e-poštni dopis** lastniku in izbranim prejemnikom,
+kadar se pojavi nova ponudba ali se cena spremeni. Če se ni spremenilo nič, ne pošlje ničesar.
+Stara cena je prečrtana, nova zelena ali rdeča, s pocenitvijo v evrih in odstotkih.
+
+Troje je v tem modulu prvič v aplikaciji in je vredno poznati, preden se kdo loti sprememb:
+
+- **Urnik nastavlja administrator v aplikaciji, ne v okolju.** Tik na 60 s vpraša bazo, kateri
+  termin urnika je zapadel in še nima zagona; zagon je zapis z unikatnim `slotKey`, zato dva
+  izvoda ne moreta izvesti istega termina, prekinjen zagon pa naslednji tik označi kot
+  `interrupted` in termin dohiti (člen V). Živega cron časovnika ni — `croner` se uporablja
+  izključno za izračun naslednjega termina. Scheduler modula 002 se po členu I ne uporablja.
+- **E-pošta.** Prva v aplikaciji: skupna storitev `platform/email/` nad obstoječimi `SMTP_*`.
+  Dopisi gredo prek **outboxa** (`FlightNotification`) z atomarnim prevzemom in ponovitvami z
+  naraščajočim zamikom; unikatni indeks (prejemnik, zagon) naredi dvojni dopis nemogoč. Pred
+  pošiljanjem se vsaka postavka znova preveri proti pravilom iskanja. Cel e-naslov prebere samo
+  `platform/users/readUserEmails` in gre naravnost v poštno sejo — v nobenem odgovoru API-ja in
+  v nobenem dnevniku ga ni.
+- **Viri z različnim pravnim statusom.** Prevozniki javnih vmesnikov nimajo. Produkcijski vir je
+  **Travelpayouts/Aviasales** (dovoljen, brezplačen; cene so iz predpomnilnika tujih iskanj in do
+  48 ur stare, kar je pri vsaki ponudbi vidno kot "podatek z dne"). **Ryanairov neuradni iskalnik
+  cen** je adapter, privzeto izklopljen (`FLIGHT_RYANAIR_ENABLED`), omejen na dva zagona dnevno —
+  ista odločitev lastnika kot pri Neverinu v 011. **Wizz Air in easyJet** sta za zaščito pred
+  roboti in vračata `unsupported`; nobene kode za obhod ni (člen XII). Izpad vira **ni izginotje
+  ponudb**: ostanejo z zadnjo znano ceno, iskanje pa pove, da vir ni odgovoril; "ni več na voljo"
+  se zapiše samo, kadar vir uspešno odgovori brez te ponudbe.
+
+Še nekaj odločitev: ponudba ima stabilno identiteto brez cene (letališči, časi odhodov,
+prevoznik, številke letov, prestopi, sestava potnikov, valuta, vir), "NOVO" pa je lastnost para
+(iskanje, ponudba) — ista ponudba je za novo iskanje nova, za staro ne. Iskanje nosi `userId` in
+`recipients`: prejemnik iskanja **ne bere**, bere samo ponudbe prek ujemanj (`FlightSearchMatch`),
+zato ostane `{ _id, userId }` pogoj vsakega dostopa. Vse poizvedbe vseh uporabnikov se zložijo po
+ključu in vir se za isti par letališč in mesec vpraša enkrat, prek `platform/cache`. Nabor
+letališč je vgrajen (OurAirports, javna domena, s časovno cono iz koordinat); ure odhoda se
+presojajo v coni odhodnega, ure povratka v coni ciljnega letališča, nočitve pa po koledarskih
+dneh — prehod na zimski čas jih ne spremeni.
+
+Pogodba je v [`specs/015-flight-deals/contracts/openapi.yaml`](specs/015-flight-deals/contracts/openapi.yaml),
+obsegi `flight-deals:read`, `flight-deals:write` in `flight-deals:share`; administracija
+(`/flight-deals/admin/*`) zahteva prijavljenega administratorja in API ključa ne sprejme.
+Odločitve so v [`specs/015-flight-deals/research.md`](specs/015-flight-deals/research.md),
+preizkus v [`specs/015-flight-deals/quickstart.md`](specs/015-flight-deals/quickstart.md).
+
 ---
 
 **Stack:** Ionic 8 + Angular 20 (web in Android prek Capacitorja), Node.js 22 + Express 5 +

@@ -183,6 +183,44 @@ export const APP_ROUTES: Routes = [
     loadComponent: () => import('./features/ingest/ingest.page.js').then((m) => m.IngestPage),
     canActivate: [authGuard],
   },
+  // 015: zavihek "Leti". Koren je tab-gated; podstrani imajo samo `authGuard` (vzorec `recipes/:recipeId`).
+  // `searches/new` NIMA svojega vnosa — ujame se kot `:searchId = 'new'` in se ob prvem shranjevanju
+  // zamenja z id-jem brez menjave primerka (ista odločitev kot pri beležkah in receptih). Statična
+  // `flight-deals/searches` stoji PRED `flight-deals/searches/:searchId`.
+  //
+  // Administracija (`flight-deals/admin`) je podpot modula in NE ločen zavihek: urnik je lastnost
+  // modula in gre z njim. Varuha na odjemalcu ni — povezava se pokaže samo adminu, pravi varuh je
+  // strežnik (modules/flight-deals/admin-guard.ts), ki navadnemu uporabniku vrne 403.
+  {
+    path: 'flight-deals',
+    loadComponent: () => import('./features/flight-deals/flight-deals.page.js').then((m) => m.FlightDealsPage),
+    canActivate: [authGuard, tabGuard],
+  },
+  {
+    path: 'flight-deals/searches',
+    loadComponent: () => import('./features/flight-deals/searches.page.js').then((m) => m.FlightSearchesPage),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'flight-deals/searches/:searchId',
+    loadComponent: () => import('./features/flight-deals/search-editor.page.js').then((m) => m.FlightSearchEditorPage),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'flight-deals/offers/:offerId',
+    loadComponent: () => import('./features/flight-deals/offer-detail.page.js').then((m) => m.FlightOfferDetailPage),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'flight-deals/shared',
+    loadComponent: () => import('./features/flight-deals/shared-offers.page.js').then((m) => m.FlightSharedOffersPage),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'flight-deals/admin',
+    loadComponent: () => import('./features/flight-deals/admin.page.js').then((m) => m.FlightAdminPage),
+    canActivate: [authGuard],
+  },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
   { path: '**', redirectTo: 'dashboard' },
 ];

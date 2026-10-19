@@ -1,6 +1,7 @@
 import { addIcons } from 'ionicons';
 import {
   addOutline,
+  airplaneOutline,
   alertCircleOutline,
   appsOutline,
   arrowBackOutline,
@@ -34,6 +35,7 @@ import {
   expandOutline,
   flameOutline,
   folderOutline,
+  globeOutline,
   helpCircleOutline,
   homeOutline,
   imageOutline,
@@ -42,6 +44,7 @@ import {
   lockClosedOutline,
   locationOutline,
   logOutOutline,
+  mailOutline,
   micOutline,
   menu,
   menuOutline,
@@ -69,6 +72,8 @@ import {
   star,
   starOutline,
   statsChartOutline,
+  trendingDownOutline,
+  trendingUpOutline,
   stopCircleOutline,
   settingsOutline,
   thermometerOutline,
@@ -173,6 +178,12 @@ export const REGISTERED_ICONS = {
   'star-outline': starOutline,
   // 014: zavihek Analitika — edini zavihek, ki ga vidi samo administrator.
   'stats-chart-outline': statsChartOutline,
+  // 015: zavihek Leti in njegove predloge (smer spremembe cene, dopisi, destinacije).
+  'airplane-outline': airplaneOutline,
+  'trending-down-outline': trendingDownOutline,
+  'trending-up-outline': trendingUpOutline,
+  'mail-outline': mailOutline,
+  'globe-outline': globeOutline,
   'stop-circle-outline': stopCircleOutline,
   'thermometer-outline': thermometerOutline,
   'time-outline': timeOutline,

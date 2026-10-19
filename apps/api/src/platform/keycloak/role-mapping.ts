@@ -63,6 +63,13 @@ const BASE_USER_SCOPES: readonly string[] = [
   // 011 — brez tega bi zavihek "Meritve postaj" delal samo administratorju
   // (docs/adding-a-tab.md, korak 5). Niz je PREPISAN, ne uvožen iz modula (člen I).
   'meteo:read',
+  // 015 — brez teh treh bi zavihek "Leti" delal samo administratorju (docs/adding-a-tab.md,
+  // korak 5). Nizi so PREPISANI, ne uvoženi iz modula (člen I). `flight-deals:share` je ločen od
+  // `flight-deals:write`, ker je dodajanje prejemnika edina poteza, ki drugi osebi odpre vpogled
+  // v ponudbe in ji pošilja e-pošto — API ključ za "shrani iskanje" tega ne sme dobiti zastonj.
+  'flight-deals:read',
+  'flight-deals:write',
+  'flight-deals:share',
 ];
 
 /** Preslika seznam Keycloak vlog/skupin (iz `realm_access.roles` ali `groups` claima) v

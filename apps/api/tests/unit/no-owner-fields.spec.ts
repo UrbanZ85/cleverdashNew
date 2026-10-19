@@ -17,6 +17,9 @@ import { AbsencePeriodModel } from '../../src/modules/time-tracking/models/absen
 import { RemoteSessionModel } from '../../src/modules/time-tracking/models/remote-session.model.js';
 import { TodoListModel } from '../../src/modules/todos/models/todo-list.model.js';
 import { FileInboxModel } from '../../src/modules/file-sharing/models/file-inbox.model.js';
+import { FlightSearchRuleModel } from '../../src/modules/flight-deals/models/flight-search-rule.model.js';
+import { FlightOfferModel } from '../../src/modules/flight-deals/models/flight-offer.model.js';
+import { FlightSearchMatchModel } from '../../src/modules/flight-deals/models/flight-search-match.model.js';
 
 // 004, data-model.md "Načelo lastništva zapisov": OBRNJENO iz 001/003 (glej git zgodovino
 // te datoteke) — sistem je zdaj večuporabniški. Ta test preveri OBE strani nove razmejitve
@@ -40,6 +43,10 @@ describe('data-model.md "Načelo lastništva zapisov": userId na osebnih podatki
     // kar lastništva ne razrahlja: `{ _id, userId }` ostane pogoj vsakega lastnikovega dostopa,
     // pošiljatelj pa pride do predala samo prek žetona in kode na javni poti.
     ['FileInbox', FileInboxModel],
+    // 015: iskanje nosi `userId`, ČEPRAV ima `recipients` — prejemnik iskanja ne bere (FR-041), bere
+    // samo ponudbe prek ujemanj, zato je `{ _id, userId }` še vedno pogoj vsakega dostopa
+    // (specs/015-flight-deals/data-model.md, "Načelo lastništva zapisov").
+    ['FlightSearchRule', FlightSearchRuleModel],
   ] as const;
 
   it.each(personal)('%s NOSI userId', (_name, model) => {
@@ -50,6 +57,8 @@ describe('data-model.md "Načelo lastništva zapisov": userId na osebnih podatki
     ['Holiday', HolidayModel],
     ['CameraEmbedAllowlist', CameraEmbedAllowlistModel],
     ['ExternalCache', ExternalCacheModel],
+    // 015: ponudba je ista za vsakogar (kot predpomnjen odgovor vira); kdo jo vidi, odloči ujemanje.
+    ['FlightOffer', FlightOfferModel],
   ] as const;
 
   it.each(shared)('%s (skupna referenčna/varnostna tabela) NE nosi userId', (_name, model) => {
@@ -91,5 +100,16 @@ describe('data-model.md (010): deljen zapis nosi ownerId in members, NE userId',
     const memberPaths = Object.keys(members.schema?.paths ?? {});
     expect(memberPaths).toContain('userId');
     expect(memberPaths).toContain('role');
+  });
+});
+
+// 015: vez iskanje ↔ ponudba nosi `ruleOwnerId` (denormaliziran lastnik iskanja) in NE `userId`:
+// zapis berejo tudi prejemniki prek `ruleId`, ime `userId` pa bi obljubljalo izolacijo, ki je ni.
+describe('data-model.md (015): FlightSearchMatch nosi ruleOwnerId, NE userId', () => {
+  it('FlightSearchMatch nosi ruleOwnerId', () => {
+    expect(Object.keys(FlightSearchMatchModel.schema.paths)).toContain('ruleOwnerId');
+  });
+  it('FlightSearchMatch NE nosi userId', () => {
+    expect(Object.keys(FlightSearchMatchModel.schema.paths)).not.toContain('userId');
   });
 });

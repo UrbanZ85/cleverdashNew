@@ -46,6 +46,9 @@ import { ingestKeysRouter } from './platform/ingest/keys.router.js';
 import { registerRecipesIngest } from './modules/recipes/ingest.js';
 import { registerSavedLinksIngest } from './modules/saved-links/ingest.js';
 import { registerNotesIngest } from './modules/notes/ingest.js';
+import { flightDealsRouter } from './modules/flight-deals/router.js';
+import { flightDealsAdminRouter } from './modules/flight-deals/admin.router.js';
+import { startFlightDealsScheduler } from './modules/flight-deals/services/tick.js';
 
 // Ta datoteka je edino mesto, ki poveže module z `/api/v1`. Dodajanje modula (dashboard,
 // settings, tabs — 004+ v tej funkcionalnosti) pomeni en nov `apiV1Router.use(...)` klic
@@ -140,6 +143,12 @@ export async function createApp() {
   // ključ, ki si obsegov ne izbere. Glej platform/ingest/keys.router.ts.
   apiV1Router.use(ingestKeysRouter);
   apiV1Router.use(ingestRouter);
+  // 015: iskalnik letalskih ponudb. Dva usmerjevalnika kot pri 009/013: uporabniška polovica pod
+  // `requireScopes` in ADMINISTRATORSKA polovica (`/flight-deals/admin/*`) pod lastnim varuhom, ki
+  // API ključa ne spusti skozi (modules/flight-deals/admin-guard.ts). Oba sta del istega modula in
+  // se z njim brišeta.
+  apiV1Router.use(flightDealsRouter);
+  apiV1Router.use(flightDealsAdminRouter);
 
   app.use('/api/v1', apiV1Router);
   app.use(problemErrorHandler());
@@ -166,6 +175,10 @@ export async function createApp() {
   // med tem pobriše. Pometač se tam kliče neposredno (`runFileShareCleanup`), kar je tudi
   // edini način, da se ga da preveriti brez čakanja na uro.
   if (env.NODE_ENV !== 'test') startFileShareCleanup(logger);
+  // 015: LASTEN tik modula Leti (ne scheduler 002 — člen I; ne živ cron časovnik — člen V.1). Vsak
+  // tik vpraša bazo, kateri termin urnika je zapadel; urnik nastavlja administrator v aplikaciji.
+  // V testih ne, iz istega razloga kot pometač zgoraj — testi kličejo `runFlightTick` neposredno.
+  if (env.NODE_ENV !== 'test') startFlightDealsScheduler(env, logger);
 
   // 002, research.md §8 "Integracijska podrobnost": scheduler tika prevzame odhodni ping
   // (vsakih SCHEDULER_TICK_SECONDS namesto ločenega 60-sekundnega intervala). `startHeartbeat`

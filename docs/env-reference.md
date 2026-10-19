@@ -312,6 +312,50 @@ hranjenje na nobeno vprašanje s tega zaslona ne odgovori.
 čez vse zapise namestitve in sprehod po nosilcu, drugo je poizvedba čez indeksirano okno. Zaslon
 vedno pokaže, kdaj je bil izračun narejen, in ponuja gumb za takojšen preračun.
 
+### Leti — iskalnik letalskih ponudb (015)
+
+Vse s privzetkom razen **žetona vira**; brez njega modul deluje, a brez produkcijskega vira (vsak
+zagon pove "ni vklopljenih virov"). Urnik preverjanja **ni** v okolju — nastavlja ga administrator
+v aplikaciji (zbirka `FlightSchedulerSettings`), ker mora sprememba veljati brez ponovnega zagona.
+
+| Spremenljivka | Privzeto | Vloga |
+|---|---|---|
+| `FLIGHT_TRAVELPAYOUTS_TOKEN` | *(prazno = vir izklopljen)* | Žeton Travelpayouts/Aviasales Data API (brezplačen partnerski račun). Gre v glavo `X-Access-Token`, nikoli v URL |
+| `FLIGHT_TRAVELPAYOUTS_MARKER` | *(prazno)* | Partnerska oznaka za povezave do rezervacije; neobvezno |
+| `FLIGHT_TRAVELPAYOUTS_URL` | `https://api.travelpayouts.com` | Osnova vira |
+| `FLIGHT_RYANAIR_ENABLED` | `false` | Neuradni Ryanairov iskalnik cen — **zavestna odločitev lastnika** (glej spodaj) |
+| `FLIGHT_RYANAIR_URL` | `https://www.ryanair.com/api` | |
+| `FLIGHT_RYANAIR_FALLBACK_URL` | `https://services-api.ryanair.com` | Rezervni gostitelj iste poti ob 403/5xx; prazno = brez |
+| `FLIGHT_RYANAIR_DAILY_RUN_LIMIT` | `2` | Največ zagonov na dan, v katerih je vir vprašan |
+| `FLIGHT_FAKE_PROVIDER_ENABLED` | `false` | Testni vir z IZMIŠLJENIMI podatki; v produkciji ga `loadEnv` **zavrne** |
+| `FLIGHT_SCHEDULER_TICK_SECONDS` | `60` | Tik, ki vpraša bazo, ali je zapadel termin urnika (člen V) |
+| `FLIGHT_RUN_STALE_MINUTES` | `30` | Zagon brez utripa → `interrupted`; obtičal dopis `sending` → nazaj v `pending` |
+| `FLIGHT_RUN_RETENTION_DAYS` | `90` | TTL zagonov in dopisov |
+| `FLIGHT_HISTORY_RETENTION_DAYS` | `180` | TTL zgodovine cen |
+| `FLIGHT_PROVIDER_TIMEOUT_MS` | `15000` | Časovna omejitev ene zahteve na vir |
+| `FLIGHT_PROVIDER_CONCURRENCY` | `2` | Hkratne zahteve na vire skupaj (Ryanair vedno 1, s 500 ms premora) |
+| `FLIGHT_PROVIDER_CACHE_SECONDS` | `3600` | TTL odgovorov virov v `platform/cache` (člen VIII) |
+| `FLIGHT_MAX_RULES_PER_USER` | `20` | Meja iskanj na osebo |
+| `FLIGHT_MAX_QUERIES_PER_RULE` | `60` | Poizvedbe na vir na eno iskanje; preseženo je vidno kot `truncated` |
+| `FLIGHT_MAX_RECIPIENTS` | `10` | Prejemniki obvestil na iskanje |
+| `FLIGHT_MAX_FLEX_DAYS` | `60` | Zgornja meja fleksibilnosti po meri |
+| `SMTP_SECURE` | `false` | Edina NOVA poštna spremenljivka: `true` = TLS od prvega bajta (465), `false` = STARTTLS na 587 |
+
+**Zakaj je Ryanair privzeto izklopljen.** Ryanair javnega vmesnika nima; neuradni iskalnik cen
+deluje brez prijave, a `robots.txt` prepoveduje `/api`, pogoji uporabe pa dovoljujejo samo zasebno
+nekomercialno rabo. To je **ista odločitev kot pri Neverinu (011)**: lastnik namestitve jo sprejme
+sam, v okolju, in modul ob tem nič ne obide — ob `403`/`429` je izid `unreachable`/`rateLimited`,
+nobene kode za izogibanje zaščitam ni (člen XII). Wizz Air in easyJet sta za zaščito pred roboti
+in **nista podprta**.
+
+**Roki hrambe se res uveljavljajo.** Vsi trije (`FLIGHT_RUN_RETENTION_DAYS`,
+`FLIGHT_HISTORY_RETENTION_DAYS`, in rok ponudbe = dan po odhodu + 7 dni) so TTL indeksi na
+`expiresAt` — isti razlog kot pri `USAGE_RETENTION_DAYS` zgoraj.
+
+**`FLIGHT_PROVIDER_CACHE_SECONDS` je pod urnikom, ne nad njim.** Pri dveh zagonih dnevno vsak zagon
+vir vpraša znova; ročni zagon v isti uri pa dobi predpomnjen odgovor. Vrednost nad 6 ur bi pri
+urniku "vsakih 6 ur" pomenila, da nekateri zagoni vira sploh ne vprašajo.
+
 ## 3. E-pošta — ali je še potrebna
 
 Stari sistem pošilja e-pošto ob ustvarjanju urnika in ob napakah, poleg potisnih obvestil.
@@ -329,9 +373,12 @@ Stari sistem pošilja e-pošto ob ustvarjanju urnika in ob napakah, poleg potisn
 Celoten sklop je **neobvezen**. Če `SMTP_HOST` ni nastavljen, pošiljanje e-pošte se
 preskoči brez napake.
 
-[NEEDS CLARIFICATION: ali e-pošta še ostane, ali potisna obvestila zadostujejo? Potisna so
-hitrejša in bolj zanesljiva; e-pošta je uporabna kot rezerva, kadar telefon nima omrežja.
-Predlog: obdrži samo za napake in opozorila o poteku seje, ne za vsakodnevne potrditve.]
+**Odgovor (015, 17. 10. 2026): e-pošta ostane in jo prvi uporablja modul Leti.** Potisna obvestila
+v tej namestitvi ne delujejo (ugotovitev iz 010), ponudba letov pa je uporabna le, če človek zanjo
+izve. Pošiljanje je skupna storitev `platform/email/mailer.service.ts` (nodemailer) nad TEM sklopom
+spremenljivk, z eno novo: `SMTP_SECURE`. `NOTIFY_EMAIL_TO` ostane rezerviran za sistemska
+opozorila (naslovi prejemnikov pri Letih so osebni in se berejo iz `User`, nikoli iz okolja).
+Beleženje časa e-pošte še vedno ne pošilja — za napake in potek seje ostaja potisno obvestilo.
 
 ## 4. Frontend
 
@@ -442,6 +489,28 @@ USAGE_RETENTION_DAYS=400
 USAGE_VIEW_DEDUPE_SECONDS=60
 ANALYTICS_CACHE_SECONDS=300
 ANALYTICS_ORPHAN_GRACE_HOURS=24
+
+# ─── Leti (015; vse neobvezno razen žetona vira — brez njega ni produkcijskega vira) ───
+FLIGHT_TRAVELPAYOUTS_TOKEN=
+FLIGHT_TRAVELPAYOUTS_MARKER=
+FLIGHT_TRAVELPAYOUTS_URL=https://api.travelpayouts.com
+FLIGHT_RYANAIR_ENABLED=false
+FLIGHT_RYANAIR_URL=https://www.ryanair.com/api
+FLIGHT_RYANAIR_FALLBACK_URL=https://services-api.ryanair.com
+FLIGHT_RYANAIR_DAILY_RUN_LIMIT=2
+FLIGHT_FAKE_PROVIDER_ENABLED=false
+FLIGHT_SCHEDULER_TICK_SECONDS=60
+FLIGHT_RUN_STALE_MINUTES=30
+FLIGHT_RUN_RETENTION_DAYS=90
+FLIGHT_HISTORY_RETENTION_DAYS=180
+FLIGHT_PROVIDER_TIMEOUT_MS=15000
+FLIGHT_PROVIDER_CONCURRENCY=2
+FLIGHT_PROVIDER_CACHE_SECONDS=3600
+FLIGHT_MAX_RULES_PER_USER=20
+FLIGHT_MAX_QUERIES_PER_RULE=60
+FLIGHT_MAX_RECIPIENTS=10
+FLIGHT_MAX_FLEX_DAYS=60
+SMTP_SECURE=false
 ```
 
 ## 6. Sintaksa — past iz starega `.env`

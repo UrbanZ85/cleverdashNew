@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",
+    "croner": "^10.0.1",
     "exceljs": "^4.4.0",
     "express": "^5.0.0",
     "firebase-admin": "^12.5.0",
@@ -20,6 +21,7 @@
     "luxon": "^3.5.0",
     "mongoose": "^8.6.0",
     "ms": "^2.1.3",
+    "nodemailer": "^10.1.2",
     "openid-client": "^6.8.7",
     "pino": "^9.4.0",
     "puppeteer": "^25.8.0",
@@ -33,6 +35,7 @@
     "@types/ms": "^0.7.34",
     "@types/node": "^22.5.0",
     "@types/supertest": "^6.0.2",
+    "geo-tz": "^8.1.10",
     "mongodb-memory-server": "^10.0.0",
     "supertest": "^7.0.0",
     "tsx": "^4.19.0",

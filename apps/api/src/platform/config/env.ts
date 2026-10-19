@@ -142,6 +142,10 @@ const envSchema = z.object({
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().optional(),
   NOTIFY_EMAIL_TO: z.string().optional(),
+  // 015: edina NOVA poštna spremenljivka. `false` pomeni navadno povezavo z nadgradnjo v STARTTLS
+  // (privzeto vedenje na 587), `true` pomeni TLS od prvega bajta (465). Pošiljanje samo uporablja
+  // obstoječi sklop zgoraj — dvojne konfiguracije ni (specs/015-flight-deals/research.md §9).
+  SMTP_SECURE: boolFromString.default('false'),
 
   // Brskalnik (002, research.md §2/§14) — .env.example jih je 001 predvidela, a shema jih
   // do zdaj ni validirala, kar je natanko past iz docs/env-reference.md §6 (SALT_ROUNDS → NaN).
@@ -294,6 +298,61 @@ const envSchema = z.object({
    * Ista vrednost in isti razlog kot `ORPHAN_GRACE_MS` v pometaču modula 009 — tam je zapisana
    * kot konstanta, tu kot nastavitev, ker gre za prikaz in ne za brisanje. */
   ANALYTICS_ORPHAN_GRACE_HOURS: z.coerce.number().int().positive().default(24),
+
+  // Leti (015, specs/015-flight-deals/research.md §15) — vse s privzetkom razen žetona vira, da
+  // `docker compose up` iz čiste kopije deluje (kakovostna vrata, točka 4). Brez žetona vir
+  // Travelpayouts vrača izid `disabled`, modul pa deluje naprej in to pove.
+  //
+  // Tik je LASTEN (ne scheduler modula 002, člen I) in po členu V: vsak tik vpraša bazo, kateri
+  // termin urnika je zapadel in nima zagona. Urnik sam NI tu — nastavlja ga administrator v
+  // aplikaciji (zbirka FlightSchedulerSettings).
+  FLIGHT_SCHEDULER_TICK_SECONDS: z.coerce.number().int().positive().default(60),
+  // Zagon v stanju `running`, ki toliko minut ni poslal utripa, je prekinjen (restart sredi dela)
+  // in se označi `interrupted`; isti prag vrne obtičal `sending` dopis v `pending`.
+  FLIGHT_RUN_STALE_MINUTES: z.coerce.number().int().positive().default(30),
+  // Roka hrambe uveljavljata TTL indeksa, ne pometač (glej USAGE_RETENTION_DAYS zgoraj).
+  FLIGHT_RUN_RETENTION_DAYS: z.coerce.number().int().positive().max(3_650).default(90),
+  FLIGHT_HISTORY_RETENTION_DAYS: z.coerce.number().int().positive().max(3_650).default(180),
+  FLIGHT_PROVIDER_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  // Hkratne zahteve na vire SKUPAJ; neuradni Ryanairov vir ima vedno 1 in 500 ms premora.
+  FLIGHT_PROVIDER_CONCURRENCY: z.coerce.number().int().positive().max(8).default(2),
+  // Odgovori virov gredo skozi platform/cache (člen VIII): ročni zagon v isti uri kot urnik vira
+  // ne vpraša znova. Vrednost pod 600 bi pri dveh zagonih dnevno ne spremenila ničesar, pri
+  // urniku "vsakih 6 ur" pa bi bil predpomnilnik že potekel — 3600 je spodnja smiselna meja.
+  FLIGHT_PROVIDER_CACHE_SECONDS: z.coerce.number().int().positive().default(3600),
+  FLIGHT_MAX_RULES_PER_USER: z.coerce.number().int().positive().max(500).default(20),
+  // Poizvedbe na vire na ENO iskanje (letališče × cilj × mesec). 5 letališč × "kamor koli" × 6
+  // mesecev je 30; ob preseganju iskanje dobi oznako `truncated`, ne tihega skrajšanja.
+  FLIGHT_MAX_QUERIES_PER_RULE: z.coerce.number().int().positive().max(1_000).default(60),
+  FLIGHT_MAX_RECIPIENTS: z.coerce.number().int().positive().max(100).default(10),
+  FLIGHT_MAX_FLEX_DAYS: z.coerce.number().int().nonnegative().max(365).default(60),
+  // Travelpayouts/Aviasales Data API — brezplačen žeton partnerja (research.md §4). Prazno =
+  // vir izklopljen. Žeton gre v glavo `X-Access-Token`, nikoli v URL (člen IV: ne sme pristati
+  // v ExternalCache.sourceUrl ne v dnevniku).
+  FLIGHT_TRAVELPAYOUTS_TOKEN: z.string().optional().or(z.literal('')),
+  FLIGHT_TRAVELPAYOUTS_MARKER: z.string().optional().or(z.literal('')),
+  FLIGHT_TRAVELPAYOUTS_URL: z.string().url().default('https://api.travelpayouts.com'),
+  // Neuradni Ryanairov iskalnik cen (research.md §5). Privzeto IZKLOPLJEN: pogoji uporabe
+  // dovoljujejo zasebno nekomercialno rabo, robots.txt pa /api prepoveduje — vklop je zavestna
+  // odločitev lastnika namestitve, enako kot pri Neverinu (011). Vir je vprašan največ
+  // FLIGHT_RYANAIR_DAILY_RUN_LIMIT-krat na dan.
+  FLIGHT_RYANAIR_ENABLED: boolFromString.default('false'),
+  FLIGHT_RYANAIR_URL: z.string().url().default('https://www.ryanair.com/api'),
+  // Rezervni gostitelj iste poti (isti neuradni vmesnik za drugo domeno); prazno = brez rezerve.
+  FLIGHT_RYANAIR_FALLBACK_URL: z.string().url().optional().or(z.literal('')).default('https://services-api.ryanair.com'),
+  FLIGHT_RYANAIR_DAILY_RUN_LIMIT: z.coerce.number().int().positive().max(24).default(2),
+  // Testni vir z IZMIŠLJENIMI podatki — samo za razvoj in avtomatizirane teste (FR-022). V
+  // produkciji ga `loadEnv` zavrne (superRefine spodaj), da izmišljena ponudba nikoli ne pride v
+  // dopis (FR-039).
+  FLIGHT_FAKE_PROVIDER_ENABLED: boolFromString.default('false'),
+}).superRefine((env, ctx) => {
+  if (env.NODE_ENV === 'production' && env.FLIGHT_FAKE_PROVIDER_ENABLED) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['FLIGHT_FAKE_PROVIDER_ENABLED'],
+      message: 'Testni vir letov z izmišljenimi podatki v produkciji ni dovoljen (015, FR-022/FR-039)',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

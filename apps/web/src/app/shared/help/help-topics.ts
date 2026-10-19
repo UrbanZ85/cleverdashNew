@@ -478,6 +478,81 @@ export const HELP_TOPICS = {
     ],
     ifEmpty: 'Brez roka je opravilo samo na seznamu in nikoli ne zamuja.',
   },
+  // ─── Leti (015) ───
+  'flightDeals.airports': {
+    title: 'Odhodna letališča',
+    what: 'Letališča, s katerih si pripravljen odleteti. Iskanje preveri vsa izbrana; več letališč pomeni več možnosti in več poizvedb na vire.',
+    how: [
+      'Letališče poiščeš po imenu mesta, imenu letališča, kodi (LJU, TRS) ali slovenskem imenu (Trst, Benetke, Gradec, Celovec).',
+      'Način "V radiju" izpiše letališča do izbrane razdalje od letališča ali od domačega kraja iz nastavitev poti.',
+      'Največ deset odhodnih letališč; letališče se izbere s seznama, vpisovanje kod na pamet ni mogoče.',
+    ],
+    example: '150 km od Ljubljane: LJU, ZAG, TRS, GRZ, KLU.',
+  },
+  'flightDeals.destination': {
+    title: 'Cilj',
+    what: 'Kam naj sistem išče: kamor koli, v izbrane države ali na izbrana letališča. Izključitve veljajo pri vseh načinih.',
+    how: [
+      '"Kamor koli" vpraša vir za vse destinacije z odhodnega letališča in jih presoja po ostalih pravilih.',
+      'Pri državah vir filtra nima — presoja se po državi ciljnega letališča iz vgrajenega nabora.',
+      'Izključene države in letališča odstranijo ponudbe, tudi kadar bi sicer ustrezale.',
+    ],
+    ifEmpty: 'Privzeto je "kamor koli".',
+  },
+  'flightDeals.dates': {
+    title: 'Datumi in trajanje',
+    what: 'Trije načini: točna datuma, obdobje, v katerem sistem išče kombinacije glede na trajanje, ali tekoče okno "naslednjih N mesecev", ki se izračuna ob vsakem preverjanju.',
+    how: [
+      'Trajanje je v nočitvah; največje mora biti vsaj enako najmanjšemu. Nočitve se štejejo po koledarskih dneh na destinaciji.',
+      'Pri obdobju lahko zahtevaš, da sta odhod in povratek oba znotraj (razširjenega) obdobja, ali dovoliš povratek zunaj njega.',
+      'Enosmerno iskanje nima nočitev in nima povratka.',
+      'Predogled pod datumi pove, v katerem obdobju bo sistem iskal in koliko kombinacij to pomeni — preveri ga pred shranjevanjem.',
+    ],
+    example: '22. 10.–1. 11. 2026, ±2 dni, 2–3 nočitve, odhod petek po 15:00, povratek nedelja.',
+  },
+  'flightDeals.flex': {
+    title: 'Fleksibilnost datumov',
+    what: 'Za koliko dni na vsako stran se razširi izbrano obdobje oziroma točna datuma.',
+    how: [
+      'Hitre izbire ±0, ±1, ±2, ±3 dni ali vnos po meri (nenegativno celo število).',
+      'Pri tekočem oknu fleksibilnosti ni — okno je že "od danes naprej".',
+      'Dnevi pred današnjim se iz razširjenega okna izpustijo; predogled to pove.',
+    ],
+    ifEmpty: 'Brez fleksibilnosti (±0) sistem išče natanko v izbranem obdobju.',
+  },
+  'flightDeals.sharing': {
+    title: 'Prejemniki obvestil',
+    what: 'Druge osebe te namestitve, ki dobijo iste dopise kot lastnik in vidijo ponudbe tega iskanja v razdelku "Deljene ponudbe".',
+    how: [
+      'Prejemnik ne vidi kriterijev iskanja in ga ne more urejati, deaktivirati ali deliti naprej.',
+      'Stikalo ob osebi dopise začasno utiša; vpogled v ponudbe ostane.',
+      'Odstranitev je takojšnja: oseba ne dobi več dopisov in ponudb ne vidi več.',
+      'Na izbiro so osebe, ki so se v aplikacijo že prijavile; lastnik dopise prejema vedno.',
+    ],
+    ifEmpty: 'Brez prejemnikov dopise dobiva samo lastnik iskanja.',
+  },
+  'flightDeals.scheduler': {
+    title: 'Urnik preverjanja',
+    what: 'Kdaj sistem preveri vsa aktivna iskanja pri virih. Nastavlja ga izključno administrator, ker so viri skupni vsem uporabnikom.',
+    how: [
+      'Preprosti urniki (vsak dan ob 6:00; ob 6:00 in 18:00; vsakih 6 ur; vsak ponedeljek ob 8:00) ali cron izraz s petimi polji.',
+      'Sprememba velja ob naslednjem tiku (največ minuta), brez ponovnega zagona aplikacije.',
+      'Če je bila aplikacija izklopljena, se ob zagonu izvede samo zadnji zamujeni termin — dopis po enem zagonu že nosi vse spremembe.',
+      '"Preveri zdaj" sproži zagon takoj, tudi pri izklopljenem urniku; dve preverjanji hkrati nista mogoči.',
+    ],
+    example: '0 6,18 * * * — vsak dan ob 6:00 in 18:00 po Europe/Ljubljana.',
+  },
+  'flightDeals.sources': {
+    title: 'Viri podatkov',
+    what: 'Od kod prihajajo cene. Letalski prevozniki javnih vmesnikov nimajo; vire vklopi lastnik namestitve v okolju, tu se bere samo njihovo stanje.',
+    how: [
+      'Travelpayouts (Aviasales): dovoljen, brezplačen vir; cene so iz predpomnilnika tujih iskanj in do 48 ur stare — "podatek z dne" pri ponudbi to pove.',
+      'Ryanair (neuradni): privzeto izklopljen; pogoji dovoljujejo samo zasebno rabo. Vprašan je največ dvakrat dnevno.',
+      'Wizz Air in easyJet avtomatiziran dostop preprečujeta in nista podprta.',
+      'Izpad vira ne izbriše ponudb: ostanejo z zadnjo znano ceno, iskanje pa pove, da vir ni odgovoril.',
+    ],
+    ifEmpty: 'Brez vklopljenega vira zagon konča brez ponudb in to piše pri vsakem iskanju.',
+  },
 } as const satisfies Record<string, HelpTopic>;
 
 export type HelpTopicId = keyof typeof HELP_TOPICS;

@@ -232,4 +232,30 @@ describe('loadEnv', () => {
       /SAVED_LINKS_FAVICON_TTL_SECONDS/,
     );
   });
+
+  // 015: spremenljivke modula Leti imajo privzetke (vrata 4), testni vir pa v produkciji ne sme
+  // obstajati — izmišljena ponudba ne sme nikoli priti v dopis (FR-022, FR-039).
+  describe('Leti (015)', () => {
+    it('ima privzetke za tik, neuradni vir in SMTP_SECURE', () => {
+      const env = loadEnv(VALID);
+      expect(env.FLIGHT_SCHEDULER_TICK_SECONDS).toBe(60);
+      expect(env.FLIGHT_RYANAIR_ENABLED).toBe(false);
+      expect(env.FLIGHT_FAKE_PROVIDER_ENABLED).toBe(false);
+      expect(env.FLIGHT_PROVIDER_CACHE_SECONDS).toBe(3600);
+      expect(env.SMTP_SECURE).toBe(false);
+      expect(env.FLIGHT_TRAVELPAYOUTS_TOKEN ?? '').toBe('');
+    });
+
+    it('zavrne testni vir v produkciji in imenuje spremenljivko', () => {
+      expect(() => loadEnv({ ...VALID, NODE_ENV: 'production', FLIGHT_FAKE_PROVIDER_ENABLED: 'true' })).toThrowError(
+        /FLIGHT_FAKE_PROVIDER_ENABLED/,
+      );
+    });
+
+    it('dovoli testni vir v razvoju in testih', () => {
+      expect(loadEnv({ ...VALID, NODE_ENV: 'test', FLIGHT_FAKE_PROVIDER_ENABLED: 'true' }).FLIGHT_FAKE_PROVIDER_ENABLED).toBe(
+        true,
+      );
+    });
+  });
 });

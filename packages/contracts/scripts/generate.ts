@@ -11,6 +11,7 @@
  * - `specs/009-file-sharing/contracts/openapi.yaml` → `src/generated/file-sharing.d.ts`
  * - `specs/010-todos/contracts/openapi.yaml` → `src/generated/todos.d.ts`
  * - `specs/011-meteo-station/contracts/openapi.yaml` → `src/generated/meteo-station.d.ts`
+ * - `specs/015-flight-deals/contracts/openapi.yaml` → `src/generated/flight-deals.d.ts`
  *
  * 004 (Keycloak SSO) svoje pogodbe nima: spremenil je poti `/auth/*`, ki so last 001,
  * zato je bila posodobljena tam.
@@ -67,6 +68,10 @@ const targets = [
   {
     spec: resolve(here, '../../../specs/011-meteo-station/contracts/openapi.yaml'),
     out: resolve(here, '../src/generated/meteo-station.d.ts'),
+  },
+  {
+    spec: resolve(here, '../../../specs/015-flight-deals/contracts/openapi.yaml'),
+    out: resolve(here, '../src/generated/flight-deals.d.ts'),
   },
 ];
 

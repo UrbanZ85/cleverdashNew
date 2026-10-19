@@ -103,3 +103,36 @@ export async function isShareableUser(userId: string): Promise<boolean> {
   const found = await UserModel.exists({ _id: new Types.ObjectId(userId), lastLoginAt: { $ne: null } });
   return found !== null;
 }
+
+export interface UserEmail {
+  email: string;
+  displayName: string;
+}
+
+/**
+ * CELI e-naslovi po identifikatorjih — EDINA pot do njih v tem zaledju (015, FR-044).
+ *
+ * Ta funkcija NI klicana iz nobenega usmerjevalnika in ne sme biti: vsaka druga pot do uporabnika
+ * (`listDirectoryUsers`, `readUserSummaries`, `GET /auth/me` za druge) vrne naslov zamaskiran.
+ * Edini zakoniti klicatelj je pošiljanje e-pošte (modules/flight-deals/services/
+ * notification-sender.service.ts), kjer gre naslov neposredno v poštno sejo in se ne shrani —
+ * ne v FlightNotification, ne v dnevnik.
+ *
+ * Uporabnik brez `lastLoginAt` NI izpuščen: prejemnik je bil ob dodajanju preverjen z
+ * `isShareableUser`, in če se od takrat ni prijavil, dopis vseeno zasluži. Izbrisan uporabnik
+ * pa v zemljevidu manjka — klicatelj to zabeleži kot `user-missing`.
+ */
+export async function readUserEmails(userIds: readonly string[]): Promise<Map<string, UserEmail>> {
+  const valid = [...new Set(userIds)].filter((id) => Types.ObjectId.isValid(id));
+  if (valid.length === 0) return new Map();
+
+  const rows = await UserModel.find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) } })
+    .select(PROJECTION)
+    .lean<UserRow[]>();
+
+  return new Map(
+    rows
+      .filter((row) => typeof row.email === 'string' && row.email.includes('@'))
+      .map((row) => [String(row._id), { email: row.email, displayName: row.displayName }]),
+  );
+}
