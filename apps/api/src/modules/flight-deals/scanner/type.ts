@@ -3,6 +3,7 @@ import type { ScannerType } from '../../../platform/scanner/types.js';
 import type { DigestItem } from '../domain/email-template.js';
 import { FLIGHT_DEALS_SCOPES } from '../scopes.js';
 import { flightAdminExtras } from './admin-extras.js';
+import { flightDefinitions } from './definitions.js';
 import { executeFlightBatch } from './execute.js';
 import { flightNotificationHooks } from './notifications.js';
 
@@ -31,6 +32,7 @@ export const flightScannerType: ScannerType<never, DigestItem> = {
   createRoute: '/flight-deals/searches/new',
   isEnabled: () => true,
   configSchema: z.never(),
+  definitions: flightDefinitions,
   execute: executeFlightBatch,
   notifications: flightNotificationHooks,
   admin: { extras: flightAdminExtras },

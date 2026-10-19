@@ -93,6 +93,8 @@ export interface ScheduleInfo {
   /** Slovensko, npr. "vsakih 6 ur" ali "po urniku tipa (vsak dan ob 6:00 in 18:00)". */
   label: string;
   nextRunAt: Date | null;
+  /** Isti trenutek v coni urnika, za človeka (`formatSlotLocal`). */
+  nextRunLocal: string | null;
 }
 
 export interface LastRunInfo {

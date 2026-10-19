@@ -221,6 +221,11 @@ export const APP_ROUTES: Routes = [
   // `authGuard` (vzorec `flight-deals/*`). Administracija NIMA varuha na odjemalcu — pravi varuh je
   // strežnik (platform/auth/admin-guard.ts), ki navadnemu uporabniku vrne 403.
   {
+    path: 'scanners',
+    loadComponent: () => import('./features/scanners/scanners.page.js').then((m) => m.ScannersPage),
+    canActivate: [authGuard, tabGuard],
+  },
+  {
     path: 'scanners/admin',
     loadComponent: () => import('./features/scanners/scanners-admin.page.js').then((m) => m.ScannersAdminPage),
     canActivate: [authGuard],

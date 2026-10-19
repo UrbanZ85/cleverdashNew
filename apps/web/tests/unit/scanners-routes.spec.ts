@@ -15,6 +15,13 @@ function block(path: string): string {
 }
 
 describe('app.routes — Skenerji (016)', () => {
+  it('koren `scanners` ima authGuard IN tabGuard', () => {
+    const b = block('scanners');
+    expect(b).not.toBe('');
+    expect(b).toContain('authGuard');
+    expect(b).toContain('tabGuard');
+  });
+
   it('podstran scanners/admin ima authGuard, tabGuard pa NE, in nima varuha vloge na odjemalcu', () => {
     const b = block('scanners/admin');
     expect(b).not.toBe('');
