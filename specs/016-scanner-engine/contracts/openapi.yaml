@@ -1,0 +1,884 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash — Skenerji (univerzalni scanner engine)
+  version: 1.0.0
+  description: |
+    REST pogodba za jedro skenerjev (016). Samostojna pogodba po vzorcu 015 — ne podvaja poti
+    iz 001 (`/auth/*`, `/users`, `/tabs`, `/health`) in NE podvaja uporabniške polovice modula
+    Leti (`/flight-deals/*` razen `/flight-deals/admin/*`), ki ostane v pogodbi 015.
+
+    ## Kaj se s to pogodbo UKINE v 015
+
+    Poti `/flight-deals/admin/scheduler`, `/flight-deals/admin/runs*`,
+    `/flight-deals/admin/providers`, `/flight-deals/admin/notifications` iz 015 se odstranijo.
+    Nadomestijo jih `/scanners/admin/*` spodaj; stanje virov letov je `extras` tipa `flights`.
+
+    ## Tri polovice
+
+    | polovica | pot | kdo sme |
+    |---|---|---|
+    | **skenerji in rezultati** | `/scanners`, `/scanners/{id}/*` | prijavljen uporabnik ali API ključ z obsegi `scanners:read`, `scanners:write` IN obsegi tipa (`<tip>:read`, `<tip>:write`; pri tipih brez lastnih obsegov sta to ista `scanners:*`) |
+    | **referenčno** | `/scanners/types` | vsak prijavljen klicatelj |
+    | **administracija** | `/scanners/admin/*` | izključno PRIJAVLJEN uporabnik z obsegom `admin` |
+
+    Skener drugega uporabnika vrne **404**; manjkajoč obseg in administracija **403**; ročni
+    zagon obsega, ki že teče, **409**.
+
+    ## Dve vrsti skenerjev v istem seznamu
+
+    `GET /scanners` vrne skenerje iz generične shrambe IN skenerje, ki jih prispevajo tipi z
+    lastnimi definicijami (leti). Vrstica obeh vrst ima isto obliko `ScannerSummary`; razlika je
+    v `links`: pri generičnih kažejo na `/scanners/{id}`, pri letih na `/flight-deals/searches/{id}`.
+    `POST /scanners` sprejme samo tipe z generično shrambo; pri tipu z lastnimi definicijami vrne
+    `400` z napotkom na `createRoute` tipa (`GET /scanners/types`).
+
+    ## Prevzem imena (012)
+
+    Skenerji in rezultati se filtrirajo po `req.auth.subjectId`; administracija pripada
+    `req.actor`.
+
+    ## Čas
+
+    Vsi trenutki UTC (`date-time`); `nextRunLocal` je isti trenutek v coni urnika.
+
+    ## Idempotentnost
+
+    Vse mutacije sprejemajo `Idempotency-Key`; `DELETE` vrne `200` s telesom.
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: scanners
+    description: Uporabnikovi skenerji vseh tipov
+  - name: results
+    description: Rezultati skenerja (generična ali lastna shramba tipa)
+  - name: reference
+    description: Registrirani tipi — brez osebnih podatkov
+  - name: admin
+    description: Urniki tipov, zagoni, outbox — samo administrator
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ───────────────────────────── referenčno ─────────────────────────────
+  /scanners/types:
+    get:
+      tags: [reference]
+      summary: Registrirani tipi skenerjev
+      description: |
+        Vsi registrirani tipi z `enabled` (vklopljen v tej namestitvi) in `available` (klicatelj
+        ima obsege tipa). Čarovnik ponudi samo tipe z `enabled && available`. Tipi, ki niso
+        implementirani, v seznamu NISO.
+      operationId: listScannerTypes
+      responses:
+        '200':
+          description: Tipi
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [types, presets]
+                properties:
+                  types:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScannerTypeInfo' }
+                  presets:
+                    type: array
+                    description: Prednastavitve urnika, skupne vsem tipom
+                    items: { $ref: '#/components/schemas/SchedulePreset' }
+
+  # ───────────────────────────── skenerji ─────────────────────────────
+  /scanners:
+    get:
+      tags: [scanners]
+      summary: Moji skenerji (vsi tipi)
+      operationId: listScanners
+      security:
+        - bearerAuth: [scanners:read]
+      parameters:
+        - { name: type, in: query, schema: { type: string }, description: Samo en tip }
+      responses:
+        '200':
+          description: Skenerji, nazadnje spremenjeni najprej
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scanners, limits]
+                properties:
+                  scanners:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScannerSummary' }
+                  limits: { $ref: '#/components/schemas/Limits' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [scanners]
+      summary: Ustvari skener (tipi z generično shrambo)
+      description: |
+        `config` preveri tip po svoji shemi; `400` z enim slovenskim stavkom ob napaki. Tip z
+        lastnimi definicijami (`ownsDefinitions: true`) vrne `400` z `createRoute`. Tip, ki ni
+        registriran ali vklopljen, `400`. Meja `limits.maxPerUser` na tip, `400` ob prekoračitvi.
+      operationId: createScanner
+      security:
+        - bearerAuth: [scanners:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScannerInput' }
+      responses:
+        '201':
+          description: Ustvarjen
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scanner' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /scanners/{scannerId}:
+    parameters:
+      - $ref: '#/components/parameters/ScannerId'
+    get:
+      tags: [scanners]
+      summary: En skener s konfiguracijo
+      description: Samo generične definicije; id iskanja letov vrne `404` (ureja se v 015).
+      operationId: getScanner
+      security:
+        - bearerAuth: [scanners:read]
+      responses:
+        '200':
+          description: Skener
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scanner' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [scanners]
+      summary: Uredi skener
+      description: Delni vnos se zlije z obstoječim in preveri kot celota; sprememba urnika premakne "pokrito do zdaj".
+      operationId: updateScanner
+      security:
+        - bearerAuth: [scanners:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScannerPatch' }
+      responses:
+        '200':
+          description: Skener
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scanner' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [scanners]
+      summary: Izbriši skener z rezultati in zgodovino
+      operationId: deleteScanner
+      security:
+        - bearerAuth: [scanners:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Izbrisan
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted: { type: boolean }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /scanners/{scannerId}/run:
+    parameters:
+      - $ref: '#/components/parameters/ScannerId'
+    post:
+      tags: [scanners]
+      summary: Sproži skener takoj (tipi z izvajanjem na skener)
+      description: |
+        Lastnik sme sprožiti svoj skener; pri tipu z batch izvajanjem `403` (zagon je tipov in ga
+        sproži administrator). `409`, kadar zagon tega skenerja že teče ali čaka. Deluje tudi pri
+        izklopljenem skenerju (kot ročni zagon pri izklopljenem urniku v 015).
+      operationId: runScanner
+      security:
+        - bearerAuth: [scanners:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Zagon sprejet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Zagon že teče
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /scanners/{scannerId}/runs:
+    parameters:
+      - $ref: '#/components/parameters/ScannerId'
+    get:
+      tags: [scanners]
+      summary: Zagoni tega skenerja (brez administratorskih podrobnosti)
+      operationId: listScannerRuns
+      security:
+        - bearerAuth: [scanners:read]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Zagoni, najnovejši najprej; pri batch tipu zagoni tipa
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs]
+                properties:
+                  runs:
+                    type: array
+                    items: { $ref: '#/components/schemas/RunSummary' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── rezultati ─────────────────────────────
+  /scanners/{scannerId}/results:
+    parameters:
+      - $ref: '#/components/parameters/ScannerId'
+    get:
+      tags: [results]
+      summary: Rezultati skenerja
+      description: |
+        Deluje za obe vrsti skenerjev: generična shramba vrne `ScannerResult`, tip z lastno
+        shrambo (leti) vrne svoje rezultate v obliki `ScannerResult` s podatki tipa v `data`.
+        Odjemalec s prispevkom tipa (register) lahko izriše svoj pogled.
+      operationId: listScannerResults
+      security:
+        - bearerAuth: [scanners:read]
+      parameters:
+        - { name: sort, in: query, schema: { type: string, enum: [seen, price, change], default: seen } }
+        - { name: includeUnavailable, in: query, schema: { type: string, enum: ['true', 'false'], default: 'false' } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        '200':
+          description: Rezultati
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultList' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /scanners/{scannerId}/results/{resultId}:
+    parameters:
+      - $ref: '#/components/parameters/ScannerId'
+      - { name: resultId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [results]
+      summary: En rezultat z zgodovino opazovanj
+      operationId: getScannerResult
+      security:
+        - bearerAuth: [scanners:read]
+      responses:
+        '200':
+          description: Rezultat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── administracija ─────────────────────────────
+  /scanners/admin/types:
+    get:
+      tags: [admin]
+      summary: Tipi z urniki (batch) in dodatki tipa
+      operationId: listScannerTypesAdmin
+      security:
+        - bearerAuth: [admin]
+      responses:
+        '200':
+          description: Tipi
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [types, email]
+                properties:
+                  types:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScannerTypeAdmin' }
+                  email:
+                    type: object
+                    required: [configured]
+                    properties:
+                      configured: { type: boolean }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /scanners/admin/types/{type}/schedule:
+    parameters:
+      - { name: type, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [admin]
+      summary: Urnik tipa z naslednjim terminom
+      operationId: getScannerTypeSchedule
+      security:
+        - bearerAuth: [admin]
+      responses:
+        '200':
+          description: Urnik
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TypeSchedule' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [admin]
+      summary: Spremeni urnik tipa
+      description: |
+        Samo tipi z batch izvajanjem (`single` tip vrne `400`). `preset` različen od `custom`
+        prepiše izraz; pri `custom` je izraz obvezen. Preverjeno pred shranjevanjem; velja ob
+        naslednjem tiku brez ponovnega zagona.
+      operationId: updateScannerTypeSchedule
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SchedulePatch' }
+      responses:
+        '200':
+          description: Urnik
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TypeSchedule' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /scanners/admin/runs:
+    get:
+      tags: [admin]
+      summary: Zgodovina zagonov vseh tipov
+      operationId: listScannerRunsAdmin
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - { name: type, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 30 } }
+      responses:
+        '200':
+          description: Zagoni, najnovejši najprej, in vsi, ki tečejo ali čakajo
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs, active]
+                properties:
+                  runs:
+                    type: array
+                    items: { $ref: '#/components/schemas/Run' }
+                  active:
+                    type: array
+                    items: { $ref: '#/components/schemas/Run' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin]
+      summary: Sproži zagon tipa ali skenerja takoj
+      description: |
+        Natanko eno od `type` (batch tip) ali `scannerId` (single skener). `409`, kadar zagon
+        istega obsega že teče ali čaka; telo je tisti zagon.
+      operationId: triggerScannerRunAdmin
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string }
+                scannerId: { type: string }
+      responses:
+        '202':
+          description: Zagon sprejet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Zagon že teče
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /scanners/admin/runs/{runId}:
+    parameters:
+      - { name: runId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [admin]
+      summary: En zagon z izidi po skenerjih in napakami
+      operationId: getScannerRunAdmin
+      security:
+        - bearerAuth: [admin]
+      responses:
+        '200':
+          description: Zagon
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /scanners/admin/runs/{runId}/cancel:
+    parameters:
+      - { name: runId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      summary: Zahtevaj prekinitev
+      description: Kot v 015 — `cancelRequested`, zagon se ustavi ob naslednjem koraku, dopisov ne sestavi; `409` na končanem.
+      operationId: cancelScannerRunAdmin
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Zagon
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Zagon je že končan
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /scanners/admin/notifications:
+    get:
+      tags: [admin]
+      summary: Outbox dopisov vseh tipov
+      operationId: listScannerNotificationsAdmin
+      security:
+        - bearerAuth: [admin]
+      parameters:
+        - { name: type, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, sending, sent, failed, suppressed] } }
+        - { name: runId, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: Dopisi
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notifications]
+                properties:
+                  notifications:
+                    type: array
+                    items: { $ref: '#/components/schemas/NotificationAdmin' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    ScannerId:
+      name: scannerId
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, maxLength: 128 }
+
+  responses:
+    BadRequest:
+      description: Neveljavna zahteva
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Manjka obseg ali klicatelj ni administrator-človek
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Zapisa ni ALI ga klicatelj ne sme videti
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        correlationId: { type: string }
+
+    Person:
+      type: object
+      required: [id, displayName, initials]
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        initials: { type: string }
+        emailHint: { type: string }
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: number }
+        currency: { type: string }
+
+    ChangeType:
+      type: string
+      enum: [NEW, PRICE_DOWN, PRICE_UP, CHANGED, UNCHANGED, UNAVAILABLE]
+
+    SchedulePresetId:
+      type: string
+      enum: [daily-06, daily-06-18, every-6h, hourly, monday-08, custom]
+
+    SchedulePreset:
+      type: object
+      required: [id, label, cronExpression]
+      properties:
+        id: { $ref: '#/components/schemas/SchedulePresetId' }
+        label: { type: string }
+        cronExpression: { type: string }
+
+    Limits:
+      type: object
+      required: [maxPerUser]
+      properties:
+        maxPerUser: { type: integer, description: Meja skenerjev na uporabnika in tip }
+
+    ScannerTypeInfo:
+      type: object
+      required: [type, label, icon, execution, enabled, available, ownsDefinitions, customResults]
+      properties:
+        type: { type: string }
+        label: { type: string, description: Slovensko ime }
+        icon: { type: string }
+        execution: { type: string, enum: [batch, single] }
+        enabled: { type: boolean, description: Vklopljen v tej namestitvi }
+        available: { type: boolean, description: Klicatelj ima obsege tipa }
+        ownsDefinitions: { type: boolean, description: Tip hrani definicije sam (leti) }
+        customResults: { type: boolean, description: Tip ima lasten prikaz rezultatov }
+        createRoute: { type: [string, 'null'], description: Pot odjemalca za ustvarjanje pri `ownsDefinitions` }
+        description: { type: string }
+
+    ScheduleInfo:
+      type: object
+      required: [mode, label, nextRunAt, nextRunLocal]
+      properties:
+        mode: { type: string, enum: [own, type] }
+        preset: { $ref: '#/components/schemas/SchedulePresetId' }
+        cronExpression: { type: string }
+        timezone: { type: string }
+        label: { type: string, description: 'Slovensko, npr. "vsakih 6 ur" ali "po urniku tipa (vsak dan ob 6:00 in 18:00)"' }
+        nextRunAt: { type: [string, 'null'], format: date-time }
+        nextRunLocal: { type: [string, 'null'] }
+
+    LastRun:
+      type: object
+      required: [at, outcome, message]
+      properties:
+        at: { type: string, format: date-time }
+        outcome: { type: string, enum: [ok, failed, skipped] }
+        message: { type: [string, 'null'] }
+
+    ScannerSummary:
+      type: object
+      required: [id, type, typeLabel, name, enabled, schedule, lastRun, lastSuccessAt, resultCount, typeAvailable, links, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        typeLabel: { type: string }
+        name: { type: string }
+        enabled: { type: boolean }
+        schedule: { $ref: '#/components/schemas/ScheduleInfo' }
+        lastRun:
+          oneOf:
+            - $ref: '#/components/schemas/LastRun'
+            - type: 'null'
+        lastSuccessAt: { type: [string, 'null'], format: date-time }
+        resultCount: { type: integer }
+        typeAvailable: { type: boolean, description: '`false` = tip ni registriran ali vklopljen (FR-011)' }
+        links:
+          type: object
+          required: [edit, results]
+          properties:
+            edit: { type: string, description: Pot odjemalca }
+            results: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ScannerInput:
+      type: object
+      required: [name, type, config]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        type: { type: string }
+        enabled: { type: boolean, default: true }
+        schedule:
+          type: object
+          properties:
+            preset: { $ref: '#/components/schemas/SchedulePresetId' }
+            cronExpression: { type: string }
+            timezone: { type: string, default: Europe/Ljubljana }
+        notifications:
+          type: object
+          properties:
+            enabled: { type: boolean, default: true }
+        config:
+          type: object
+          description: Oblika last tipa; preverjena s shemo tipa
+
+    ScannerPatch:
+      type: object
+      description: Vsa polja neobvezna; izpuščeno = ne spreminjaj
+      properties:
+        name: { type: string }
+        enabled: { type: boolean }
+        schedule:
+          type: object
+          properties:
+            preset: { $ref: '#/components/schemas/SchedulePresetId' }
+            cronExpression: { type: string }
+            timezone: { type: string }
+        notifications:
+          type: object
+          properties:
+            enabled: { type: boolean }
+        config: { type: object }
+
+    Scanner:
+      allOf:
+        - $ref: '#/components/schemas/ScannerSummary'
+        - type: object
+          required: [config, notifications]
+          properties:
+            config: { type: object }
+            notifications:
+              type: object
+              required: [enabled, mode]
+              properties:
+                enabled: { type: boolean }
+                mode: { type: string, enum: [all-changes] }
+
+    Result:
+      type: object
+      required: [id, scannerId, type, source, externalId, title, url, price, data, dataAt, firstSeenAt, lastSeenAt, availability, previousPrice, lastChangeType, change]
+      properties:
+        id: { type: string }
+        scannerId: { type: string }
+        type: { type: string }
+        source: { type: string }
+        externalId: { type: [string, 'null'] }
+        title: { type: string }
+        url: { type: [string, 'null'] }
+        price:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        data: { type: object, description: Podatki po kategoriji (oblika last tipa) }
+        dataAt: { type: string, format: date-time }
+        firstSeenAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        availability: { type: string, enum: [available, unavailable] }
+        previousPrice:
+          oneOf:
+            - allOf:
+                - $ref: '#/components/schemas/Money'
+                - type: object
+                  required: [at]
+                  properties:
+                    at: { type: string, format: date-time }
+            - type: 'null'
+        lastChangeType: { $ref: '#/components/schemas/ChangeType' }
+        change:
+          type: [object, 'null']
+          description: Izračunana sprememba cene (kot v 015), `null` brez cene ali brez prejšnje
+          properties:
+            type: { $ref: '#/components/schemas/ChangeType' }
+            absolute: { type: number }
+            percent: { type: number }
+
+    ResultList:
+      type: object
+      required: [results, total]
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/Result' }
+        total: { type: integer }
+
+    HistoryPoint:
+      type: object
+      required: [checkedAt, price, changeType]
+      properties:
+        checkedAt: { type: string, format: date-time }
+        price:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        changeType: { $ref: '#/components/schemas/ChangeType' }
+
+    ResultDetail:
+      allOf:
+        - $ref: '#/components/schemas/Result'
+        - type: object
+          required: [history]
+          properties:
+            history:
+              type: array
+              items: { $ref: '#/components/schemas/HistoryPoint' }
+
+    SchedulePatch:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        preset: { $ref: '#/components/schemas/SchedulePresetId' }
+        cronExpression: { type: string }
+        timezone: { type: string }
+
+    TypeSchedule:
+      type: object
+      required: [type, enabled, preset, cronExpression, timezone, nextRunAt, nextRunLocal, updatedAt, updatedBy]
+      properties:
+        type: { type: string }
+        enabled: { type: boolean }
+        preset: { $ref: '#/components/schemas/SchedulePresetId' }
+        cronExpression: { type: string }
+        timezone: { type: string }
+        nextRunAt: { type: [string, 'null'], format: date-time }
+        nextRunLocal: { type: [string, 'null'] }
+        updatedAt: { type: string, format: date-time }
+        updatedBy:
+          oneOf:
+            - $ref: '#/components/schemas/Person'
+            - type: 'null'
+
+    ScannerTypeAdmin:
+      allOf:
+        - $ref: '#/components/schemas/ScannerTypeInfo'
+        - type: object
+          required: [schedule, definitionCount, extras]
+          properties:
+            schedule:
+              oneOf:
+                - $ref: '#/components/schemas/TypeSchedule'
+                - type: 'null'
+              description: '`null` pri tipih z izvajanjem na skener'
+            definitionCount: { type: integer, description: Vsi skenerji tipa v namestitvi }
+            extras:
+              type: [object, 'null']
+              description: Dodatek tipa (leti — stanje virov, dnevne meje); oblika last tipa, brez skrivnosti
+
+    RunSummary:
+      type: object
+      required: [id, type, trigger, status, scheduledFor, startedAt, finishedAt, counters]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        trigger: { type: string, enum: [schedule, manual] }
+        status: { type: string, enum: [queued, running, succeeded, partial, failed, cancelled, interrupted] }
+        scheduledFor: { type: [string, 'null'], format: date-time }
+        startedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+        counters:
+          type: object
+          additionalProperties: { type: integer }
+
+    Run:
+      allOf:
+        - $ref: '#/components/schemas/RunSummary'
+        - type: object
+          required: [scope, requestedBy, cancelRequested, definitions, extras, errors, createdAt]
+          properties:
+            scope:
+              type: object
+              required: [kind]
+              properties:
+                kind: { type: string, enum: [type, definition] }
+                scannerId: { type: string }
+                owner:
+                  oneOf:
+                    - $ref: '#/components/schemas/Person'
+                    - type: 'null'
+            requestedBy:
+              oneOf:
+                - $ref: '#/components/schemas/Person'
+                - type: 'null'
+            cancelRequested: { type: boolean }
+            definitions:
+              type: array
+              description: Izid na skener (FR-017)
+              items:
+                type: object
+                required: [scannerId, outcome, message]
+                properties:
+                  scannerId: { type: string }
+                  name: { type: string }
+                  outcome: { type: string, enum: [ok, failed, skipped] }
+                  message: { type: [string, 'null'] }
+            extras: { type: [object, 'null'], description: Dodatek tipa (leti — izidi po virih) }
+            errors:
+              type: array
+              maxItems: 100
+              items:
+                type: object
+                required: [at, code, message]
+                properties:
+                  at: { type: string, format: date-time }
+                  scannerId: { type: string }
+                  code: { type: string }
+                  message: { type: string }
+            createdAt: { type: string, format: date-time }
+
+    NotificationAdmin:
+      type: object
+      required: [id, type, runId, recipient, status, suppressedReason, attemptCount, nextAttemptAt, sentAt, lastError, itemCount, createdAt]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        runId: { type: string }
+        recipient: { $ref: '#/components/schemas/Person' }
+        status: { type: string, enum: [pending, sending, sent, failed, suppressed] }
+        suppressedReason: { type: [string, 'null'], enum: [smtp-not-configured, no-email, user-missing, no-items, type-unavailable, null] }
+        attemptCount: { type: integer }
+        nextAttemptAt: { type: [string, 'null'], format: date-time }
+        sentAt: { type: [string, 'null'], format: date-time }
+        lastError: { type: [string, 'null'] }
+        itemCount: { type: integer }
+        createdAt: { type: string, format: date-time }
