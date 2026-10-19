@@ -439,10 +439,32 @@ presojajo v coni odhodnega, ure povratka v coni ciljnega letališča, nočitve p
 dneh — prehod na zimski čas jih ne spremeni.
 
 Pogodba je v [`specs/015-flight-deals/contracts/openapi.yaml`](specs/015-flight-deals/contracts/openapi.yaml),
-obsegi `flight-deals:read`, `flight-deals:write` in `flight-deals:share`; administracija
-(`/flight-deals/admin/*`) zahteva prijavljenega administratorja in API ključa ne sprejme.
+obsegi `flight-deals:read`, `flight-deals:write` in `flight-deals:share`; administracija je od
+016 v jedru skenerjev (`/scanners/admin/*`), zahteva prijavljenega administratorja in API ključa ne sprejme.
 Odločitve so v [`specs/015-flight-deals/research.md`](specs/015-flight-deals/research.md),
 preizkus v [`specs/015-flight-deals/quickstart.md`](specs/015-flight-deals/quickstart.md).
+
+### Skenerji — skupno jedro za preverjanje po urniku (016)
+
+Zanka "urnik → zajem → primerjava → obvestilo", ki jo je modul Leti nosil sam, je od 016 **skupna
+zmogljivost** v `apps/api/src/platform/scanner/`: register tipov, zagoni z zaporami, urnik tipa in
+urnik skenerja, generična shramba rezultatov z zaznavo sprememb, outbox dopisov in administracija.
+Leti ostajajo svoj modul z lastnimi zbirkami in vmesnikom; v jedro se registrirajo z eno vrstico
+kot tip `flights` z **batch** izvajanjem (vsa iskanja v enem zagonu po urniku administratorja —
+združevanje poizvedb, dnevna meja neuradnega vira in en dopis na prejemnika so ohranjeni). Testni
+tip `echo` (`SCANNER_ECHO_ENABLED`, v produkciji zavrnjen) dokazuje, da nov tip pride brez
+spremembe jedra: mapa na obeh straneh in dve vrstici registracije.
+
+Zavihek **Skenerji** kaže skenerje vseh tipov — tudi iskanja letov — z urnikom, zadnjim in
+naslednjim izvajanjem ter številom rezultatov; nov skener nastane v treh korakih (tip, obrazec
+tipa, urnik in obvestila). Administracija letov se je preselila pod `/scanners/admin` (stara pot
+preusmeri). Tri zbirke 015 (zagoni, urnik, dopisi) se ob prvem zagonu dropnejo — podatki so bili
+testni (odločitev lastnika 19. 10. 2026); iskanja, ponudbe in zgodovina cen ostanejo.
+
+Arhitektura je v [`docs/scanner-engine.md`](docs/scanner-engine.md), dodajanje tipa v
+[`docs/adding-a-scanner-type.md`](docs/adding-a-scanner-type.md), pogodba v
+[`specs/016-scanner-engine/contracts/openapi.yaml`](specs/016-scanner-engine/contracts/openapi.yaml),
+odločitve v [`specs/016-scanner-engine/research.md`](specs/016-scanner-engine/research.md).
 
 ---
 

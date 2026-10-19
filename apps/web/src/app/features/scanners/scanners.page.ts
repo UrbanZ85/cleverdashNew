@@ -1,6 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { AlertController, IonBadge, IonButton, IonContent, IonIcon, IonItem, IonLabel, IonList, IonNote, IonRefresher, IonRefresherContent, IonText, IonToggle } from '@ionic/angular/standalone';
+import { AlertController, IonBadge, IonButton, IonContent, IonIcon, IonItem, IonLabel, IonList, IonRefresher, IonRefresherContent, IonText, IonToggle } from '@ionic/angular/standalone';
 import { PageHeaderComponent } from '../../shared/layout/page-header.component.js';
 import { HelpButtonComponent } from '../../shared/help/help-button.component.js';
 import { CurrentUserService } from '../../core/user/current-user.service.js';
@@ -16,7 +16,7 @@ import { describeError, lastRunText, scheduleSummary, type Limits, type ScannerS
 @Component({
   selector: 'app-scanners-page',
   standalone: true,
-  imports: [RouterLink, PageHeaderComponent, HelpButtonComponent, IonContent, IonRefresher, IonRefresherContent, IonList, IonItem, IonLabel, IonBadge, IonButton, IonIcon, IonNote, IonText, IonToggle],
+  imports: [RouterLink, PageHeaderComponent, HelpButtonComponent, IonContent, IonRefresher, IonRefresherContent, IonList, IonItem, IonLabel, IonBadge, IonButton, IonIcon, IonText, IonToggle],
   template: `
     <app-page-header title="Skenerji" [subtitle]="subtitle()">
       @if (isAdmin()) {
@@ -60,7 +60,7 @@ import { describeError, lastRunText, scheduleSummary, type Limits, type ScannerS
                   }
                 </h2>
                 <p>{{ scheduleSummary(s.schedule, s.enabled && s.typeAvailable) }}</p>
-                <p><ion-text [color]="lastRun(s).color">{{ lastRun(s).text }}</ion-text></p>
+                <p><ion-text [color]="lastRun(s.lastRun).color">{{ lastRun(s.lastRun).text }}</ion-text></p>
               </ion-label>
               @if (isGeneric(s)) {
                 <ion-toggle slot="end" [checked]="s.enabled" [disabled]="busy() === s.id || !s.typeAvailable" (click)="$event.stopPropagation()" (ionChange)="toggleEnabled(s, $any($event).detail.checked)" aria-label="Vklopljen"></ion-toggle>

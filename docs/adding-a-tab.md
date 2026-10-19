@@ -106,6 +106,12 @@ modula namesto iz `platform/`, `domain/`, `core/` ali `shared/`. Lint pravilo v
 zadošča, da se zavihek pojavi v `GET /tabs`, v meniju in v spodnji vrstici — brez sprememb
 resolverja, usmerjevalnika ali frontend komponent menija.
 
+## Modul, ki preverja po urniku
+
+Zavihek, ki po urniku vprašuje zunanji vir, hrani rezultate in obvešča, NE piše svojega tika,
+zagonov in outboxa — to je jedro skenerjev (`platform/scanner/`). Modul napiše **tip skenerja** in
+ga registrira z eno vrstico; glej [`adding-a-scanner-type.md`](adding-a-scanner-type.md).
+
 ## Odstranitev zavihka
 
 Obratno: izbriši mapo modula na obeh straneh, odstrani vnos iz `TAB_REGISTRY`, odstrani

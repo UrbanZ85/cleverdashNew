@@ -50,7 +50,7 @@ import { ScannerResultListComponent } from './result-list.component.js';
           }
           <section class="head">
             <p>{{ scheduleSummary(s.schedule, s.enabled && s.typeAvailable) }}</p>
-            <p><ion-text [color]="lastRun(s).color">{{ lastRun(s).text }}</ion-text></p>
+            <p><ion-text [color]="lastRun(s.lastRun).color">{{ lastRun(s.lastRun).text }}</ion-text></p>
             @if (!s.typeAvailable) {
               <ion-badge color="warning">tip ni na voljo</ion-badge>
             }

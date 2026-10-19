@@ -241,10 +241,11 @@ scannersRouter.post('/scanners/:scannerId/run', requireScopes(SCANNER_SCOPES.wri
     const id = String(req.params.scannerId);
     const found = await findSummaryForUser(userId, id, req.auth?.scopes ?? [], env, new Date());
     if (!found) throw notFound('Skener ne obstaja.');
-    if (!found.generic || !found.type) {
+    if (!found.generic) {
       // Tip z lastnimi definicijami (leti) teče kot batch: sproži ga administrator (FR-020).
       throw forbidden(`Skener tipa "${found.row.typeLabel}" se izvaja po urniku tipa — zagon sproži administrator.`);
     }
+    if (!found.type) throw badRequest(`Tip skenerja "${found.row.type}" v tej namestitvi ni na voljo.`);
     requireTypeWrite(req, found.type);
     if (!found.type.isEnabled(env)) throw badRequest(`Tip skenerja "${found.type.label}" je v tej namestitvi izklopljen.`);
     const actor = req.actor?.subjectId ?? userId;

@@ -30,7 +30,9 @@ oseba ga je izklopila v Nastavitve → Meni, ali pa manjka obseg `flight-deals:r
 `BASE_USER_SCOPES` (`platform/keycloak/role-mapping.ts`) — potem dela samo adminu.
 
 Povezava **Administracija** na strani modula je vidna samo adminu; če jo vidi kdo drug, je to
-napaka vmesnika, vendar NE varnostna: strežnik `GET /flight-deals/admin/*` zavrne s `403`.
+napaka vmesnika, vendar NE varnostna: strežnik `GET /scanners/admin/*` zavrne s `403`. Od 016 je
+administracija letov del administracije skenerjev (`/scanners/admin?type=flights`); stara pot
+`/flight-deals/admin` tja preusmeri.
 
 ## 2 — Spike pokritosti (pred fazo virov)
 
@@ -65,7 +67,7 @@ Negativni primeri: največ 2 nočitvi + najmanj 3 → sporočilo o trajanju; fle
 
 ## 4 — Preverjanje in ponudbe (US2)
 
-1. Kot admin: Leti → Administracija → **Preveri zdaj**. Zagon se pojavi kot `running`, nato
+1. Kot admin: Leti → Administracija (Skenerji → tip Leti) → **Preveri zdaj**. Zagon se pojavi kot `running`, nato
    `succeeded` ali `partial`.
 2. Glavna stran modula pokaže ponudbe, pri vsaki vir, ceno, letališči, datume in **čas podatka**
    (pri Travelpayouts starejši od časa preverjanja — to je pričakovano, ne napaka).
@@ -78,7 +80,7 @@ Kaj pomeni kateri izid pri iskanju:
 | `ok` | vir je odgovoril, ponudbe primerjane | nič |
 | `noFlights` | vir je odgovoril, ničesar ni ustrezalo | razširi pravila |
 | `unsupported` | vir tega iskanja ne zna (Wizz/easyJet vedno) | nič |
-| `unreachable` | omrežje/5xx; **ponudbe ostanejo** | poglej `/admin/providers` → zadnja napaka |
+| `unreachable` | omrežje/5xx; **ponudbe ostanejo** | poglej `GET /scanners/admin/types` → `flights.extras.providers` → zadnja napaka |
 | `rateLimited` | 429 ali dnevna meja neuradnega vira | počakaj na naslednji zagon |
 | `incomplete` | odgovor odrezan (1000 vrstic) ali nepopolne cene | zoži iskanje |
 | `disabled` | vir ni vklopljen v okolju | nastavi žeton / zastavico |
@@ -138,7 +140,7 @@ CleverDashu" vodi na `/flight-deals/offers/<id>`.
 curl -H "X-Api-Key: $KEY" http://localhost:3000/api/v1/flight-deals/searches
 curl -H "X-Api-Key: $KEY" -H "Content-Type: application/json" -H "Idempotency-Key: $(uuidgen)" \
   -d @search.json http://localhost:3000/api/v1/flight-deals/searches
-curl -H "X-Api-Key: $KEY" http://localhost:3000/api/v1/flight-deals/admin/scheduler   # → 403
+curl -H "X-Api-Key: $KEY" http://localhost:3000/api/v1/scanners/admin/types/flights/schedule   # → 403
 ```
 
 Ključ potrebuje obsege `flight-deals:read`, `flight-deals:write`; za prejemnike `flight-deals:share`.
@@ -162,7 +164,7 @@ Scenariji iz naročila → testi (vrata 2):
 | neuspel API klic, UNAVAILABLE samo ob uspehu | `tests/integration/flight-deals/provider-outage.spec.ts` |
 | deduplikacija ponudb (več iskanj, isti let) in obvestil | `integration/flight-deals/dedupe.spec.ts` |
 | deljenje, preklic, tuja iskanja (404) | `tests/contract/flight-deals/sharing.spec.ts`, `isolation.spec.ts` |
-| admin-only urnik, sprememba crona, API ključ → 403 | `contract/flight-deals/admin.spec.ts` |
+| admin-only urnik, sprememba crona, API ključ → 403 | `contract/scanner/flights-admin.spec.ts` (016) |
 | sočasni zagoni (slotKey), restart med zagonom | `integration/flight-deals/run-concurrency.spec.ts`, `run-interrupted.spec.ts` |
 | neuspelo pošiljanje in varno ponavljanje | `integration/flight-deals/notification-outbox.spec.ts` (nodemailer mockan) |
 
@@ -170,9 +172,9 @@ Scenariji iz naročila → testi (vrata 2):
 
 | simptom | kje pogledati |
 |---|---|
-| zagon se ne začne ob terminu | `GET /admin/scheduler` → `enabled`, `nextRunAt`; dnevnik `flight.tick` |
+| zagon se ne začne ob terminu | `GET /scanners/admin/types/flights/schedule` → `enabled`, `nextRunAt`; dnevnik `scanner.tick` |
 | zagon obstane `running` | po `FLIGHT_RUN_STALE_MINUTES` postane `interrupted`; dnevnik `flight.run.interrupted` |
 | ponudbe izginile | ne smejo: preveri izid vira — `unreachable` jih pusti; `unavailable` se zgodi samo pri `ok` |
-| dopis ni prišel | `/admin/notifications`: `suppressed` (razlog) ali `pending` z `lastError`; SMTP geslo/host |
+| dopis ni prišel | `/scanners/admin/notifications?type=flights`: `suppressed` (razlog) ali `pending` z `lastError`; SMTP geslo/host |
 | dvojni dopis | ne sme se zgoditi (unikatni indeks); če se, je to hrošč najvišje resnosti — priloži `runId` |
 | letališča ni v iskalniku | nabor ima samo letališča z rednim prometom (OurAirports `scheduled_service=yes`) |

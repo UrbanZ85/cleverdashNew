@@ -8,31 +8,27 @@ info:
     014 — ne podvaja poti iz 001 (`/auth/*`, `/users`, `/settings`, `/health`), ki se v
     produkciji strežejo iz istega Express app-a.
 
-    ## Tri polovice
+    ## Dve polovici (od 016)
+
+    Administracija (urnik, zagoni, outbox dopisov, stanje virov) je od funkcionalnosti 016 v jedru
+    skenerjev: `specs/016-scanner-engine/contracts/openapi.yaml`, poti `/scanners/admin/*`; stanje
+    virov letov je `extras` tipa `flights`. Poti `/scanners/admin/*` ne obstajajo več.
 
     | polovica | pot | kdo sme |
     |---|---|---|
     | **iskanja in ponudbe** | `/flight-deals/*` | prijavljen uporabnik ali API ključ z obsegi `flight-deals:read`, `flight-deals:write`, `flight-deals:share` |
     | **referenčni podatki** | `/flight-deals/airports`, `/flight-deals/countries`, `/flight-deals/providers` | vsak prijavljen klicatelj; brez osebnih podatkov |
-    | **administracija** | `/flight-deals/admin/*` | izključno PRIJAVLJEN uporabnik z obsegom `admin` (FR-045) |
-
-    API ključ v administracijo ne pride, tudi s katerim koli obsegom — isti razlog in isti
-    zapis kot pri 014 (`modules/analytics/admin-guard.ts`): zapora, ki stoji na tem, da nekdo
-    drugje ni pozabil, ni zapora.
 
     ## Dve zavrnitvi in vsaka ima svoj status
 
     Tuje iskanje vrne **404** (obstoja ne razkrijemo — FR-014); prejemnik, ki poskusi iskanje
     urediti, prav tako **404**, ker iskanja NE VIDI (FR-041) — za razliko od 010/013 tu ni vmesne
-    vloge, ki bi zapis videla brez pravice. **403** je rezerviran za manjkajoč obseg in za
-    administracijo. **409** vrne ročni zagon, kadar eno preverjanje že teče (FR-050).
+    vloge, ki bi zapis videla brez pravice. **403** je rezerviran za manjkajoč obseg.
 
     ## Prevzem imena (012)
 
     Vsa iskanja in ponudbe se filtrirajo po `req.auth.subjectId` — administrator, ki dela v imenu
-    drugega, vidi in ureja NJEGOVA iskanja. Izjema je administracija (`/admin/*`): ta pripada
-    administratorju samemu (`req.actor`), prevzeto ime nanjo ne vpliva, ročni zagon pa se
-    pripiše človeku, ki ga je sprožil.
+    drugega, vidi in ureja NJEGOVA iskanja. Administracija je v pogodbi 016.
 
     ## Čas
 
@@ -58,8 +54,6 @@ tags:
     description: Prejemniki obvestil
   - name: reference
     description: Letališča, države, viri — brez osebnih podatkov
-  - name: admin
-    description: Urnik, zagoni, viri, outbox — samo administrator
 
 security:
   - bearerAuth: []
@@ -434,205 +428,6 @@ paths:
                     items: { $ref: '#/components/schemas/ProviderPublic' }
 
   # ───────────────────────────── administracija ─────────────────────────────
-  /flight-deals/admin/scheduler:
-    get:
-      tags: [admin]
-      summary: Nastavitve urnika z naslednjim terminom
-      operationId: getFlightScheduler
-      security:
-        - bearerAuth: [admin]
-      responses:
-        '200':
-          description: Nastavitve
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SchedulerSettings' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-    put:
-      tags: [admin]
-      summary: Spremeni urnik
-      description: |
-        `preset` različen od `custom` prepiše `cronExpression` s pripadajočim izrazom; pri
-        `custom` je `cronExpression` obvezen. Izraz se preveri pred shranjevanjem (FR-047) in
-        `400` pove, zakaj ni veljaven. Sprememba velja ob naslednjem tiku, brez ponovnega zagona
-        (FR-048). Odgovor nosi `nextRunAt` v UTC in `nextRunLocal` v coni urnika.
-      operationId: updateFlightScheduler
-      security:
-        - bearerAuth: [admin]
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                enabled: { type: boolean }
-                preset: { type: string, enum: [daily-06, daily-06-18, every-6h, monday-08, custom] }
-                cronExpression: { type: string, description: "Pet polj, standardna sintaksa" }
-                timezone: { type: string, description: IANA; privzeto Europe/Ljubljana }
-      responses:
-        '200':
-          description: Nastavitve
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SchedulerSettings' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
-  /flight-deals/admin/runs:
-    get:
-      tags: [admin]
-      summary: Zgodovina zagonov
-      operationId: listFlightRuns
-      security:
-        - bearerAuth: [admin]
-      parameters:
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 30 } }
-      responses:
-        '200':
-          description: Zagoni, najnovejši najprej
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [runs, active]
-                properties:
-                  runs:
-                    type: array
-                    items: { $ref: '#/components/schemas/Run' }
-                  active:
-                    oneOf:
-                      - $ref: '#/components/schemas/Run'
-                      - type: 'null'
-                    description: Zagon, ki trenutno teče ali čaka, sicer `null`
-        '403': { $ref: '#/components/responses/Forbidden' }
-    post:
-      tags: [admin]
-      summary: Sproži preverjanje takoj
-      description: |
-        Ustvari zagon s sprožilcem `manual` in ga začne obdelovati brez čakanja na tik. Deluje
-        tudi pri izklopljenem urniku (FR-046). `409`, kadar zagon že teče ali čaka — telo je
-        tisti zagon (FR-050).
-      operationId: triggerFlightRun
-      security:
-        - bearerAuth: [admin]
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '202':
-          description: Zagon sprejet
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Run' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409':
-          description: Eno preverjanje že teče
-          content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
-
-  /flight-deals/admin/runs/{runId}:
-    parameters:
-      - { name: runId, in: path, required: true, schema: { type: string } }
-    get:
-      tags: [admin]
-      summary: En zagon z napakami
-      operationId: getFlightRun
-      security:
-        - bearerAuth: [admin]
-      responses:
-        '200':
-          description: Zagon
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Run' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
-  /flight-deals/admin/runs/{runId}/cancel:
-    parameters:
-      - { name: runId, in: path, required: true, schema: { type: string } }
-    post:
-      tags: [admin]
-      summary: Zahtevaj prekinitev
-      description: |
-        Nastavi `cancelRequested`; zagon se ustavi po iskanju, ki ga ravnokar obdeluje, in konča
-        kot `cancelled`. Že zapisane spremembe ostanejo; obvestila za ta zagon se NE pošljejo.
-        Idempotentno; na končanem zagonu `409`.
-      operationId: cancelFlightRun
-      security:
-        - bearerAuth: [admin]
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '200':
-          description: Zagon
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Run' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409':
-          description: Zagon je že končan
-          content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
-
-  /flight-deals/admin/providers:
-    get:
-      tags: [admin]
-      summary: Stanje virov z zadnjo napako (FR-053)
-      operationId: listFlightProvidersAdmin
-      security:
-        - bearerAuth: [admin]
-      responses:
-        '200':
-          description: Viri
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [providers, email]
-                properties:
-                  providers:
-                    type: array
-                    items: { $ref: '#/components/schemas/ProviderAdmin' }
-                  email:
-                    type: object
-                    required: [configured]
-                    description: Ali je pošta nastavljena (FR-038). Gostitelja in uporabnika NI v odgovoru.
-                    properties:
-                      configured: { type: boolean }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
-  /flight-deals/admin/notifications:
-    get:
-      tags: [admin]
-      summary: Outbox dopisov — zadržani, neuspeli, poslani
-      description: Prejemnik je naveden z imenom in zamaskirano e-pošto, nikoli s celo (FR-044).
-      operationId: listFlightNotificationsAdmin
-      security:
-        - bearerAuth: [admin]
-      parameters:
-        - { name: status, in: query, schema: { type: string, enum: [pending, sending, sent, failed, suppressed] } }
-        - { name: runId, in: query, schema: { type: string } }
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
-      responses:
-        '200':
-          description: Dopisi
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [notifications]
-                properties:
-                  notifications:
-                    type: array
-                    items: { $ref: '#/components/schemas/NotificationAdmin' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
 components:
   securitySchemes:
     bearerAuth:
@@ -1089,109 +884,3 @@ components:
                 - type: 'null'
             requestsToday: { type: integer, description: "Zagoni danes, v katerih je bil vir vprašan" }
             dailyLimit: { type: [integer, 'null'], description: "Omejitev zagonov na dan (neuradni vir: 2); `null` = brez" }
-
-    SchedulerSettings:
-      type: object
-      required: [enabled, preset, cronExpression, timezone, nextRunAt, nextRunLocal, presets, updatedAt, updatedBy]
-      properties:
-        enabled: { type: boolean }
-        preset: { type: string, enum: [daily-06, daily-06-18, every-6h, monday-08, custom] }
-        cronExpression: { type: string }
-        timezone: { type: string }
-        nextRunAt: { type: [string, 'null'], format: date-time, description: '`null`, kadar je izklopljen' }
-        nextRunLocal: { type: [string, 'null'], description: "Isti trenutek, izpisan v coni urnika" }
-        presets:
-          type: array
-          description: Preprosti urniki z izrazi, ki jih vmesnik ponudi (FR-046)
-          items:
-            type: object
-            required: [id, label, cronExpression]
-            properties:
-              id: { type: string }
-              label: { type: string }
-              cronExpression: { type: string }
-        updatedAt: { type: string, format: date-time }
-        updatedBy:
-          oneOf:
-            - $ref: '#/components/schemas/Person'
-            - type: 'null'
-
-    Run:
-      type: object
-      required: [id, trigger, status, scheduledFor, startedAt, finishedAt, requestedBy, cancelRequested, counters, providers, errors]
-      properties:
-        id: { type: string }
-        trigger: { type: string, enum: [schedule, manual] }
-        status: { type: string, enum: [queued, running, succeeded, partial, failed, cancelled, interrupted] }
-        scheduledFor: { type: [string, 'null'], format: date-time }
-        startedAt: { type: [string, 'null'], format: date-time }
-        finishedAt: { type: [string, 'null'], format: date-time }
-        requestedBy:
-          oneOf:
-            - $ref: '#/components/schemas/Person'
-            - type: 'null'
-        cancelRequested: { type: boolean }
-        counters:
-          type: object
-          required: [rules, queries, providerRequests, offersSeen, newMatches, priceDrops, priceRises, unavailable, notificationsPending, notificationsSent, notificationsSuppressed, notificationsFailed]
-          properties:
-            rules: { type: integer }
-            queries: { type: integer }
-            providerRequests: { type: integer, description: "Dejanski klici na vire; manj od `queries`, kadar predpomnilnik zadene" }
-            offersSeen: { type: integer }
-            newMatches: { type: integer }
-            priceDrops: { type: integer }
-            priceRises: { type: integer }
-            unavailable: { type: integer }
-            notificationsPending: { type: integer }
-            notificationsSent: { type: integer }
-            notificationsSuppressed: { type: integer }
-            notificationsFailed: { type: integer }
-        providers:
-          type: array
-          items:
-            type: object
-            required: [providerId, enabled, ok, noFlights, unsupported, unreachable, rateLimited, incomplete]
-            properties:
-              providerId: { type: string }
-              enabled: { type: boolean }
-              ok: { type: integer }
-              noFlights: { type: integer }
-              unsupported: { type: integer }
-              unreachable: { type: integer }
-              rateLimited: { type: integer }
-              incomplete: { type: integer }
-        errors:
-          type: array
-          maxItems: 100
-          items:
-            type: object
-            required: [at, code, message]
-            properties:
-              at: { type: string, format: date-time }
-              providerId: { type: string }
-              searchId: { type: string }
-              code: { type: string }
-              message: { type: string, description: Brez skrivnosti in brez e-naslovov (FR-054) }
-
-    NotificationAdmin:
-      type: object
-      required: [id, runId, recipient, status, suppressedReason, attemptCount, nextAttemptAt, sentAt, lastError, itemCount, createdAt]
-      properties:
-        id: { type: string }
-        runId: { type: string }
-        recipient:
-          allOf:
-            - $ref: '#/components/schemas/Person'
-            - type: object
-              required: [emailHint]
-              properties:
-                emailHint: { type: string, description: Zamaskirana e-pošta kot v imeniku }
-        status: { type: string, enum: [pending, sending, sent, failed, suppressed] }
-        suppressedReason: { type: [string, 'null'], enum: [smtp-not-configured, no-email, user-missing, null] }
-        attemptCount: { type: integer }
-        nextAttemptAt: { type: [string, 'null'], format: date-time }
-        sentAt: { type: [string, 'null'], format: date-time }
-        lastError: { type: [string, 'null'] }
-        itemCount: { type: integer }
-        createdAt: { type: string, format: date-time }

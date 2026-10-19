@@ -1,5 +1,9 @@
 # Data Model: Iskalnik letalskih ponudb (015)
 
+> **016:** zagoni, urnik in outbox dopisov so od refaktoringa v jedru skenerjev
+> (`specs/016-scanner-engine/data-model.md`). Opisi `FlightSearchRun`, `FlightNotification` in
+> `FlightSchedulerSettings` spodaj so zgodovina odločitev, ki so se preselile; zbirke ne obstajajo več.
+
 Osem novih zbirk, vse v modulu `modules/flight-deals/models/`. Nobena ne živi v `platform/`:
 za razliko od 014 tu ni podatka, ki bi moral preživeti odstranitev zavihka — če zavihka Leti ni,
 ni ne iskanj ne ponudb ne urnika. Brisanje modula pobriše vse (člen I).
@@ -10,9 +14,9 @@ ni ne iskanj ne ponudb ne urnika. Brisanje modula pobriše vse (člen I).
 | `flightoffers` | `FlightOffer` | **skupno** (brez lastnika) | TTL: dan po odhodu + 7 dni |
 | `flightsearchmatches` | `FlightSearchMatch` | vez iskanje ↔ ponudba | TTL kot ponudba |
 | `flightofferhistories` | `FlightOfferHistory` | vez na ponudbo | TTL `FLIGHT_HISTORY_RETENTION_DAYS` (180) |
-| `flightsearchruns` | `FlightSearchRun` | namestitev | TTL `FLIGHT_RUN_RETENTION_DAYS` (90) |
-| `flightnotifications` | `FlightNotification` | prejemnik | TTL `FLIGHT_RUN_RETENTION_DAYS` (90) |
-| `flightschedulersettings` | `FlightSchedulerSettings` | namestitev, **en zapis** | trajno |
+| ~~`flightsearchruns`~~ | — | **nadomeščeno v 016** z `scannerruns` (`platform/scanner`); zbirka se ob zagonu dropne | — |
+| ~~`flightnotifications`~~ | — | **nadomeščeno v 016** z `scannernotifications` | — |
+| ~~`flightschedulersettings`~~ | — | **nadomeščeno v 016** z `scannertypesettings` (`type: flights`) | — |
 | `flightproviderstatuses` | `FlightProviderStatus` | namestitev, en zapis na vir | trajno |
 
 Vsi TTL-ji so **indeksi na `expiresAt`**, ne pometači (precedens 014: `SCREENSHOT_RETENTION_DAYS`
