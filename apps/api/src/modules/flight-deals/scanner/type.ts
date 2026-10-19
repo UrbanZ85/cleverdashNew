@@ -6,6 +6,7 @@ import { flightAdminExtras } from './admin-extras.js';
 import { flightDefinitions } from './definitions.js';
 import { executeFlightBatch } from './execute.js';
 import { flightNotificationHooks } from './notifications.js';
+import { flightResultReader } from './results.js';
 
 // Tip `flights` za jedro skenerjev (016, research.md §2, §3, §7). Modul Leti OSTANE svoj modul z
 // lastnimi zbirkami in vmesnikom; jedru preda samo to, česar sam ne rabi več imeti: kdaj se
@@ -33,6 +34,7 @@ export const flightScannerType: ScannerType<never, DigestItem> = {
   isEnabled: () => true,
   configSchema: z.never(),
   definitions: flightDefinitions,
+  resultReader: flightResultReader,
   execute: executeFlightBatch,
   notifications: flightNotificationHooks,
   admin: { extras: flightAdminExtras },

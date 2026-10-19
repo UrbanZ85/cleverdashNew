@@ -48,6 +48,7 @@ import { registerSavedLinksIngest } from './modules/saved-links/ingest.js';
 import { registerNotesIngest } from './modules/notes/ingest.js';
 import { flightDealsRouter } from './modules/flight-deals/router.js';
 import { registerFlightScannerType } from './modules/flight-deals/scanner/index.js';
+import { registerEchoScannerType } from './modules/echo-scanner/index.js';
 import { scannersRouter } from './platform/scanner/router.js';
 import { scannersAdminRouter } from './platform/scanner/admin.router.js';
 import { dropLegacyFlightSchedulerCollections } from './platform/scanner/services/legacy-cleanup.service.js';
@@ -154,8 +155,10 @@ export async function createApp() {
   // vseh tipov in administracija urnikov, zagonov in dopisov. Tipe mu prispevajo moduli prek
   // registra (glej registracije spodaj); jedro samo o nobenem tipu ne ve. Administracija je pod
   // lastnim varuhom (platform/auth/admin-guard.ts), ki API ključa ne spusti skozi.
-  apiV1Router.use(scannersRouter);
+  // Administracija PRED uporabniško polovico: `/scanners/admin/runs` bi sicer ujela parametrična
+  // `/scanners/:scannerId/runs` (isti razlog kot `cameras/manage` pred `cameras/:id` na odjemalcu).
   apiV1Router.use(scannersAdminRouter);
+  apiV1Router.use(scannersRouter);
 
   app.use('/api/v1', apiV1Router);
   app.use(problemErrorHandler());
@@ -176,6 +179,8 @@ export async function createApp() {
   // 016: tipi skenerjev. ENA vrstica na modul, kot cilji uvoza zgoraj — jedro (platform/scanner)
   // o letih ne ve ničesar, dokler modul ne pokliče te vrstice. Brisanje modula = brisanje vrstice.
   registerFlightScannerType();
+  // 016: testni tip (brez zavihka) — dokaz, da nov tip pride brez spremembe jedra (FR-046).
+  registerEchoScannerType();
 
   // 009: hramba deljenih datotek je na disku (nosilec `shared-files`), ne v bazi. Imenika
   // `tmp/` in `blobs/` morata obstajati, preden pride prvo nalaganje. Pometač teče takoj ob

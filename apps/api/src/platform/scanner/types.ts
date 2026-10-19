@@ -188,7 +188,8 @@ export interface ExecutionOutcome {
   errors: ExecutionError[];
 }
 
-export interface ResultStoreCounters {
+/** Razširja zapis števcev, da ga tip lahko neposredno poda v `ExecutionOutcome.counters`. */
+export interface ResultStoreCounters extends Record<string, number> {
   seen: number;
   new: number;
   changed: number;
@@ -349,7 +350,7 @@ export interface ScannerType<TConfig = unknown, TVerified = unknown> {
   readonly allowedResultHosts?: readonly string[];
   isEnabled(env: Env): boolean;
   /** Oblika `config` (generične definicije); tip z lastnimi definicijami poda `z.never()`. */
-  readonly configSchema: z.ZodType<TConfig>;
+  readonly configSchema: z.ZodType<TConfig, z.ZodTypeDef, unknown>;
   /** Pomen `config` — slovenski stavek ob napaki ali `null`. */
   validateConfig?(config: TConfig, env: Env): string | null;
   /** Ena vrstica za seznam, npr. "3 rezultati, oznaka Echo". */

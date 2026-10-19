@@ -7,6 +7,7 @@ import { APP_ROUTES } from './app/app.routes.js';
 import { authInterceptor } from './app/core/auth/auth.interceptor.js';
 import { registerIcons } from './app/core/icons/register-icons.js';
 import { registerFlightScannerUi } from './app/features/flight-deals/scanner-ui.js';
+import { registerEchoScannerUi } from './app/features/echo-scanner/scanner-ui.js';
 
 // Ionic 8 + Angular 20, standalone komponente, brez NgModule (plan.md, Technical Context) —
 // stari projekt je uporabljal Angular 17 z moduli, nov naj tega pristopa ne podeduje.
@@ -23,6 +24,7 @@ registerIcons();
 // Generične strani (features/scanners) nobenega tipa ne poznajo po imenu; brez te vrstice tip
 // nima obrazca in dodatkov, seznam pa ga še vedno pokaže (podatki pridejo s strežnika).
 registerFlightScannerUi();
+registerEchoScannerUi();
 
 bootstrapApplication(AppComponent, {
   providers: [

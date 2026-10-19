@@ -230,6 +230,22 @@ export const APP_ROUTES: Routes = [
     loadComponent: () => import('./features/scanners/scanners-admin.page.js').then((m) => m.ScannersAdminPage),
     canActivate: [authGuard],
   },
+  // Statični `scanners/new` stoji PRED parametričnim `scanners/:scannerId` (vzorec `cameras/manage`).
+  {
+    path: 'scanners/new',
+    loadComponent: () => import('./features/scanners/scanner-wizard.page.js').then((m) => m.ScannerWizardPage),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'scanners/:scannerId/edit',
+    loadComponent: () => import('./features/scanners/scanner-wizard.page.js').then((m) => m.ScannerWizardPage),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'scanners/:scannerId',
+    loadComponent: () => import('./features/scanners/scanner-results.page.js').then((m) => m.ScannerResultsPage),
+    canActivate: [authGuard],
+  },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
   { path: '**', redirectTo: 'dashboard' },
 ];

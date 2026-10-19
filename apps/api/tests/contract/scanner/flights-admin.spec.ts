@@ -153,7 +153,7 @@ describe('viri in outbox', () => {
     const res = await request(app).get('/api/v1/scanners/admin/types').set(AUTH(admin.token));
     expect(res.status).toBe(200);
     const flights = res.body.types.find((t: { type: string }) => t.type === 'flights');
-    expect(flights).toMatchObject({ label: 'Leti', execution: 'batch', ownsDefinitions: false, schedule: { enabled: true } });
+    expect(flights).toMatchObject({ label: 'Leti', execution: 'batch', ownsDefinitions: true, schedule: { enabled: true } });
     const ryanair = flights.extras.providers.find((p: { id: string }) => p.id === 'ryanair');
     expect(ryanair).toMatchObject({ official: false, enabled: false, dailyLimit: 2, requestsToday: 0, lastError: null });
     expect(res.body.email).toEqual({ configured: false });

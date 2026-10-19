@@ -9,7 +9,7 @@ import { auditRunFinished, auditRunStarted } from '../scanner.audit.js';
 import type { DefinitionOutcomeRow, ExecutionContext, ExecutionOutcome, RunStatus, ScannerEvent, SingleDefinition } from '../types.js';
 import { buildNotificationsForRun } from './notification-builder.service.js';
 import { processNotificationOutbox } from './notification-sender.service.js';
-import { genericResultStoreFor } from './result-store.service.js';
+import { deleteResultsOfDefinition, genericResultStoreFor } from './result-store.service.js';
 import { countFinishedRuns, type RunLean, type RunScope } from './scheduler.service.js';
 
 // En zagon (FR-016 do FR-019, člen V): prevzem `queued → running`, kontekst, `type.execute`,
@@ -137,7 +137,14 @@ export async function executeRun(runId: Types.ObjectId | string, env: Env, logge
           shouldCancel,
         };
         const outcome: ExecutionOutcome = await type.execute(ctx);
-        if (outcome.status === 'cancelled' || (await shouldCancel())) {
+        const definitionDeleted = singleDefinition !== null && !(await ScannerDefinitionModel.exists({ _id: new Types.ObjectId(singleDefinition.id) }));
+        if (definitionDeleted) {
+          // Skener je bil izbrisan MED zagonom (edge case): rezultati izbrisanega se ne shranijo in
+          // dopis zanj ne gre — kar je tip medtem zapisal v generično shrambo, se pobriše.
+          status = 'cancelled';
+          pushError({ code: 'definition-deleted', message: 'Skener je bil izbrisan med zagonom.' });
+          await deleteResultsOfDefinition(singleDefinition!.id);
+        } else if (outcome.status === 'cancelled' || (await shouldCancel())) {
           status = 'cancelled';
         } else {
           counters = { ...outcome.counters };

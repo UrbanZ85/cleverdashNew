@@ -30,6 +30,18 @@ describe('app.routes — Skenerji (016)', () => {
     expect(b).not.toMatch(/adminGuard|roleGuard/);
   });
 
+  it.each(['scanners/new', 'scanners/:scannerId/edit', 'scanners/:scannerId'])('podstran %s ima authGuard, tabGuard pa NE', (path) => {
+    const b = block(path);
+    expect(b, path).not.toBe('');
+    expect(b).toContain('authGuard');
+    expect(b).not.toContain('tabGuard');
+  });
+
+  it('statična `scanners/new` in `scanners/admin` stojita PRED parametrično', () => {
+    expect(source.indexOf("path: 'scanners/new'")).toBeLessThan(source.indexOf("path: 'scanners/:scannerId',"));
+    expect(source.indexOf("path: 'scanners/admin'")).toBeLessThan(source.indexOf("path: 'scanners/:scannerId',"));
+  });
+
   it('stara pot flight-deals/admin preusmeri na administracijo skenerjev s tipom flights', () => {
     expect(source).toMatch(/path: 'flight-deals\/admin', redirectTo: '\/scanners\/admin\?type=flights'/);
   });
