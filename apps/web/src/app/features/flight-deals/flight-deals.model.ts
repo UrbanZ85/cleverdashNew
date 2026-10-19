@@ -1,5 +1,11 @@
 // Tipi iz pogodbe specs/015-flight-deals/contracts/openapi.yaml in ČISTE funkcije prikaza.
 //
+// 016: generični prikaz (cena, čas, napaka, stanje zagona) je v core/scanners/scanners.model.ts in se
+// od tod SAMO ponovno izvozi, da obstoječi uvozi in testi modula ostanejo nedotaknjeni; tipi urnika,
+// zagonov in outboxa so prav tako tam (administracija je od 016 v jedru skenerjev).
+import { describeError, formatLjubljana, formatPrice, type Money } from '../../core/scanners/scanners.model.js';
+export { describeError, formatLjubljana, formatPrice };
+//
 // Brez Angularja: datoteka je testabilna brez TestBed (tests/unit/flight-deals-model.spec.ts),
 // enak dogovor kot `recipes.model.ts` in `todos.model.ts`. Vse, kar se lahko pokvari tiho (oblika
 // cene, besedilo spremembe, pretvorba obrazca v vnos), je tu in ne v predlogah.
@@ -10,13 +16,8 @@ export type DateMode = 'fixed' | 'range' | 'rolling';
 export type DestinationMode = 'any' | 'countries' | 'airports';
 export type BaggageOption = 'any' | 'cabin' | 'checked';
 export type OfferSort = 'price' | 'departure' | 'appeared' | 'change';
-export type RunStatus = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'cancelled' | 'interrupted';
-export type SchedulePresetId = 'daily-06' | 'daily-06-18' | 'every-6h' | 'monday-08' | 'custom';
 
-export interface Money {
-  amount: number;
-  currency: string;
-}
+export type { Money };
 
 export interface Person {
   id: string;
@@ -229,73 +230,8 @@ export interface ProviderAdmin extends ProviderPublic {
   dailyLimit: number | null;
 }
 
-export interface SchedulerSettings {
-  enabled: boolean;
-  preset: SchedulePresetId;
-  cronExpression: string;
-  timezone: string;
-  nextRunAt: string | null;
-  nextRunLocal: string | null;
-  presets: Array<{ id: SchedulePresetId; label: string; cronExpression: string }>;
-  updatedAt: string;
-  updatedBy: Person | null;
-}
-
-export interface RunCounters {
-  rules: number;
-  queries: number;
-  providerRequests: number;
-  offersSeen: number;
-  newMatches: number;
-  priceDrops: number;
-  priceRises: number;
-  unavailable: number;
-  notificationsPending: number;
-  notificationsSent: number;
-  notificationsSuppressed: number;
-  notificationsFailed: number;
-}
-
-export interface Run {
-  id: string;
-  trigger: 'schedule' | 'manual';
-  status: RunStatus;
-  scheduledFor: string | null;
-  startedAt: string | null;
-  finishedAt: string | null;
-  requestedBy: Person | null;
-  cancelRequested: boolean;
-  counters: RunCounters;
-  providers: Array<{ providerId: string; enabled: boolean; ok: number; noFlights: number; unsupported: number; unreachable: number; rateLimited: number; incomplete: number }>;
-  errors: Array<{ at: string; providerId?: string; searchId?: string; code: string; message: string }>;
-}
-
-export interface NotificationAdmin {
-  id: string;
-  runId: string;
-  recipient: Person & { emailHint: string };
-  status: 'pending' | 'sending' | 'sent' | 'failed' | 'suppressed';
-  suppressedReason: string | null;
-  attemptCount: number;
-  nextAttemptAt: string | null;
-  sentAt: string | null;
-  lastError: string | null;
-  itemCount: number;
-  createdAt: string;
-}
-
 // ─── prikaz ──────────────────────────────────────────────────────────────────────────────────
 
-const ZONE = 'Europe/Ljubljana';
-
-export function formatPrice(money: Money | null | undefined): string {
-  if (!money) return '';
-  const amount = Number.isInteger(money.amount)
-    ? String(money.amount)
-    : money.amount.toFixed(2).replace('.', ',');
-  const symbol = money.currency === 'EUR' ? '€' : money.currency;
-  return `${amount} ${symbol}`;
-}
 
 /** "−31 € (−25,8 %)" oziroma "+21 € (+23,6 %)"; prazno pri NOVO ali brez primerjave (FR-030). */
 export function changeText(change: OfferChange | null | undefined, currency = 'EUR'): string {
@@ -331,33 +267,6 @@ export const OUTCOME_LABELS: Record<ProviderOutcome, string> = {
   incomplete: 'podatki so nepopolni',
   disabled: 'vir ni vklopljen',
 };
-
-export const RUN_STATUS_LABELS: Record<RunStatus, string> = {
-  queued: 'čaka',
-  running: 'teče',
-  succeeded: 'uspešno',
-  partial: 'delno (en vir ni odgovoril)',
-  failed: 'neuspešno',
-  cancelled: 'preklicano',
-  interrupted: 'prekinjeno',
-};
-
-export function runStatusColor(status: RunStatus): 'success' | 'warning' | 'danger' | 'medium' | 'primary' {
-  switch (status) {
-    case 'succeeded':
-      return 'success';
-    case 'partial':
-      return 'warning';
-    case 'failed':
-    case 'interrupted':
-      return 'danger';
-    case 'running':
-    case 'queued':
-      return 'primary';
-    case 'cancelled':
-      return 'medium';
-  }
-}
 
 export const WEEKDAYS: ReadonlyArray<{ iso: number; label: string; long: string }> = [
   { iso: 1, label: 'pon', long: 'ponedeljek' },
@@ -421,18 +330,6 @@ export function formatLocalTime(iso: string, tz: string): string {
 
 export function formatLocalDate(iso: string, tz: string): string {
   return new Intl.DateTimeFormat('sl-SI', { weekday: 'short', day: 'numeric', month: 'numeric', timeZone: tz }).format(new Date(iso));
-}
-
-export function formatLjubljana(iso: string | null | undefined): string {
-  if (!iso) return '';
-  return new Intl.DateTimeFormat('sl-SI', {
-    day: 'numeric',
-    month: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: ZONE,
-  }).format(new Date(iso));
 }
 
 export function pluralNights(n: number | null): string {
@@ -749,12 +646,6 @@ export function quickValidate(form: SearchForm): string | null {
     if (max < min) return 'Največje število nočitev mora biti vsaj enako najmanjšemu.';
   }
   return null;
-}
-
-/** Sporočilo napake iz problem+json, sicer nadomestek (vzorec vseh modulov). */
-export function describeError(err: unknown, fallback: string): string {
-  const detail = (err as { error?: { detail?: unknown } } | null)?.error?.detail;
-  return typeof detail === 'string' && detail.length > 0 ? detail : fallback;
 }
 
 // ─── tabela ponudb ───────────────────────────────────────────────────────────────────────────

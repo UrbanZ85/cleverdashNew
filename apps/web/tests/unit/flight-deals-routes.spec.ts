@@ -21,7 +21,7 @@ describe('app.routes — Leti (015)', () => {
     expect(b).toContain('tabGuard');
   });
 
-  it.each(['flight-deals/searches', 'flight-deals/searches/:searchId', 'flight-deals/offers/:offerId', 'flight-deals/shared', 'flight-deals/admin'])(
+  it.each(['flight-deals/searches', 'flight-deals/searches/:searchId', 'flight-deals/offers/:offerId', 'flight-deals/shared'])(
     'podstran %s ima authGuard, tabGuard pa NE',
     (path) => {
       const b = block(path);
@@ -43,7 +43,8 @@ describe('app.routes — Leti (015)', () => {
     expect(source.indexOf("path: 'flight-deals/admin'")).toBeLessThan(source.indexOf("path: '**'"));
   });
 
-  it('administracija nima lastnega varuha na odjemalcu — pravi varuh je strežnik', () => {
-    expect(block('flight-deals/admin')).not.toMatch(/adminGuard|roleGuard/);
+  it('administracija je od 016 preusmeritev v administracijo skenerjev (FR-037)', () => {
+    expect(source).toMatch(/path: 'flight-deals\/admin', redirectTo: '\/scanners\/admin\?type=flights'/);
+    expect(source).not.toContain('flight-deals/admin.page.js');
   });
 });

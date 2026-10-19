@@ -7,23 +7,19 @@ import type {
   Country,
   FlightSearch,
   Limits,
-  NotificationAdmin,
   Offer,
   OfferDetail,
   OfferList,
   OfferSort,
   Overview,
-  ProviderAdmin,
   ProviderPublic,
-  Run,
-  SchedulePresetId,
-  SchedulerSettings,
   SearchInput,
   SearchPreview,
 } from './flight-deals.model.js';
 
 // Odjemalec modula Leti. Uvaža samo iz `core/` in lastne mape (člen I). Vsaka mutacija iskanja vrne
-// CELO novo iskanje; vse metode so Promise prek `firstValueFrom` (vzorec 010/013).
+// CELO novo iskanje; vse metode so Promise prek `firstValueFrom` (vzorec 010/013). Administracija
+// (urnik, zagoni, outbox) je od 016 v jedru skenerjev: core/scanners/scanners.api.ts.
 
 @Injectable({ providedIn: 'root' })
 export class FlightDealsApi {
@@ -106,47 +102,6 @@ export class FlightDealsApi {
 
   providers(): Promise<ProviderPublic[]> {
     return firstValueFrom(this.http.get<{ providers: ProviderPublic[] }>(this.path('/providers'), this.opts)).then((r) => r.providers);
-  }
-
-  // ─── administracija ───
-
-  scheduler(): Promise<SchedulerSettings> {
-    return firstValueFrom(this.http.get<SchedulerSettings>(this.path('/admin/scheduler'), this.opts));
-  }
-
-  updateScheduler(patch: { enabled?: boolean; preset?: SchedulePresetId; cronExpression?: string; timezone?: string }): Promise<SchedulerSettings> {
-    return firstValueFrom(this.http.put<SchedulerSettings>(this.path('/admin/scheduler'), patch, this.opts));
-  }
-
-  runs(limit = 30): Promise<{ runs: Run[]; active: Run | null }> {
-    return firstValueFrom(this.http.get<{ runs: Run[]; active: Run | null }>(this.path(`/admin/runs?limit=${limit}`), this.opts));
-  }
-
-  getRun(id: string): Promise<Run> {
-    return firstValueFrom(this.http.get<Run>(this.path(`/admin/runs/${id}`), this.opts));
-  }
-
-  triggerRun(): Promise<Run> {
-    return firstValueFrom(this.http.post<Run>(this.path('/admin/runs'), {}, this.opts));
-  }
-
-  cancelRun(id: string): Promise<Run> {
-    return firstValueFrom(this.http.post<Run>(this.path(`/admin/runs/${id}/cancel`), {}, this.opts));
-  }
-
-  adminProviders(): Promise<{ providers: ProviderAdmin[]; email: { configured: boolean } }> {
-    return firstValueFrom(this.http.get<{ providers: ProviderAdmin[]; email: { configured: boolean } }>(this.path('/admin/providers'), this.opts));
-  }
-
-  notifications(params: { status?: string; runId?: string; limit?: number } = {}): Promise<NotificationAdmin[]> {
-    const search = new URLSearchParams();
-    if (params.status) search.set('status', params.status);
-    if (params.runId) search.set('runId', params.runId);
-    if (params.limit) search.set('limit', String(params.limit));
-    const suffix = search.size > 0 ? `?${search.toString()}` : '';
-    return firstValueFrom(this.http.get<{ notifications: NotificationAdmin[] }>(this.path(`/admin/notifications${suffix}`), this.opts)).then(
-      (r) => r.notifications,
-    );
   }
 }
 

@@ -188,9 +188,7 @@ export const APP_ROUTES: Routes = [
   // zamenja z id-jem brez menjave primerka (ista odločitev kot pri beležkah in receptih). Statična
   // `flight-deals/searches` stoji PRED `flight-deals/searches/:searchId`.
   //
-  // Administracija (`flight-deals/admin`) je podpot modula in NE ločen zavihek: urnik je lastnost
-  // modula in gre z njim. Varuha na odjemalcu ni — povezava se pokaže samo adminu, pravi varuh je
-  // strežnik (modules/flight-deals/admin-guard.ts), ki navadnemu uporabniku vrne 403.
+  // Administracija (urnik, zagoni, outbox) je od 016 v jedru skenerjev (`/scanners/admin`).
   {
     path: 'flight-deals',
     loadComponent: () => import('./features/flight-deals/flight-deals.page.js').then((m) => m.FlightDealsPage),
@@ -216,9 +214,15 @@ export const APP_ROUTES: Routes = [
     loadComponent: () => import('./features/flight-deals/shared-offers.page.js').then((m) => m.FlightSharedOffersPage),
     canActivate: [authGuard],
   },
+  // 016: administracija letov je zdaj administracija skenerjev; stara pot ostane kot preusmeritev,
+  // da zaznamki in povezave v dopisih ne umrejo (FR-037).
+  { path: 'flight-deals/admin', redirectTo: '/scanners/admin?type=flights' },
+  // 016: jedro skenerjev. Koren `scanners` je tab-gated (zavihek Skenerji); podstrani imajo samo
+  // `authGuard` (vzorec `flight-deals/*`). Administracija NIMA varuha na odjemalcu — pravi varuh je
+  // strežnik (platform/auth/admin-guard.ts), ki navadnemu uporabniku vrne 403.
   {
-    path: 'flight-deals/admin',
-    loadComponent: () => import('./features/flight-deals/admin.page.js').then((m) => m.FlightAdminPage),
+    path: 'scanners/admin',
+    loadComponent: () => import('./features/scanners/scanners-admin.page.js').then((m) => m.ScannersAdminPage),
     canActivate: [authGuard],
   },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' },

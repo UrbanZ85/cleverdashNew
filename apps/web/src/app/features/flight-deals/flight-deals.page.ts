@@ -6,9 +6,9 @@ import { CurrentUserService } from '../../core/user/current-user.service.js';
 import { FlightDealsApi } from './flight-deals.api.js';
 import { FlightOfferTableComponent } from './offer-table.component.js';
 import { OfferViewStore } from './offer-view.store.js';
+import { runStatusLabel } from '../../core/scanners/scanners.model.js';
 import {
   DEFAULT_OFFER_VIEW,
-  RUN_STATUS_LABELS,
   checkAnalysisText,
   describeError,
   formatLjubljana,
@@ -19,7 +19,6 @@ import {
   type Offer,
   type OfferView,
   type Overview,
-  type RunStatus,
 } from './flight-deals.model.js';
 
 // Zavihek "Leti" (platform/tabs/registry.ts, id `flight-deals`) — glavna stran modula (FR-032):
@@ -29,7 +28,8 @@ import {
 //
 // Strežnik vrne največ 200 ponudb (najcenejše najprej, z nedosegljivimi vred); filtriranje in
 // razvrščanje sta v brskalniku — čiste funkcije v flight-deals.model.ts. Povezava do
-// administracije se pokaže samo adminu — pravi varuh je strežnik (modules/flight-deals/admin-guard.ts).
+// administracije (od 016 v jedru skenerjev, `/scanners/admin`) se pokaže samo adminu — pravi varuh je
+// strežnik (platform/auth/admin-guard.ts).
 
 const OFFER_LIMIT = 200;
 
@@ -40,7 +40,7 @@ const OFFER_LIMIT = 200;
   template: `
     <app-page-header title="Leti" [subtitle]="subtitle()">
       @if (isAdmin()) {
-        <ion-button slot="end" routerLink="/flight-deals/admin" aria-label="Administracija">
+        <ion-button slot="end" routerLink="/scanners/admin" [queryParams]="{ type: 'flights' }" aria-label="Administracija">
           <ion-icon slot="icon-only" name="settings-outline"></ion-icon>
         </ion-button>
       }
@@ -268,6 +268,6 @@ export class FlightDealsPage implements OnInit {
   }
 
   runLabel(status: string): string {
-    return RUN_STATUS_LABELS[status as RunStatus] ?? status;
+    return runStatusLabel(status);
   }
 }

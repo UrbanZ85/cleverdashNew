@@ -531,17 +531,6 @@ export const HELP_TOPICS = {
     ],
     ifEmpty: 'Brez prejemnikov dopise dobiva samo lastnik iskanja.',
   },
-  'flightDeals.scheduler': {
-    title: 'Urnik preverjanja',
-    what: 'Kdaj sistem preveri vsa aktivna iskanja pri virih. Nastavlja ga izključno administrator, ker so viri skupni vsem uporabnikom.',
-    how: [
-      'Preprosti urniki (vsak dan ob 6:00; ob 6:00 in 18:00; vsakih 6 ur; vsak ponedeljek ob 8:00) ali cron izraz s petimi polji.',
-      'Sprememba velja ob naslednjem tiku (največ minuta), brez ponovnega zagona aplikacije.',
-      'Če je bila aplikacija izklopljena, se ob zagonu izvede samo zadnji zamujeni termin — dopis po enem zagonu že nosi vse spremembe.',
-      '"Preveri zdaj" sproži zagon takoj, tudi pri izklopljenem urniku; dve preverjanji hkrati nista mogoči.',
-    ],
-    example: '0 6,18 * * * — vsak dan ob 6:00 in 18:00 po Europe/Ljubljana.',
-  },
   'flightDeals.sources': {
     title: 'Viri podatkov',
     what: 'Od kod prihajajo cene. Letalski prevozniki javnih vmesnikov nimajo; vire vklopi lastnik namestitve v okolju, tu se bere samo njihovo stanje.',
