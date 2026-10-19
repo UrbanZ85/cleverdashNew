@@ -3,7 +3,7 @@ import type { Env } from '../../../platform/config/env.js';
 import type { Logger } from '../../../platform/logging/logger.js';
 import { ProblemError } from '../../../platform/errors/problem.js';
 import { FlightSearchRunModel } from '../models/flight-search-run.model.js';
-import { latestDueSlot, slotKeyFor } from '../domain/schedule-slots.js';
+import { latestDueSlot, slotKeyFor } from '../../../platform/scanner/domain/schedule-slots.js';
 import { auditRunInterrupted } from '../flight-deals.audit.js';
 import { processNotificationOutbox } from './notification-sender.service.js';
 import { executeRun, type ExecuteOptions } from './run-executor.service.js';

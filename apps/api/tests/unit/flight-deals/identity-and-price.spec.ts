@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canonicalIdentity, identityKey } from '../../../src/modules/flight-deals/domain/identity.js';
-import { classifyChange, isNotifiable, percentChange } from '../../../src/modules/flight-deals/domain/price-change.js';
+import { classifyChange, isNotifiable, percentChange } from '../../../src/platform/scanner/domain/price-change.js';
 import { sanitizeBookingUrl } from '../../../src/modules/flight-deals/domain/booking-url.js';
 import { offer } from './_fixtures.js';
 

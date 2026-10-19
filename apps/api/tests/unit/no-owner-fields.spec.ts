@@ -20,6 +20,9 @@ import { FileInboxModel } from '../../src/modules/file-sharing/models/file-inbox
 import { FlightSearchRuleModel } from '../../src/modules/flight-deals/models/flight-search-rule.model.js';
 import { FlightOfferModel } from '../../src/modules/flight-deals/models/flight-offer.model.js';
 import { FlightSearchMatchModel } from '../../src/modules/flight-deals/models/flight-search-match.model.js';
+import { ScannerDefinitionModel } from '../../src/platform/scanner/models/scanner-definition.model.js';
+import { ScannerResultModel } from '../../src/platform/scanner/models/scanner-result.model.js';
+import { ScannerRunModel } from '../../src/platform/scanner/models/scanner-run.model.js';
 
 // 004, data-model.md "Načelo lastništva zapisov": OBRNJENO iz 001/003 (glej git zgodovino
 // te datoteke) — sistem je zdaj večuporabniški. Ta test preveri OBE strani nove razmejitve
@@ -47,6 +50,11 @@ describe('data-model.md "Načelo lastništva zapisov": userId na osebnih podatki
     // samo ponudbe prek ujemanj, zato je `{ _id, userId }` še vedno pogoj vsakega dostopa
     // (specs/015-flight-deals/data-model.md, "Načelo lastništva zapisov").
     ['FlightSearchRule', FlightSearchRuleModel],
+    // 016: skener je oseben zapis kot vsak drug; prejemnikov nima (deljenje je lastnost tipa).
+    ['ScannerDefinition', ScannerDefinitionModel],
+    // 016: rezultat v generični shrambi je LAST skenerja in nosi denormaliziranega lastnika — v
+    // nasprotju s `FlightOffer`, ki je skupna referenčna tabela (specs/016-scanner-engine/data-model.md).
+    ['ScannerResult', ScannerResultModel],
   ] as const;
 
   it.each(personal)('%s NOSI userId', (_name, model) => {
@@ -63,6 +71,13 @@ describe('data-model.md "Načelo lastništva zapisov": userId na osebnih podatki
 
   it.each(shared)('%s (skupna referenčna/varnostna tabela) NE nosi userId', (_name, model) => {
     expect(Object.keys(model.schema.paths)).not.toContain('userId');
+  });
+
+  // 016: zagon je NAMESTITVENI zapis (kot `FlightSearchRun` v 015): pri zagonu enega skenerja nosi
+  // `scope.ownerId` kot oznako, kdo ga sme videti, ne `userId` — ime bi obljubljalo izolacijo, ki
+  // je zagon tipa (vsi uporabniki v enem) nima.
+  it('ScannerRun (namestitveni zapis) NE nosi userId', () => {
+    expect(Object.keys(ScannerRunModel.schema.paths)).not.toContain('userId');
   });
 
   it('User nima lastnega userId (uporabnik je sam sebi entiteta, ne referenca)', () => {

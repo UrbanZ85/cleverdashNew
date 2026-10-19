@@ -7,11 +7,13 @@ import {
   nextRuns,
   presetFor,
   presetForExpression,
+  scopedSlotKey,
   slotKeyFor,
   validateCron,
-} from '../../../src/modules/flight-deals/domain/schedule-slots.js';
+} from '../../../src/platform/scanner/domain/schedule-slots.js';
 
-// FR-046 do FR-051 (US6): izrazi, termini, dohitevanje; quality gate: prehod na zimski čas.
+// 016 (preseljeno iz 015, FR-046 do FR-051): izrazi, termini, dohitevanje; kakovostna vrata: prehod na
+// zimski čas 25. 10. 2026 in ključ termina z OBSEGOM (tip ali skener), research.md §4.
 
 const TZ = 'Europe/Ljubljana';
 
@@ -75,6 +77,26 @@ describe('slotKey in prednastavitve', () => {
     expect(slotKeyFor(new Date('2026-10-17T04:00:00Z'), TZ)).toBe('schedule:2026-10-17T06:00+02:00');
     expect(slotKeyFor(new Date('2026-10-26T05:00:00Z'), TZ)).toBe('schedule:2026-10-26T06:00+01:00');
   });
+  it('ključ z obsegom: tip in skener z istim izrazom dobita RAZLIČNA ključa, isti obseg istega', () => {
+    const slot = new Date('2026-10-17T04:00:00Z');
+    expect(scopedSlotKey('type:flights', slot, TZ)).toBe('schedule:type:flights:2026-10-17T06:00+02:00');
+    expect(scopedSlotKey('def:abc', slot, TZ)).toBe('schedule:def:abc:2026-10-17T06:00+02:00');
+    expect(scopedSlotKey('def:abc', slot, TZ)).not.toBe(scopedSlotKey('def:xyz', slot, TZ));
+    // Po prehodu na zimski čas isti lokalni termin nosi drug odmik — ključ ga pove.
+    expect(scopedSlotKey('type:flights', new Date('2026-10-26T05:00:00Z'), TZ)).toBe('schedule:type:flights:2026-10-26T06:00+01:00');
+  });
+
+  it('urnik skenerja v drugi coni da termin v tisti coni', () => {
+    const next = nextRun('0 6 * * *', 'America/New_York', new Date('2026-10-24T20:00:00Z'));
+    expect(next?.toISOString()).toBe('2026-10-25T10:00:00.000Z');
+    expect(scopedSlotKey('def:ny', next!, 'America/New_York')).toBe('schedule:def:ny:2026-10-25T06:00-04:00');
+  });
+
+  it('hourly je prednastavitev z izrazom na polno uro', () => {
+    expect(presetFor('hourly').cronExpression).toBe('0 * * * *');
+    expect(presetForExpression('0 * * * *')).toBe('hourly');
+  });
+
   it('isti termin iz dveh izvodov da isti ključ', () => {
     const a = nextRun('0 6 * * *', TZ, new Date('2026-10-24T20:00:00Z'))!;
     const b = nextRun('0 6 * * *', TZ, new Date('2026-10-24T21:00:00Z'))!;

@@ -8,7 +8,7 @@ import { FlightSearchRuleModel } from '../models/flight-search-rule.model.js';
 import { findAirport } from '../domain/airports.js';
 import type { Windows } from '../domain/date-window.js';
 import { identityKey } from '../domain/identity.js';
-import { classifyChange } from '../domain/price-change.js';
+import { classifyChange } from '../../../platform/scanner/domain/price-change.js';
 import { sanitizeBookingUrl } from '../domain/booking-url.js';
 import type { QueryPlan } from '../domain/query-plan.js';
 import { describeMatchFail, nightsAtDestination, offerMatchesRule, type MatchFailReason } from '../domain/rule-matcher.js';
@@ -142,7 +142,7 @@ async function upsertOffers(
     } else {
       offerId = existing._id;
       const change = classifyChange(existing.price, offer.price);
-      changeType = change.type === 'NEW' ? 'UNCHANGED' : change.type;
+      changeType = change.type === 'NEW' ? 'UNCHANGED' : (change.type as ChangeType); // classifyChange nikoli ne vrne CHANGED (016)
       previousPrice = existing.previousPrice
         ? { amount: existing.previousPrice.amount, currency: existing.previousPrice.currency }
         : null;

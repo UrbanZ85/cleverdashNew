@@ -16,7 +16,7 @@ import {
   presetFor,
   presetForExpression,
   validateCron,
-} from '../domain/schedule-slots.js';
+} from '../../../platform/scanner/domain/schedule-slots.js';
 import type { SchedulePresetId } from '../domain/types.js';
 
 // Nastavitve urnika (FR-046 do FR-049). En zapis, nastane ob prvem branju. Sprememba velja ob

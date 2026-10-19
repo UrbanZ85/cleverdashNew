@@ -44,7 +44,7 @@ export type DestinationMode = (typeof DESTINATION_MODES)[number];
 export const BAGGAGE_OPTIONS = ['any', 'cabin', 'checked'] as const;
 export type BaggageOption = (typeof BAGGAGE_OPTIONS)[number];
 
-export const SCHEDULE_PRESET_IDS = ['daily-06', 'daily-06-18', 'every-6h', 'monday-08', 'custom'] as const;
+export const SCHEDULE_PRESET_IDS = ['hourly', 'daily-06', 'daily-06-18', 'every-6h', 'monday-08', 'custom'] as const; // 016: 'hourly' dodan; nabor se seli v platform/scanner/types.ts (T045)
 export type SchedulePresetId = (typeof SCHEDULE_PRESET_IDS)[number];
 
 export const AVAILABILITIES = ['available', 'unavailable'] as const;

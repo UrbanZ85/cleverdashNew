@@ -38,7 +38,7 @@ describe('urnik', () => {
     expect(res.body).toMatchObject({ enabled: true, preset: 'daily-06-18', cronExpression: '0 6,18 * * *', timezone: 'Europe/Ljubljana', updatedBy: null });
     expect(res.body.nextRunAt).toMatch(/T(04|05|16|17):00:00\.000Z$/);
     expect(res.body.nextRunLocal).toMatch(/ob (06|18):00$/);
-    expect(res.body.presets.map((p: { id: string }) => p.id)).toEqual(['daily-06', 'daily-06-18', 'every-6h', 'monday-08']);
+    expect(res.body.presets.map((p: { id: string }) => p.id)).toEqual(['hourly', 'daily-06', 'daily-06-18', 'every-6h', 'monday-08']);
   });
 
   it('preset prepiše izraz; custom zahteva izraz; neveljaven izraz → 400 z razlago (FR-046, FR-047)', async () => {

@@ -1,4 +1,4 @@
-import type { ChangeType, Money } from './types.js';
+import type { ChangeType, Money } from '../types.js';
 
 // Vrsta spremembe cene (FR-027, FR-030). Čista funkcija s primeri iz specifikacije kot testi:
 // 120 → 89 = PRICE_DOWN −31 (−25,8 %), 89 → 110 = PRICE_UP +21 (+23,6 %).

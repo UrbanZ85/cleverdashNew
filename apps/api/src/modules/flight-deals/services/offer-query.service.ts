@@ -7,7 +7,7 @@ import { FlightSearchMatchModel } from '../models/flight-search-match.model.js';
 import { FlightSearchRuleModel } from '../models/flight-search-rule.model.js';
 import { offerAirlines } from '../domain/airlines.js';
 import { countryNameSl, findAirport } from '../domain/airports.js';
-import { classifyChange } from '../domain/price-change.js';
+import { classifyChange } from '../../../platform/scanner/domain/price-change.js';
 import type { OfferSort, OffersQuery } from '../domain/rule-input.js';
 import type { Availability, ChangeType, MatchStatus, Money, ProviderId } from '../domain/types.js';
 import { providerById } from '../providers/index.js';
