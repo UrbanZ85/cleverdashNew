@@ -37,6 +37,21 @@ export function auditRunFinished(
   logger?.info({ event: 'scanner.run.finished', ...p }, 'Zagon skenerja končan');
 }
 
+/** 017: analiza z umetno inteligenco — samo števci in oznake, nikoli vsebina vhoda ali izhoda. */
+export function auditAiAnalysisFinished(
+  logger: Logger | undefined,
+  p: { runId: string; scannerType: string; model: string; aiAnalyzed: number; aiCached: number; aiSkipped: number; aiFailed: number },
+): void {
+  logger?.info({ event: 'scanner.ai.finished', ...p }, 'Analiza rezultatov z umetno inteligenco končana');
+}
+
+export function auditAiAnalysisSkipped(
+  logger: Logger | undefined,
+  p: { runId: string; scannerType: string; reason: 'per-run-limit' | 'daily-limit'; limit: number },
+): void {
+  logger?.warn({ event: 'scanner.ai.skipped', ...p }, 'Analiza preskočena zaradi meje klicev');
+}
+
 export function auditRunInterrupted(logger: Logger | undefined, p: { runId: string; scannerType: string; heartbeatAt: Date }): void {
   logger?.warn({ event: 'scanner.run.interrupted', ...p }, 'Zagon brez utripa označen kot prekinjen');
 }

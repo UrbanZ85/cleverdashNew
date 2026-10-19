@@ -23,6 +23,7 @@ import {
   type Scanner,
 } from '../../core/scanners/scanners.model.js';
 import { ScannerResultListComponent } from './result-list.component.js';
+import { AiAnalysisCardComponent } from '../../shared/ai-analysis/ai-analysis-card.component.js';
 
 // Generični kontejner rezultatov enega skenerja (US5, FR-042): glava z urnikom in zadnjim zagonom,
 // "Zaženi zdaj" (samo lasten urnik), stikalo vklopa, segment Rezultati / Zagoni, podrobnosti
@@ -31,7 +32,7 @@ import { ScannerResultListComponent } from './result-list.component.js';
 @Component({
   selector: 'app-scanner-results-page',
   standalone: true,
-  imports: [NgComponentOutlet, RouterLink, PageHeaderComponent, HelpButtonComponent, ScannerResultListComponent, IonContent, IonButton, IonIcon, IonBadge, IonNote, IonText, IonToggle, IonSegment, IonSegmentButton, IonLabel, IonList, IonItem],
+  imports: [NgComponentOutlet, RouterLink, PageHeaderComponent, HelpButtonComponent, ScannerResultListComponent, AiAnalysisCardComponent, IonContent, IonButton, IonIcon, IonBadge, IonNote, IonText, IonToggle, IonSegment, IonSegmentButton, IonLabel, IonList, IonItem],
   template: `
     <app-page-header [title]="scanner()?.name ?? 'Skener'" backRoute="/scanners" backLabel="Skenerji" [subtitle]="scanner()?.typeLabel ?? null">
       @if (scanner(); as s) {
@@ -83,6 +84,9 @@ import { ScannerResultListComponent } from './result-list.component.js';
                 <section class="detail">
                   <h3>{{ d.title }} <ion-button fill="clear" size="small" (click)="detail.set(null)">zapri</ion-button></h3>
                   <p>{{ formatPriceOrDash(d.price) }} · {{ changeLabel(d.lastChangeType) }} · podatek z dne {{ formatLjubljana(d.dataAt) }}</p>
+                  @if (d.aiAnalysis; as a) {
+                    <app-ai-analysis-card [analysis]="a"></app-ai-analysis-card>
+                  }
                   <ion-list lines="none">
                     @for (h of d.history; track h.checkedAt) {
                       <ion-item>

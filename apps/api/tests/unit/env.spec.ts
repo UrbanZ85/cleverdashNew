@@ -295,4 +295,28 @@ describe('loadEnv', () => {
       expect(loadEnv({ ...VALID, NODE_ENV: 'test', SCANNER_ECHO_ENABLED: 'true' }).SCANNER_ECHO_ENABLED).toBe(true);
     });
   });
+
+  // 017: analiza z umetno inteligenco je neobvezna — brez ključa ni na voljo, vse ostalo ima privzetek.
+  describe('Analiza z umetno inteligenco (017)', () => {
+    it('brez ključa: model gpt-6.1-sol, uradna osnova, meje in izklopljene slike', () => {
+      const env = loadEnv(VALID);
+      expect(env.OPENAI_API_KEY ?? '').toBe('');
+      expect(env.OPENAI_MODEL).toBe('gpt-6.1-sol');
+      expect(env.OPENAI_BASE_URL).toBe('https://api.openai.com/v1');
+      expect(env.OPENAI_TIMEOUT_MS).toBe(30_000);
+      expect(env.SCANNER_AI_MAX_ITEMS_PER_RUN).toBe(25);
+      expect(env.SCANNER_AI_DAILY_REQUEST_LIMIT).toBe(300);
+      expect(env.SCANNER_AI_CACHE_DAYS).toBe(30);
+      expect(env.SCANNER_AI_IMAGES).toBe(false);
+      expect(env.SCANNER_AI_MAX_INPUT_CHARS).toBe(6_000);
+    });
+
+    it('sprejme ključ, drug model in drugo osnovo; neveljavna osnova je zavrnjena z imenom spremenljivke', () => {
+      const env = loadEnv({ ...VALID, OPENAI_API_KEY: 'sk-test', OPENAI_MODEL: 'gpt-x', OPENAI_BASE_URL: 'http://localhost:1234/v1' });
+      expect(env.OPENAI_API_KEY).toBe('sk-test');
+      expect(env.OPENAI_MODEL).toBe('gpt-x');
+      resetEnvCacheForTests();
+      expect(() => loadEnv({ ...VALID, OPENAI_BASE_URL: 'ni-url' })).toThrowError(/OPENAI_BASE_URL/);
+    });
+  });
 });

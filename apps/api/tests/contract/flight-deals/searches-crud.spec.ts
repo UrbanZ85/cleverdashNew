@@ -137,3 +137,23 @@ describe('GET / PATCH / DELETE', () => {
     expect(res.body.offerCount).toBe(2);
   });
 });
+
+// 017 (FR-004): stikalo analize z umetno inteligenco na iskanju — privzeto izklopljeno; `limits.aiAvailable`.
+describe('aiEnabled (017)', () => {
+  it('privzeto false; POST s true; PATCH izklopi; limits.aiAvailable pove, ali je ključ nastavljen', async () => {
+    await boot();
+    const ana = await loginAs(app, 'ana');
+    const plain = await request(app).post('/api/v1/flight-deals/searches').set(AUTH(ana.token)).send(weekendInput());
+    expect(plain.status).toBe(201);
+    expect(plain.body.aiEnabled).toBe(false);
+    const on = await request(app).post('/api/v1/flight-deals/searches').set(AUTH(ana.token)).send(weekendInput({ name: 'Z analizo', aiEnabled: true }));
+    expect(on.status).toBe(201);
+    expect(on.body.aiEnabled).toBe(true);
+    const off = await request(app).patch(`/api/v1/flight-deals/searches/${on.body.id}`).set(AUTH(ana.token)).send({ aiEnabled: false });
+    expect(off.status).toBe(200);
+    expect(off.body).toMatchObject({ aiEnabled: false, name: 'Z analizo', active: true });
+    const list = await request(app).get('/api/v1/flight-deals/searches').set(AUTH(ana.token));
+    expect(list.body.limits.aiAvailable).toBe(false);
+    expect(list.body.searches.map((s: { aiEnabled: boolean }) => s.aiEnabled).sort()).toEqual([false, false]);
+  });
+});

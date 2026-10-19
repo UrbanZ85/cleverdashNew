@@ -45,6 +45,8 @@ export interface RuleLean {
   userId: Types.ObjectId;
   name: string;
   active: boolean;
+  /** 017; zapisi izpred uvedbe ga nimajo → `false`. */
+  aiEnabled?: boolean;
   departureAirports: string[];
   destination: { mode: DestinationMode; countries: string[]; airports: string[] };
   excluded: { countries: string[]; airports: string[] };
@@ -121,6 +123,7 @@ export function ruleToInput(rule: RuleLean): SearchInput {
   return {
     name: rule.name,
     active: rule.active,
+    aiEnabled: rule.aiEnabled ?? false,
     departureAirports: rule.departureAirports,
     destination: {
       mode: rule.destination.mode,
@@ -156,6 +159,7 @@ export function inputToDocument(input: SearchInput) {
   return {
     name: input.name,
     active: input.active,
+    aiEnabled: input.aiEnabled,
     departureAirports: input.departureAirports,
     destination: input.destination,
     excluded: input.excluded,

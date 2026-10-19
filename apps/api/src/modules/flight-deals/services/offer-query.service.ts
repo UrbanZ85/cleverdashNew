@@ -10,6 +10,7 @@ import { countryNameSl, findAirport } from '../domain/airports.js';
 import { classifyChange } from '../../../platform/scanner/domain/price-change.js';
 import type { OfferSort, OffersQuery } from '../domain/rule-input.js';
 import type { Availability, ChangeType, MatchStatus, Money, ProviderId } from '../domain/types.js';
+import type { AiAnalysis } from '../../../platform/scanner/types.js';
 import { providerById } from '../providers/index.js';
 import { requireObjectId, sharedRulesFor, type SharedRuleRef } from './rule-access.service.js';
 
@@ -43,6 +44,8 @@ export interface OfferLean {
   previousPrice: { amount: number; currency: string; at: Date } | null;
   lastChangeType: ChangeType;
   expiresAt: Date;
+  /** 017; stari zapisi ga nimajo. */
+  aiAnalysis?: AiAnalysis | null;
 }
 
 export interface MatchLean {
@@ -149,6 +152,9 @@ export function toOfferResponse(
     lastCheckedAt: offer.lastCheckedAt.toISOString(),
     availability: offer.availability,
     matches,
+    aiAnalysis: offer.aiAnalysis
+      ? { ...offer.aiAnalysis, analyzedAt: offer.aiAnalysis.analyzedAt instanceof Date ? offer.aiAnalysis.analyzedAt.toISOString() : offer.aiAnalysis.analyzedAt }
+      : null,
   };
 }
 

@@ -1,5 +1,6 @@
 import { Schema, model, type InferSchemaType } from 'mongoose';
 import { AVAILABILITIES, CHANGE_TYPES, PROVIDER_IDS } from '../domain/types.js';
+import { aiAnalysisSchema } from '../../../platform/scanner/models/scanner-ai-cache.model.js';
 
 // data-model.md (015): ponudba — ena konkretna kombinacija letov pri enem viru.
 //
@@ -84,6 +85,8 @@ const flightOfferSchema = new Schema(
     lastChangeType: { type: String, enum: CHANGE_TYPES, required: true, default: 'NEW' },
     /** Dan po zadnjem odhodu + 7 dni → TTL. Ponudba po odhodu ni več ponudba. */
     expiresAt: { type: Date, required: true },
+    /** 017: analiza z umetno inteligenco — na PONUDBI (skupna, objektivna), ne na ujemanju; `null` brez nje. */
+    aiAnalysis: { type: aiAnalysisSchema, default: null },
   },
   {
     // Časi so domenski in izrecni (`firstSeenAt`, `lastSeenAt`, `lastCheckedAt`); `createdAt`

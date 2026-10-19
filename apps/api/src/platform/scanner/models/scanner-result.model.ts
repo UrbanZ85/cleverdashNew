@@ -1,5 +1,6 @@
 import { Schema, model, type InferSchemaType } from 'mongoose';
 import { AVAILABILITIES, CHANGE_TYPES } from '../types.js';
+import { aiAnalysisSchema } from './scanner-ai-cache.model.js';
 
 // data-model.md (016): rezultat v GENERIČNI shrambi (tipi z `results: 'generic'`). Rezultat je
 // last enega skenerja: `{ definitionId, identityKey }` je unikat, `userId` je denormaliziran
@@ -57,6 +58,8 @@ const scannerResultSchema = new Schema(
     lastChangeType: { type: String, enum: CHANGE_TYPES, required: true },
     /** Tip lahko poda; sicer `lastSeenAt` + 30 dni → TTL. */
     expiresAt: { type: Date, required: true },
+    /** Analiza z umetno inteligenco (017); `null` brez nje. Izklop analize je ne briše (FR-015). */
+    aiAnalysis: { type: aiAnalysisSchema, default: null },
   },
   { timestamps: false, versionKey: false },
 );

@@ -7,6 +7,7 @@ import { statusFromOutcomes } from '../domain/run-status.js';
 import { findScannerType } from '../registry.js';
 import { auditRunFinished, auditRunStarted } from '../scanner.audit.js';
 import type { DefinitionOutcomeRow, ExecutionContext, ExecutionOutcome, RunStatus, ScannerEvent, SingleDefinition } from '../types.js';
+import { runAiAnalysis, type AiRunCounters } from './ai-analysis.service.js';
 import { buildNotificationsForRun } from './notification-builder.service.js';
 import { processNotificationOutbox } from './notification-sender.service.js';
 import { deleteResultsOfDefinition, genericResultStoreFor } from './result-store.service.js';
@@ -176,6 +177,28 @@ export async function executeRun(runId: Types.ObjectId | string, env: Env, logge
     }
   }
 
+  // 017: analiza z umetno inteligenco — PO izvajanju tipa in po dopisih, v lastnem try/catch: nič tu
+  // ne spremeni izida zagona (FR-011). Teče samo, kadar je zagon prinesel rezultate (ne `failed`/`cancelled`).
+  let aiCounters: AiRunCounters | null = null;
+  if (type && status !== 'cancelled' && status !== 'failed') {
+    try {
+      aiCounters = await runAiAnalysis({
+        runId: String(id),
+        type,
+        definitionId: scope.kind === 'definition' ? scope.definitionId : null,
+        env,
+        logger,
+        now,
+        heartbeat,
+        shouldCancel,
+        pushError,
+      });
+    } catch (err) {
+      pushError({ code: 'ai:unexpected', message: err instanceof Error ? err.message : 'analiza z umetno inteligenco je spodletela' });
+      logger?.error({ err, runId: String(id) }, 'Korak analize z umetno inteligenco je spodletel; zagon se zaključi brez nje');
+    }
+  }
+
   const finishedAt = new Date();
   await ScannerRunModel.updateOne(
     { _id: id },
@@ -186,6 +209,7 @@ export async function executeRun(runId: Types.ObjectId | string, env: Env, logge
         heartbeatAt: finishedAt,
         counters: {
           ...counters,
+          ...(aiCounters ?? {}),
           definitions: definitionRows.length,
           notificationsPending,
           notificationsSent: 0,

@@ -466,6 +466,20 @@ Arhitektura je v [`docs/scanner-engine.md`](docs/scanner-engine.md), dodajanje t
 [`specs/016-scanner-engine/contracts/openapi.yaml`](specs/016-scanner-engine/contracts/openapi.yaml),
 odločitve v [`specs/016-scanner-engine/research.md`](specs/016-scanner-engine/research.md).
 
+### Analiza rezultatov z umetno inteligenco (017)
+
+Skener lahko nove in spremenjene rezultate pošlje OpenAI modelu (`OPENAI_MODEL`, privzeto
+`gpt-6.1-sol`, Responses API s strukturiranim izhodom) in dobi povzetek, stopnjo tveganja z
+razlago, tveganja, pomanjkljivosti, priložnosti in poenotene lastnosti. Vklop je **na ravni
+skenerja oziroma iskanja** (privzeto izklopljen, ker je plačljiv); brez `OPENAI_API_KEY` analiza
+ni na voljo in vse deluje kot prej. Teče kot korak zagona v jedru skenerjev — brez lastnega urnika
+ali obvestil; napaka analize zagona ne prekine. Klici so omejeni na zagon in na dan ter
+predpomnjeni po vhodu; model ne sme izmišljati cen, stroškov ali dobičkov (shema brez denarnih
+polj). Analiza se pokaže v obstoječem prikazu rezultatov in ponudb, kadar obstaja. Tip z
+generično shrambo jo dobi brez dela, leti prek dveh kavljev. Spremenljivke v
+[`docs/env-reference.md`](docs/env-reference.md), odločitve v
+[`specs/017-ai-analysis/research.md`](specs/017-ai-analysis/research.md).
+
 ---
 
 **Stack:** Ionic 8 + Angular 20 (web in Android prek Capacitorja), Node.js 22 + Express 5 +

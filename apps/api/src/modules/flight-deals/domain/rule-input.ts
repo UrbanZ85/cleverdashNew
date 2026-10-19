@@ -55,6 +55,8 @@ const EMPTY_WINDOW: DayWindowInput = { weekdays: [], earliest: null, latest: nul
 export const searchCreateSchema = z.object({
   name: z.string().trim().min(1, 'Ime iskanja je obvezno.').max(MAX_NAME_LENGTH),
   active: z.boolean().default(true),
+  /** 017: analiza ponudb z umetno inteligenco; privzeto izklopljena. */
+  aiEnabled: z.boolean().default(false),
   departureAirports: z
     .array(iata)
     .min(1, 'Izberi vsaj eno odhodno letališče.')

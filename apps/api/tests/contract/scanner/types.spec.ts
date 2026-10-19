@@ -51,3 +51,17 @@ describe('GET /scanners/types', () => {
     expect([401, 403]).toContain((await request(app).get('/api/v1/scanners/types')).status);
   });
 });
+
+// 017 (FR-002): ali ima namestitev ključ za analizo — samo da/ne, ključ sam nikoli ne pride v odgovor.
+describe('GET /scanners/types — ai.available (017)', () => {
+  it('brez ključa false, s ključem true; ključ ni v odgovoru', async () => {
+    await boot();
+    const ana = await loginAs(app, 'ana');
+    expect((await request(app).get('/api/v1/scanners/types').set(AUTH(ana.token))).body.ai).toEqual({ available: false });
+    setTestEnv({ OPENAI_API_KEY: 'sk-test-secret-123' });
+    const res = await request(app).get('/api/v1/scanners/types').set(AUTH(ana.token));
+    expect(res.body.ai).toEqual({ available: true });
+    expect(JSON.stringify(res.body)).not.toContain('sk-test-secret');
+    setTestEnv({ OPENAI_API_KEY: '' });
+  });
+});

@@ -1,6 +1,7 @@
 import { Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonBadge, IonIcon, IonText } from '@ionic/angular/standalone';
+import { riskColor, riskLabel } from '../../core/scanners/scanners.model.js';
 import {
   airlinesText,
   changeColor,
@@ -48,6 +49,9 @@ import {
           }
           @if (!offer().providerOfficial) {
             <ion-badge color="warning" title="Neuradni vir">neuradni vir</ion-badge>
+          }
+          @if (offer().aiAnalysis; as a) {
+            <ion-badge [color]="riskColor(a.riskLevel)" title="Ocena z umetno inteligenco">UI: {{ riskLabel(a.riskLevel) }}</ion-badge>
           }
         </span>
       </div>
@@ -181,6 +185,8 @@ export class FlightOfferCardComponent {
   readonly showSearches = input(true);
 
   readonly formatPrice = formatPrice;
+  readonly riskColor = riskColor;
+  readonly riskLabel = riskLabel;
 
   readonly color = computed(() => changeColor(this.offer().change?.type ?? null));
   readonly delta = computed(() => changeText(this.offer().change, this.offer().price.currency));

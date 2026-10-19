@@ -14,6 +14,7 @@ export interface SearchResponse {
   isOwn: true;
   name: string;
   active: boolean;
+  aiEnabled: boolean;
   departureAirports: string[];
   destination: RuleLean['destination'];
   excluded: RuleLean['excluded'];
@@ -86,6 +87,7 @@ export function toSearchResponse(
     isOwn: true,
     name: rule.name,
     active: rule.active,
+    aiEnabled: rule.aiEnabled ?? false,
     departureAirports: rule.departureAirports,
     destination: rule.destination,
     excluded: rule.excluded ?? { countries: [], airports: [] },

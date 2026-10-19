@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import type { ChangeType, Money, ResultDetailView, ResultReader, ResultView } from '../../../platform/scanner/types.js';
+import type { AiAnalysis, ChangeType, Money, ResultDetailView, ResultReader, ResultView } from '../../../platform/scanner/types.js';
 import { getOfferDetail, listOffersForRule } from '../services/offer-query.service.js';
 import { readOfferCounts } from '../services/rule-response.service.js';
 import { Types } from 'mongoose';
@@ -22,6 +22,7 @@ interface OfferResponse {
   lastCheckedAt: string;
   availability: 'available' | 'unavailable';
   matches: Array<{ firstMatchedAt: string; changeType: ChangeType }>;
+  aiAnalysis?: (Omit<AiAnalysis, 'analyzedAt'> & { analyzedAt: string }) | null;
   history?: Array<{ checkedAt: string; price: Money | null; changeType: ChangeType }>;
 }
 
@@ -46,6 +47,7 @@ function toResult(offer: OfferResponse, definitionId: string): ResultView {
     previousPrice: offer.previousPrice ? { ...offer.previousPrice, at: new Date(offer.lastCheckedAt) } : null,
     lastChangeType: offer.availability === 'unavailable' ? 'UNAVAILABLE' : lastChange,
     change: offer.change,
+    aiAnalysis: offer.aiAnalysis ? { ...offer.aiAnalysis, analyzedAt: new Date(offer.aiAnalysis.analyzedAt) } : null,
   };
 }
 

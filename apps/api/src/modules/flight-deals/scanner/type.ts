@@ -3,6 +3,7 @@ import type { ScannerType } from '../../../platform/scanner/types.js';
 import type { DigestItem } from '../domain/email-template.js';
 import { FLIGHT_DEALS_SCOPES } from '../scopes.js';
 import { flightAdminExtras } from './admin-extras.js';
+import { flightAiHooks } from './ai.js';
 import { flightDefinitions } from './definitions.js';
 import { executeFlightBatch } from './execute.js';
 import { flightNotificationHooks } from './notifications.js';
@@ -38,4 +39,6 @@ export const flightScannerType: ScannerType<never, DigestItem> = {
   execute: executeFlightBatch,
   notifications: flightNotificationHooks,
   admin: { extras: flightAdminExtras },
+  // 017: leti hranijo ponudbe sami, zato povedo, katere so kandidati za analizo in kam gre izid.
+  ai: flightAiHooks,
 };

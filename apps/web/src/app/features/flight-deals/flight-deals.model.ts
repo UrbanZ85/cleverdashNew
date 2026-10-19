@@ -3,7 +3,7 @@
 // 016: generični prikaz (cena, čas, napaka, stanje zagona) je v core/scanners/scanners.model.ts in se
 // od tod SAMO ponovno izvozi, da obstoječi uvozi in testi modula ostanejo nedotaknjeni; tipi urnika,
 // zagonov in outboxa so prav tako tam (administracija je od 016 v jedru skenerjev).
-import { describeError, formatLjubljana, formatPrice, type Money } from '../../core/scanners/scanners.model.js';
+import { describeError, formatLjubljana, formatPrice, type AiAnalysis, type Money } from '../../core/scanners/scanners.model.js';
 export { describeError, formatLjubljana, formatPrice };
 //
 // Brez Angularja: datoteka je testabilna brez TestBed (tests/unit/flight-deals-model.spec.ts),
@@ -49,6 +49,8 @@ export interface SearchDates {
 export interface SearchInput {
   name: string;
   active: boolean;
+  /** 017: analiza ponudb z umetno inteligenco; privzeto izklopljena. Neobvezno v tipu zaradi starih zapisov. */
+  aiEnabled?: boolean;
   departureAirports: string[];
   destination: { mode: DestinationMode; countries: string[]; airports: string[] };
   excluded: { countries: string[]; airports: string[] };
@@ -113,6 +115,8 @@ export interface Limits {
   maxRecipients: number;
   maxQueriesPerSearch: number;
   maxFlexDays: number;
+  /** 017: ali ima namestitev ključ za analizo z umetno inteligenco. */
+  aiAvailable?: boolean;
 }
 
 export interface Airport {
@@ -186,6 +190,8 @@ export interface Offer {
   lastCheckedAt: string;
   availability: 'available' | 'unavailable';
   matches: OfferMatch[];
+  /** 017: analiza ponudbe z umetno inteligenco; `null`/izpuščeno brez nje. */
+  aiAnalysis?: AiAnalysis | null;
 }
 
 export interface HistoryPoint {
@@ -451,6 +457,7 @@ export function flexPresetFor(days: number): FlexPreset {
 export interface SearchForm {
   name: string;
   active: boolean;
+  aiEnabled: boolean;
   departureAirports: string[];
   destinationMode: DestinationMode;
   destinationCountries: string[];
@@ -490,6 +497,7 @@ export function emptySearchForm(): SearchForm {
   return {
     name: '',
     active: true,
+    aiEnabled: false,
     departureAirports: ['LJU'],
     destinationMode: 'any',
     destinationCountries: [],
@@ -532,6 +540,7 @@ export function formFromSearch(search: FlightSearch): SearchForm {
   return {
     name: search.name,
     active: search.active,
+    aiEnabled: search.aiEnabled ?? false,
     departureAirports: [...search.departureAirports],
     destinationMode: search.destination.mode,
     destinationCountries: [...search.destination.countries],
@@ -600,6 +609,7 @@ export function toSearchInput(form: SearchForm): SearchInput {
   return {
     name: form.name.trim(),
     active: form.active,
+    aiEnabled: form.aiEnabled,
     departureAirports: form.departureAirports,
     destination: {
       mode: form.destinationMode,

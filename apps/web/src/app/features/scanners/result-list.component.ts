@@ -1,6 +1,6 @@
 import { Component, input, output } from '@angular/core';
 import { IonBadge, IonItem, IonLabel, IonList, IonNote, IonText } from '@ionic/angular/standalone';
-import { changeColor, changeLabel, formatLjubljana, formatPriceOrDash, type Result } from '../../core/scanners/scanners.model.js';
+import { changeColor, changeLabel, formatLjubljana, formatPriceOrDash, riskColor, riskLabel, type Result } from '../../core/scanners/scanners.model.js';
 
 // Privzeti prikaz rezultatov (FR-042): naslov s povezavo, vir, cena ali pomišljaj, sprememba z
 // barvo kot pri ponudbah letov, prvič in zadnjič videno; nedosegljivi so zatemnjeni. Tip z
@@ -23,7 +23,13 @@ import { changeColor, changeLabel, formatLjubljana, formatPriceOrDash, type Resu
               @if (changeColor(r.lastChangeType); as color) {
                 <ion-badge [color]="color">{{ changeLabel(r.lastChangeType) }}</ion-badge>
               }
+              @if (r.aiAnalysis; as a) {
+                <ion-badge [color]="riskColor(a.riskLevel)" title="Ocena z umetno inteligenco">UI: {{ riskLabel(a.riskLevel) }}</ion-badge>
+              }
             </h3>
+            @if (r.aiAnalysis; as a) {
+              <p class="ai-summary">{{ a.summary }}</p>
+            }
             <p>
               <strong>{{ formatPriceOrDash(r.price) }}</strong>
               @if (r.previousPrice) {
@@ -52,6 +58,9 @@ import { changeColor, changeLabel, formatLjubljana, formatPriceOrDash, type Resu
       .unavailable {
         opacity: 0.6;
       }
+      .ai-summary {
+        font-style: italic;
+      }
       .foot {
         padding: var(--cd-space-2) var(--cd-page-padding);
         font-size: var(--cd-font-size-sm);
@@ -69,4 +78,6 @@ export class ScannerResultListComponent {
   readonly changeLabel = changeLabel;
   readonly formatLjubljana = formatLjubljana;
   readonly formatPriceOrDash = formatPriceOrDash;
+  readonly riskColor = riskColor;
+  readonly riskLabel = riskLabel;
 }

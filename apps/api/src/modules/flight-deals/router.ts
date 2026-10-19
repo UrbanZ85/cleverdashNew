@@ -7,6 +7,7 @@ import { badRequest, forbidden, notFound } from '../../platform/errors/problem.j
 import { isShareableUser, readUserSummaries } from '../../platform/users/directory.service.js';
 import { resolveCommutePlaces } from '../../platform/settings/commute.service.js';
 import { latestFinishedRun } from '../../platform/scanner/services/scheduler.service.js';
+import { aiAvailable } from '../../platform/scanner/services/ai-analysis.service.js';
 import { FLIGHT_DEALS_SCOPES } from './scopes.js';
 import { FlightSearchRuleModel } from './models/flight-search-rule.model.js';
 import { FlightSearchMatchModel } from './models/flight-search-match.model.js';
@@ -127,6 +128,8 @@ function limitsOf(env: ReturnType<typeof loadEnv>) {
     maxRecipients: env.FLIGHT_MAX_RECIPIENTS,
     maxQueriesPerSearch: env.FLIGHT_MAX_QUERIES_PER_RULE,
     maxFlexDays: env.FLIGHT_MAX_FLEX_DAYS,
+    // 017: ali ima namestitev ključ za analizo z umetno inteligenco (samo da/ne).
+    aiAvailable: aiAvailable(env),
   };
 }
 

@@ -28,6 +28,8 @@ export const definitionCreateSchema = z.object({
   name: z.string().trim().min(1, 'Ime je obvezno.').max(80, 'Ime ima lahko največ 80 znakov.'),
   type: z.string().trim().min(1).max(40),
   enabled: z.boolean().default(true),
+  /** 017: analiza z umetno inteligenco, privzeto IZKLOPLJENA (plačljiva). */
+  aiEnabled: z.boolean().default(false),
   schedule: scheduleInputSchema.default({}),
   notifications: notificationsInputSchema.default({}),
   config: configEnvelopeSchema,
@@ -38,6 +40,7 @@ export const definitionPatchSchema = z
   .object({
     name: z.string().trim().min(1).max(80).optional(),
     enabled: z.boolean().optional(),
+    aiEnabled: z.boolean().optional(),
     schedule: scheduleInputSchema.optional(),
     notifications: notificationsInputSchema.optional(),
     config: configEnvelopeSchema.optional(),

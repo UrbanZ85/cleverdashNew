@@ -380,6 +380,11 @@ export interface components {
             type: string;
             /** @default true */
             enabled: boolean;
+            /**
+             * @description 017 — analiza rezultatov z umetno inteligenco (plačljivo; privzeto izklopljeno)
+             * @default false
+             */
+            aiEnabled: boolean;
             schedule?: {
                 preset?: components["schemas"]["SchedulePresetId"];
                 cronExpression?: string;
@@ -397,6 +402,7 @@ export interface components {
         ScannerPatch: {
             name?: string;
             enabled?: boolean;
+            aiEnabled?: boolean;
             schedule?: {
                 preset?: components["schemas"]["SchedulePresetId"];
                 cronExpression?: string;
@@ -414,6 +420,8 @@ export interface components {
                 /** @enum {string} */
                 mode: "all-changes";
             };
+            /** @description 017 — analiza rezultatov z umetno inteligenco */
+            aiEnabled: boolean;
         };
         Result: {
             id: string;
@@ -445,6 +453,37 @@ export interface components {
                 absolute?: number;
                 percent?: number;
             } | null;
+            aiAnalysis: components["schemas"]["AiAnalysis"] | null;
+        };
+        /**
+         * @description Analiza rezultata z umetno inteligenco (017, specs/017-ai-analysis). Ocena modela, ne
+         *     dejstvo; brez številskih polj za denar — cene in izračuni so vedno deterministični
+         *     podatki aplikacije. `null` na rezultatu pomeni, da analize (še) ni.
+         */
+        AiAnalysis: {
+            /** @description Različica sheme izhoda (1) */
+            version: number;
+            /** @example gpt-6.1-sol */
+            model: string;
+            /** Format: date-time */
+            analyzedAt: string;
+            /** @description Hash vhoda; isti vhod se ne analizira znova */
+            inputHash: string;
+            /** @description Iz predpomnilnika (isti vhod drugje), ne iz klica */
+            cached: boolean;
+            summary: string;
+            /** @enum {string} */
+            riskLevel: "low" | "medium" | "high" | "unknown";
+            explanation: string;
+            risks: string[];
+            defects: string[];
+            opportunities: string[];
+            /** @description Poenotene lastnosti (ključi snake_case, vrednosti besedilo) */
+            attributes: {
+                [key: string]: string;
+            };
+            /** @enum {string} */
+            confidence: "low" | "medium" | "high";
         };
         ResultList: {
             results: components["schemas"]["Result"][];
@@ -610,6 +649,10 @@ export interface operations {
                         types: components["schemas"]["ScannerTypeInfo"][];
                         /** @description Prednastavitve urnika, skupne vsem tipom */
                         presets: components["schemas"]["SchedulePreset"][];
+                        /** @description 017 — ali ima namestitev ključ za analizo z umetno inteligenco (samo da/ne) */
+                        ai: {
+                            available: boolean;
+                        };
                     };
                 };
             };

@@ -30,6 +30,7 @@ import {
 import { findSummaryForUser, listSummariesForUser, toGenericSummary, toSummaryResponse } from './services/definition-listing.service.js';
 import { deleteResultsOfDefinition, genericResultReader } from './services/result-store.service.js';
 import { executeRun } from './services/run-executor.service.js';
+import { aiAvailable } from './services/ai-analysis.service.js';
 import { requestManualRun, type RunLean } from './services/scheduler.service.js';
 import { callerCovers, scopesOf, toTypeInfo } from './services/type-info.service.js';
 import type { AnyScannerType, ResultDetailView, ResultView, ScheduleSpec } from './types.js';
@@ -98,6 +99,7 @@ async function scannerResponse(def: DefinitionLean, env: ReturnType<typeof loadE
     ...toSummaryResponse(toGenericSummary(def, type, env, now, counts.get(String(def._id)) ?? 0)),
     config: def.config,
     notifications: def.notifications,
+    aiEnabled: def.aiEnabled ?? false,
   };
 }
 
@@ -121,6 +123,8 @@ scannersRouter.get('/scanners/types', requireScopes(), async (req, res, next) =>
     res.json({
       types: listScannerTypes().map((type) => toTypeInfo(type, env, scopes)),
       presets: listSchedulePresets(),
+      // 017: ali ima namestitev ključ za analizo z umetno inteligenco (samo da/ne — nikoli ključ sam).
+      ai: { available: aiAvailable(env) },
     });
   } catch (err) {
     next(err);
@@ -159,6 +163,7 @@ scannersRouter.post('/scanners', requireScopes(SCANNER_SCOPES.write), async (req
       name: input.name,
       type: type.type,
       enabled: input.enabled,
+      aiEnabled: input.aiEnabled,
       // `lastScheduledSlotAt: now` — nov skener ne dohiteva terminov iz preteklosti; prvi termin je naslednji po urniku.
       schedule: { mode: 'own', ...schedule, lastScheduledSlotAt: now },
       notifications: { enabled: input.notifications.enabled ?? true, mode: 'all-changes' },
@@ -193,6 +198,7 @@ scannersRouter.patch('/scanners/:scannerId', requireScopes(SCANNER_SCOPES.write)
     const set: Record<string, unknown> = {};
     if (patch.name !== undefined) set.name = patch.name;
     if (patch.enabled !== undefined) set.enabled = patch.enabled;
+    if (patch.aiEnabled !== undefined) set.aiEnabled = patch.aiEnabled;
     if (patch.notifications?.enabled !== undefined) set['notifications.enabled'] = patch.notifications.enabled;
     if (patch.config !== undefined) {
       // Delni vnos se zlije z obstoječim in preveri KOT CELOTA (tip, ki ga ni, ne more preveriti → 400).

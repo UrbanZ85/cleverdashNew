@@ -6,6 +6,7 @@ import { comparableHash, detectChange } from '../domain/change-detection.js';
 import { identityKeyOf } from '../domain/identity.js';
 import { classifyChange } from '../domain/price-change.js';
 import type {
+  AiAnalysis,
   Availability,
   ChangeType,
   GenericResultStore,
@@ -49,6 +50,8 @@ export interface ResultLean {
   previousPrice: (Money & { at: Date }) | null;
   lastChangeType: ChangeType;
   expiresAt: Date;
+  /** 017; stari zapisi ga nimajo. */
+  aiAnalysis?: AiAnalysis | null;
 }
 
 const DEFAULT_RESULT_TTL_DAYS = 30;
@@ -262,6 +265,7 @@ export function toResultView(r: ResultLean): ResultView {
         : r.lastChangeType === 'UNAVAILABLE'
           ? { type: 'UNAVAILABLE', absolute: 0, percent: 0 }
           : null,
+    aiAnalysis: r.aiAnalysis ?? null,
   };
 }
 

@@ -1,6 +1,8 @@
 import { Component, computed, input, model, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonBadge, IonButton, IonCheckbox, IonChip, IonIcon, IonLabel, IonNote, IonSearchbar, IonSegment, IonSegmentButton, IonText } from '@ionic/angular/standalone';
+import { riskColor, riskLabel } from '../../core/scanners/scanners.model.js';
+import { AiAnalysisCardComponent } from '../../shared/ai-analysis/ai-analysis-card.component.js';
 import {
   airlinesText,
   changeColor,
@@ -45,7 +47,7 @@ const COLUMN_COUNT = 9;
 @Component({
   selector: 'app-flight-offer-table',
   standalone: true,
-  imports: [RouterLink, IonBadge, IonButton, IonCheckbox, IonChip, IonIcon, IonLabel, IonNote, IonSearchbar, IonSegment, IonSegmentButton, IonText],
+  imports: [RouterLink, AiAnalysisCardComponent, IonBadge, IonButton, IonCheckbox, IonChip, IonIcon, IonLabel, IonNote, IonSearchbar, IonSegment, IonSegmentButton, IonText],
   template: `
     <div class="filters">
       <ion-searchbar
@@ -160,6 +162,9 @@ const COLUMN_COUNT = 9;
                   @if (!row.providerOfficial) {
                     <ion-badge color="warning" title="Neuradni vir">neuradni</ion-badge>
                   }
+                  @if (row.aiAnalysis; as a) {
+                    <ion-badge [color]="riskColor(a.riskLevel)" title="Ocena z umetno inteligenco">UI: {{ riskLabel(a.riskLevel) }}</ion-badge>
+                  }
                 </td>
                 <td class="route">
                   <strong>{{ row.origin.iata }} → {{ row.destination.iata }}</strong>
@@ -267,6 +272,12 @@ const COLUMN_COUNT = 9;
                           }
                         }
                       </div>
+                      @if (row.aiAnalysis; as a) {
+                        <div class="ai-cell">
+                          <h4>Analiza z umetno inteligenco</h4>
+                          <app-ai-analysis-card [analysis]="a" [compact]="true"></app-ai-analysis-card>
+                        </div>
+                      }
                     </div>
                     <div class="detail-actions">
                       <ion-button size="small" [routerLink]="['/flight-deals/offers', row.id]" (click)="$event.stopPropagation()">
@@ -490,6 +501,9 @@ const COLUMN_COUNT = 9;
       .detail-grid .muted {
         color: var(--cd-text-muted);
       }
+      .detail-grid .ai-cell {
+        grid-column: 1 / -1;
+      }
       .detail-actions {
         display: flex;
         flex-wrap: wrap;
@@ -545,6 +559,8 @@ export class FlightOfferTableComponent {
   readonly stopsText = stopsText;
   readonly searchNamesText = searchNamesText;
   readonly airlinesText = airlinesText;
+  readonly riskColor = riskColor;
+  readonly riskLabel = riskLabel;
 
   readonly hasShared = computed(() => this.offers().some((o) => o.matches.some((m) => !m.isOwn)));
   readonly hasOwn = computed(() => this.offers().some((o) => o.matches.some((m) => m.isOwn)));

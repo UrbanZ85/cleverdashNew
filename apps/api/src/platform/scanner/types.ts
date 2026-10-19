@@ -258,6 +258,89 @@ export interface NotificationHooks<TVerified = unknown> {
   render(items: TVerified[], ctx: RenderContext): RenderedDigest;
 }
 
+// ───────────────────────────── analiza z umetno inteligenco (017) ─────────────────────────────
+
+export const AI_RISK_LEVELS = ['low', 'medium', 'high', 'unknown'] as const;
+export type AiRiskLevel = (typeof AI_RISK_LEVELS)[number];
+
+export const AI_CONFIDENCES = ['low', 'medium', 'high'] as const;
+export type AiConfidence = (typeof AI_CONFIDENCES)[number];
+
+/** Različica sheme izhoda; sprememba oblike = nova različica = nov `inputHash` (ponovna analiza). */
+export const AI_ANALYSIS_VERSION = 1;
+
+/**
+ * Shranjena analiza enega rezultata (specs/017-ai-analysis/data-model.md). Brez številskih polj za
+ * denar — cene, stroški in dobički so deterministični izračuni aplikacije, ne ocena modela (FR-009).
+ */
+export interface AiAnalysis {
+  version: number;
+  model: string;
+  analyzedAt: Date;
+  /** sha256(model, različica, kanonični vhod), 32 hex: isti vhod se ne analizira znova (FR-008). */
+  inputHash: string;
+  /** `true`, kadar je prišla iz predpomnilnika (isti vhod pri drugem skenerju), ne iz klica. */
+  cached: boolean;
+  summary: string;
+  riskLevel: AiRiskLevel;
+  explanation: string;
+  risks: string[];
+  defects: string[];
+  opportunities: string[];
+  /** Poenotene lastnosti: ključi `snake_case`, vrednosti besedilo. */
+  attributes: Record<string, string>;
+  confidence: AiConfidence;
+}
+
+/**
+ * Kar tip pošlje modelu o enem rezultatu — in NIČ drugega (FR-003): brez imen, e-naslovov ali
+ * identifikatorjev oseb. Slike gredo naprej samo kot `https` naslovi in samo ob
+ * `SCANNER_AI_IMAGES=true`.
+ */
+export interface AiAnalysisInput {
+  title: string;
+  description?: string | null;
+  source?: string | null;
+  url?: string | null;
+  price?: Money | null;
+  previousPrice?: Money | null;
+  attributes?: Record<string, string | number | boolean | null>;
+  images?: string[];
+}
+
+export interface AiCandidatesContext {
+  runId: string;
+  scannerType: string;
+  /** Pri zagonu enega skenerja njegov id; pri zagonu tipa `null`. */
+  definitionId: string | null;
+  now: Date;
+  env: Env;
+  logger: Logger | undefined;
+  /** Koliko kandidatov naj tip največ vrne (jedro jih še filtrira po `previousInputHash`). */
+  limit: number;
+}
+
+/** Rezultat, ki je kandidat za analizo: nov/spremenjen v tem zagonu ali še brez analize (FR-007). */
+export interface AiCandidate {
+  /** Id rezultata v shrambi tipa (`ScannerResult` ali ponudba); `store` ga dobi nazaj. */
+  ref: string;
+  definitionId: string;
+  input: AiAnalysisInput;
+  /** `inputHash` obstoječe analize ali `null`; enak hash = brez klica. */
+  previousInputHash: string | null;
+}
+
+export interface AiAnalysisHooks {
+  /** Kratek opis vrste rezultata za navodilo modelu, npr. "letalska ponudba". */
+  readonly subject?: string;
+  /** Generična shramba: obogatitev privzetega vhoda (opis, slike); jedro ga sicer sestavi iz naslova, vira, cene in `data`. */
+  describe?(result: ResultView): AiAnalysisInput;
+  /** Lastna shramba (leti): kateri rezultati so kandidati. */
+  candidates?(ctx: AiCandidatesContext): Promise<AiCandidate[]>;
+  /** Lastna shramba: shrani analizo; `false`, kadar rezultata ni več (ni napaka). */
+  store?(ref: string, analysis: AiAnalysis, ctx: AiCandidatesContext): Promise<boolean>;
+}
+
 // ───────────────────────────── rezultati (branje) ─────────────────────────────
 
 export interface ResultQuery {
@@ -290,6 +373,8 @@ export interface ResultView {
   previousPrice: (Money & { at: Date }) | null;
   lastChangeType: ChangeType;
   change: PriceChangeView | null;
+  /** Analiza z umetno inteligenco (017); `null` brez nje. */
+  aiAnalysis: AiAnalysis | null;
 }
 
 export interface HistoryPointView {
@@ -360,6 +445,9 @@ export interface ScannerType<TConfig = unknown, TVerified = unknown> {
   execute(ctx: ExecutionContext<TConfig>): Promise<ExecutionOutcome>;
   readonly notifications: NotificationHooks<TVerified>;
   readonly admin?: { extras(env: Env): Promise<unknown> };
+  /** Analiza z umetno inteligenco (017): tip z generično shrambo lahko izpusti (jedro ima privzeto
+   * izvedbo) ali poda samo `describe`; tip z lastno shrambo poda `candidates` in `store`. */
+  readonly ai?: AiAnalysisHooks;
 }
 
 /** Register hrani tipe brez generičnih parametrov; `never` pove, da jedro `config` ne tolmači. */

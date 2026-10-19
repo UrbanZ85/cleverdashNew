@@ -85,6 +85,8 @@ export interface ScannerInput {
   name: string;
   type: string;
   enabled?: boolean;
+  /** 017: analiza z umetno inteligenco; privzeto izklopljena. */
+  aiEnabled?: boolean;
   schedule?: ScheduleInput;
   notifications?: { enabled?: boolean };
   config: Record<string, unknown>;
@@ -93,6 +95,7 @@ export interface ScannerInput {
 export interface ScannerPatch {
   name?: string;
   enabled?: boolean;
+  aiEnabled?: boolean;
   schedule?: ScheduleInput;
   notifications?: { enabled?: boolean };
   config?: Record<string, unknown>;
@@ -101,6 +104,33 @@ export interface ScannerPatch {
 export interface Scanner extends ScannerSummary {
   config: Record<string, unknown>;
   notifications: { enabled: boolean; mode: 'all-changes' };
+  aiEnabled: boolean;
+}
+
+// ─── analiza z umetno inteligenco (017) ───
+
+export type AiRiskLevel = 'low' | 'medium' | 'high' | 'unknown';
+export type AiConfidence = 'low' | 'medium' | 'high';
+
+/** `AiAnalysis` iz pogodb 016/015: ocena modela, nikoli dejstvo; brez številskih polj za denar. */
+export interface AiAnalysis {
+  version: number;
+  model: string;
+  analyzedAt: string;
+  inputHash: string;
+  cached: boolean;
+  summary: string;
+  riskLevel: AiRiskLevel;
+  explanation: string;
+  risks: string[];
+  defects: string[];
+  opportunities: string[];
+  attributes: Record<string, string>;
+  confidence: AiConfidence;
+}
+
+export interface AiAvailability {
+  available: boolean;
 }
 
 export interface PriceChange {
@@ -126,6 +156,8 @@ export interface Result {
   previousPrice: (Money & { at: string }) | null;
   lastChangeType: ChangeType;
   change: PriceChange | null;
+  /** 017; `null` brez analize. */
+  aiAnalysis: AiAnalysis | null;
 }
 
 export interface HistoryPoint {
@@ -302,6 +334,47 @@ export function changeColor(type: ChangeType | null | undefined): 'success' | 'd
     default:
       return null;
   }
+}
+
+export const RISK_LABELS: Record<AiRiskLevel, string> = {
+  low: 'nizko',
+  medium: 'srednje',
+  high: 'visoko',
+  unknown: 'neznano',
+};
+
+export function riskLabel(level: AiRiskLevel | string | null | undefined): string {
+  if (!level) return '';
+  return RISK_LABELS[level as AiRiskLevel] ?? String(level);
+}
+
+/** Ionic barva stopnje tveganja: nizko zeleno, srednje rumeno, visoko rdeče, neznano sivo. */
+export function riskColor(level: AiRiskLevel | string | null | undefined): 'success' | 'warning' | 'danger' | 'medium' {
+  switch (level) {
+    case 'low':
+      return 'success';
+    case 'medium':
+      return 'warning';
+    case 'high':
+      return 'danger';
+    default:
+      return 'medium';
+  }
+}
+
+export const CONFIDENCE_LABELS: Record<AiConfidence, string> = { low: 'nizko', medium: 'srednje', high: 'visoko' };
+
+export function confidenceLabel(level: AiConfidence | string | null | undefined): string {
+  if (!level) return '';
+  return CONFIDENCE_LABELS[level as AiConfidence] ?? String(level);
+}
+
+/** "Ocena modela gpt-6.1-sol · 19. 10. 2026 12:00 · iz predpomnilnika · ni nasvet; cene so iz podatkov vira." */
+export function aiAnalysisMeta(a: Pick<AiAnalysis, 'model' | 'analyzedAt' | 'cached'>): string {
+  const parts = [`Ocena modela ${a.model}`, formatLjubljana(a.analyzedAt)];
+  if (a.cached) parts.push('iz predpomnilnika');
+  parts.push('ni nasvet; cene in izračuni so iz podatkov vira');
+  return parts.join(' · ');
 }
 
 export const OUTCOME_LABELS: Record<DefinitionOutcome, string> = {

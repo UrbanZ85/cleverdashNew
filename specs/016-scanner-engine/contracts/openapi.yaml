@@ -80,7 +80,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [types, presets]
+                required: [types, presets, ai]
                 properties:
                   types:
                     type: array
@@ -89,6 +89,12 @@ paths:
                     type: array
                     description: Prednastavitve urnika, skupne vsem tipom
                     items: { $ref: '#/components/schemas/SchedulePreset' }
+                  ai:
+                    type: object
+                    description: 017 — ali ima namestitev ključ za analizo z umetno inteligenco (samo da/ne)
+                    required: [available]
+                    properties:
+                      available: { type: boolean }
 
   # ───────────────────────────── skenerji ─────────────────────────────
   /scanners:
@@ -650,6 +656,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 80 }
         type: { type: string }
         enabled: { type: boolean, default: true }
+        aiEnabled: { type: boolean, default: false, description: 017 — analiza rezultatov z umetno inteligenco (plačljivo; privzeto izklopljeno) }
         schedule:
           type: object
           properties:
@@ -670,6 +677,7 @@ components:
       properties:
         name: { type: string }
         enabled: { type: boolean }
+        aiEnabled: { type: boolean }
         schedule:
           type: object
           properties:
@@ -686,7 +694,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/ScannerSummary'
         - type: object
-          required: [config, notifications]
+          required: [config, notifications, aiEnabled]
           properties:
             config: { type: object }
             notifications:
@@ -695,10 +703,11 @@ components:
               properties:
                 enabled: { type: boolean }
                 mode: { type: string, enum: [all-changes] }
+            aiEnabled: { type: boolean, description: "017 — analiza rezultatov z umetno inteligenco" }
 
     Result:
       type: object
-      required: [id, scannerId, type, source, externalId, title, url, price, data, dataAt, firstSeenAt, lastSeenAt, availability, previousPrice, lastChangeType, change]
+      required: [id, scannerId, type, source, externalId, title, url, price, data, dataAt, firstSeenAt, lastSeenAt, availability, previousPrice, lastChangeType, change, aiAnalysis]
       properties:
         id: { type: string }
         scannerId: { type: string }
@@ -733,6 +742,35 @@ components:
             type: { $ref: '#/components/schemas/ChangeType' }
             absolute: { type: number }
             percent: { type: number }
+        aiAnalysis:
+          oneOf:
+            - $ref: '#/components/schemas/AiAnalysis'
+            - type: 'null'
+
+    AiAnalysis:
+      type: object
+      description: |
+        Analiza rezultata z umetno inteligenco (017, specs/017-ai-analysis). Ocena modela, ne
+        dejstvo; brez številskih polj za denar — cene in izračuni so vedno deterministični
+        podatki aplikacije. `null` na rezultatu pomeni, da analize (še) ni.
+      required: [version, model, analyzedAt, inputHash, cached, summary, riskLevel, explanation, risks, defects, opportunities, attributes, confidence]
+      properties:
+        version: { type: integer, description: Različica sheme izhoda (1) }
+        model: { type: string, example: gpt-6.1-sol }
+        analyzedAt: { type: string, format: date-time }
+        inputHash: { type: string, description: "Hash vhoda; isti vhod se ne analizira znova" }
+        cached: { type: boolean, description: "Iz predpomnilnika (isti vhod drugje), ne iz klica" }
+        summary: { type: string, maxLength: 400 }
+        riskLevel: { type: string, enum: [low, medium, high, unknown] }
+        explanation: { type: string, maxLength: 1200 }
+        risks: { type: array, items: { type: string } }
+        defects: { type: array, items: { type: string } }
+        opportunities: { type: array, items: { type: string } }
+        attributes:
+          type: object
+          description: Poenotene lastnosti (ključi snake_case, vrednosti besedilo)
+          additionalProperties: { type: string }
+        confidence: { type: string, enum: [low, medium, high] }
 
     ResultList:
       type: object

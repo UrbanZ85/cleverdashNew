@@ -15,6 +15,8 @@ export interface DefinitionLean {
   name: string;
   type: string;
   enabled: boolean;
+  /** 017; zapisi izpred uvedbe ga nimajo → `false`. */
+  aiEnabled?: boolean;
   schedule: { mode: ScheduleMode; preset: SchedulePresetId; cronExpression: string; timezone: string; lastScheduledSlotAt: Date | null };
   notifications: { enabled: boolean; mode: NotificationMode };
   config: Record<string, unknown>;

@@ -497,12 +497,13 @@ components:
 
     Limits:
       type: object
-      required: [maxSearchesPerUser, maxRecipients, maxQueriesPerSearch, maxFlexDays]
+      required: [maxSearchesPerUser, maxRecipients, maxQueriesPerSearch, maxFlexDays, aiAvailable]
       properties:
         maxSearchesPerUser: { type: integer }
         maxRecipients: { type: integer }
         maxQueriesPerSearch: { type: integer }
         maxFlexDays: { type: integer }
+        aiAvailable: { type: boolean, description: 017 — ali ima namestitev ključ za analizo z umetno inteligenco }
 
     Money:
       type: object
@@ -537,6 +538,7 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 80 }
         active: { type: boolean, default: true }
+        aiEnabled: { type: boolean, default: false, description: 017 — analiza ponudb tega iskanja z umetno inteligenco (plačljivo; privzeto izklopljeno) }
         departureAirports:
           type: array
           minItems: 1
@@ -801,6 +803,36 @@ components:
         matches:
           type: array
           items: { $ref: '#/components/schemas/OfferMatch' }
+        aiAnalysis:
+          description: 017 — analiza ponudbe z umetno inteligenco; `null` brez nje (oblika kot `AiAnalysis` v pogodbi 016)
+          oneOf:
+            - $ref: '#/components/schemas/AiAnalysis'
+            - type: 'null'
+
+    AiAnalysis:
+      type: object
+      description: |
+        Analiza rezultata z umetno inteligenco (017, specs/017-ai-analysis). Ocena modela, ne
+        dejstvo; brez številskih polj za denar — cene in izračuni so vedno deterministični
+        podatki aplikacije. `null` na rezultatu pomeni, da analize (še) ni.
+      required: [version, model, analyzedAt, inputHash, cached, summary, riskLevel, explanation, risks, defects, opportunities, attributes, confidence]
+      properties:
+        version: { type: integer, description: Različica sheme izhoda (1) }
+        model: { type: string, example: gpt-6.1-sol }
+        analyzedAt: { type: string, format: date-time }
+        inputHash: { type: string, description: "Hash vhoda; isti vhod se ne analizira znova" }
+        cached: { type: boolean, description: "Iz predpomnilnika (isti vhod drugje), ne iz klica" }
+        summary: { type: string, maxLength: 400 }
+        riskLevel: { type: string, enum: [low, medium, high, unknown] }
+        explanation: { type: string, maxLength: 1200 }
+        risks: { type: array, items: { type: string } }
+        defects: { type: array, items: { type: string } }
+        opportunities: { type: array, items: { type: string } }
+        attributes:
+          type: object
+          description: Poenotene lastnosti (ključi snake_case, vrednosti besedilo)
+          additionalProperties: { type: string }
+        confidence: { type: string, enum: [low, medium, high] }
 
     OfferList:
       type: object

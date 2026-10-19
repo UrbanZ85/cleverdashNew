@@ -235,3 +235,28 @@ Izbriši mapo modula na obeh straneh, vrstico `register<Ime>ScannerType()` v `ma
 `register<Ime>ScannerUi()` v `apps/web/src/main.ts`. Obstoječi skenerji tipa ostanejo v bazi z
 oznako "tip ni na voljo", se ne izvajajo in jih lastnik lahko izbriše. `npm run typecheck`,
 `npm run lint` in testi morajo po tem ostati čisti.
+
+## Analiza z umetno inteligenco (017) — kaj mora tip povedati
+
+Nič, kadar ima tip **generično shrambo**: jedro iz naslova, vira, cene, povezave in `data`
+(sploščeno v lastnosti; `data.description` kot opis, `data.images` kot slike) sestavi vhod in
+analizo shrani na `ScannerResult.aiAnalysis`. Tip lahko vhod obogati:
+
+```ts
+ai: {
+  subject: 'rabljen avtomobil',                       // za navodilo modelu
+  describe: (result) => ({                            // neobvezno: lasten vhod iz ResultView
+    title: result.title,
+    description: (result.data as CarData).description,
+    price: result.price,
+    attributes: { year: (result.data as CarData).year, mileage_km: (result.data as CarData).km },
+    images: (result.data as CarData).photos,          // samo https; gredo naprej ob SCANNER_AI_IMAGES=true
+  }),
+},
+```
+
+Tip z **lastno shrambo** (leti) poda `candidates(ctx)` (kateri rezultati so kandidati: novi ali
+spremenjeni v tem zagonu ali brez analize, z `previousInputHash` obstoječe analize) in
+`store(ref, analysis)` (kam se shrani; `false`, kadar rezultata ni več). Zgled:
+`apps/api/src/modules/flight-deals/scanner/ai.ts`. V vhod NIKOLI ne dajaj imen, e-naslovov ali
+identifikatorjev oseb (FR-003); jedro vse ostalo (hash, predpomnilnik, meje, napake) uredi samo.

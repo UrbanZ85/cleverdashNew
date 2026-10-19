@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { apiUrl } from '../api/api-base.js';
 import type {
+  AiAvailability,
   Limits,
   NotificationAdmin,
   ResultDetail,
@@ -33,8 +34,8 @@ export class ScannersApi {
     return apiUrl(`/scanners${suffix}`);
   }
 
-  types(): Promise<{ types: ScannerTypeInfo[]; presets: SchedulePreset[] }> {
-    return firstValueFrom(this.http.get<{ types: ScannerTypeInfo[]; presets: SchedulePreset[] }>(this.path('/types'), this.opts));
+  types(): Promise<{ types: ScannerTypeInfo[]; presets: SchedulePreset[]; ai: AiAvailability }> {
+    return firstValueFrom(this.http.get<{ types: ScannerTypeInfo[]; presets: SchedulePreset[]; ai: AiAvailability }>(this.path('/types'), this.opts));
   }
 
   list(type?: string): Promise<{ scanners: ScannerSummary[]; limits: Limits }> {

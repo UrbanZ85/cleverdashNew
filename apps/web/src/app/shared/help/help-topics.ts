@@ -574,6 +574,17 @@ export const HELP_TOPICS = {
     ],
     ifEmpty: 'Dokler zagon ni tekel, seznam rezultatov je prazen in piše, kdaj bo prvi termin.',
   },
+  'scanners.ai': {
+    title: 'Analiza z umetno inteligenco',
+    what: 'Nove in spremenjene rezultate tega skenerja ali iskanja oceni jezikovni model (OpenAI): kratek povzetek, stopnja tveganja z razlago, tveganja, pomanjkljivosti, priložnosti in poenotene lastnosti. Ocena je dodatek k rezultatu, ne dejstvo — cene in izračuni so vedno iz podatkov vira.',
+    how: [
+      'Stikalo velja samo za ta skener oziroma iskanje in je privzeto izklopljeno, ker so klici plačljivi; vklopi ga lastnik.',
+      'Analiza teče v istem zagonu kot preverjanje, po obstoječih filtrih; napaka pri analizi zagona ne prekine in dopisov ne zadrži.',
+      'Isti rezultat se ne analizira znova, dokler se njegov vhod ne spremeni; število klicev na zagon in na dan je omejeno — presežek pride na vrsto ob naslednjem zagonu.',
+      'Ob izklopu obstoječe analize ostanejo vidne; nove ne nastajajo.',
+    ],
+    ifEmpty: 'Brez ključa OpenAI v namestitvi je stikalo onemogočeno in skener deluje enako kot brez analize.',
+  },
 } as const satisfies Record<string, HelpTopic>;
 
 export type HelpTopicId = keyof typeof HELP_TOPICS;

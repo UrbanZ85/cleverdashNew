@@ -5,6 +5,7 @@ import { PageHeaderComponent } from '../../shared/layout/page-header.component.j
 import { FlightDealsApi } from './flight-deals.api.js';
 import { FlightOfferCardComponent } from './offer-card.component.js';
 import { FlightPriceChartComponent } from './price-chart.component.js';
+import { AiAnalysisCardComponent } from '../../shared/ai-analysis/ai-analysis-card.component.js';
 import { CHANGE_LABELS, changeColor, describeError, formatLjubljana, formatLocalDateTime, formatPrice, type HistoryPoint, type OfferDetail } from './flight-deals.model.js';
 
 // Podrobnosti ponudbe (US3): kartica, graf in tabela zgodovine cen, ujemanja (katera iskanja; pri
@@ -14,7 +15,7 @@ import { CHANGE_LABELS, changeColor, describeError, formatLjubljana, formatLocal
 @Component({
   selector: 'app-flight-offer-detail-page',
   standalone: true,
-  imports: [RouterLink, PageHeaderComponent, FlightOfferCardComponent, FlightPriceChartComponent, IonContent, IonList, IonItem, IonLabel, IonBadge, IonButton, IonIcon, IonNote, IonText],
+  imports: [RouterLink, PageHeaderComponent, FlightOfferCardComponent, FlightPriceChartComponent, AiAnalysisCardComponent, IonContent, IonList, IonItem, IonLabel, IonBadge, IonButton, IonIcon, IonNote, IonText],
   template: `
     <app-page-header title="Ponudba" backRoute="/flight-deals" backLabel="Leti" [subtitle]="subtitle()"></app-page-header>
     <ion-content>
@@ -36,6 +37,13 @@ import { CHANGE_LABELS, changeColor, describeError, formatLjubljana, formatLocal
               <ion-note>Vir ni dal povezave do rezervacije.</ion-note>
             }
           </div>
+
+          @if (o.aiAnalysis; as a) {
+            <section>
+              <h2 class="cd-section-title">Analiza z umetno inteligenco</h2>
+              <app-ai-analysis-card [analysis]="a"></app-ai-analysis-card>
+            </section>
+          }
 
           <section>
             <h2 class="cd-section-title">Leti</h2>

@@ -22,6 +22,7 @@ import { HelpButtonComponent } from '../../shared/help/help-button.component.js'
 import { AirportPickerComponent } from './airport-picker.component.js';
 import { FlightRecipientsDialogComponent } from './recipients-dialog.component.js';
 import { FlightDealsApi } from './flight-deals.api.js';
+import { ScannersApi } from '../../core/scanners/scanners.api.js';
 import {
   FLEX_PRESETS,
   WEEKDAYS,
@@ -83,6 +84,15 @@ import {
           <ion-item lines="none">
             <ion-toggle [(ngModel)]="form.active" name="active">Aktivno — preverja se po urniku</ion-toggle>
           </ion-item>
+          <ion-item lines="none">
+            <ion-toggle [(ngModel)]="form.aiEnabled" name="aiEnabled" [disabled]="!aiAvailable()">Analiza ponudb z umetno inteligenco</ion-toggle>
+            <app-help slot="end" topic="scanners.ai"></app-help>
+          </ion-item>
+          @if (!aiAvailable()) {
+            <ion-note class="facts">Analiza v tej namestitvi ni na voljo — ključ OpenAI ni nastavljen. Iskanje deluje enako tudi brez nje.</ion-note>
+          } @else {
+            <ion-note class="facts">Nove in spremenjene ponudbe tega iskanja oceni jezikovni model (tveganja, prtljaga, vir). Ocena ni nasvet; klici so plačljivi in omejeni.</ion-note>
+          }
         </section>
 
         <section>
@@ -392,11 +402,14 @@ import {
 })
 export class FlightSearchEditorPage implements OnInit {
   private readonly api = inject(FlightDealsApi);
+  private readonly scannersApi = inject(ScannersApi);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly alerts = inject(AlertController);
 
   form: SearchForm = emptySearchForm();
+  /** 017: ali ima namestitev ključ za analizo (iz `GET /scanners/types`, da/ne). */
+  readonly aiAvailable = signal(false);
   readonly search = signal<FlightSearch | null>(null);
   readonly countries = signal<Country[]>([]);
   readonly preview = signal<SearchPreview | null>(null);
@@ -417,6 +430,7 @@ export class FlightSearchEditorPage implements OnInit {
 
   async ngOnInit(): Promise<void> {
     void this.api.countries().then((c) => this.countries.set(c)).catch(() => this.countries.set([]));
+    void this.scannersApi.types().then((ref) => this.aiAvailable.set(ref.ai?.available ?? false)).catch(() => this.aiAvailable.set(false));
     const id = this.route.snapshot.paramMap.get('searchId');
     if (id && id !== 'new') {
       try {

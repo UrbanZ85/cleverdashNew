@@ -165,3 +165,23 @@ describe('GET/PATCH/DELETE /scanners/:id', () => {
     expect((await request(app).get('/api/v1/scanners').set(AUTH(ana.token))).body.scanners).toHaveLength(1);
   });
 });
+
+// 017 (FR-004): stikalo analize z umetno inteligenco na skenerju — privzeto izklopljeno, vnos in odgovor.
+describe('aiEnabled (017)', () => {
+  it('privzeto false; POST s true ustvari vklopljeno; PATCH ga izklopi, ostalo ostane', async () => {
+    await boot();
+    const ana = await loginAs(app, 'ana');
+    const plain = await request(app).post('/api/v1/scanners').set(AUTH(ana.token)).send(VALID);
+    expect(plain.status).toBe(201);
+    expect(plain.body.aiEnabled).toBe(false);
+    const on = await request(app).post('/api/v1/scanners').set(AUTH(ana.token)).send({ ...VALID, name: 'Z analizo', aiEnabled: true });
+    expect(on.status).toBe(201);
+    expect(on.body.aiEnabled).toBe(true);
+    expect((await ScannerDefinitionModel.findById(on.body.id).lean())?.aiEnabled).toBe(true);
+    const off = await request(app).patch(`/api/v1/scanners/${on.body.id}`).set(AUTH(ana.token)).send({ aiEnabled: false });
+    expect(off.status).toBe(200);
+    expect(off.body).toMatchObject({ aiEnabled: false, name: 'Z analizo', enabled: true });
+    expect((await request(app).get(`/api/v1/scanners/${on.body.id}`).set(AUTH(ana.token))).body.aiEnabled).toBe(false);
+    expect((await request(app).post('/api/v1/scanners').set(AUTH(ana.token)).send({ ...VALID, aiEnabled: 'da' })).status).toBe(400);
+  });
+});

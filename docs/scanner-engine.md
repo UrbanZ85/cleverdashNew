@@ -57,6 +57,24 @@ ugotovi prek `classifyChange`, brez cene prek hasha polja `comparable`.
 Dohitevanje je omejeno na EN termin na obseg (`latestDueSlot`); sprememba izraza ali cone premakne
 "pokrito do zdaj" (`lastScheduledSlotAt`) na trenutek spremembe.
 
+## Analiza z umetno inteligenco (017)
+
+Neobvezen korak zagona, ki teče v `run-executor.service.ts` **po** `type.execute` in po
+sestavljanju dopisov, v lastnem `try/catch`: nič v njem ne spremeni izida zagona, rezultatov ali
+dopisov. Kandidati so rezultati skenerjev z `aiEnabled` (jedro: `ScannerDefinition.aiEnabled`;
+tip z lastnimi definicijami pove sam), ki so v tem zagonu novi/spremenjeni ali še brez analize.
+Za vsakega: kanonični vhod → odrez → hash; enak hash kot obstoječa analiza = nič; zadetek v
+`scanneraicaches` = analiza brez klica; sicer rezervacija dnevnega proračuna (`scanneraiusages`),
+klic OpenAI Responses API s strukturiranim izhodom (`domain/ai-analysis.ts`), Zod preverba in
+shramba na rezultat (`aiAnalysis`). Števci zagona: `aiAnalyzed`, `aiCached`, `aiSkipped`,
+`aiFailed`; napake posameznih rezultatov v `runErrors` s kodami `ai:*`.
+
+Datoteke: `domain/ai-analysis.ts` (čisto: vhod, hash, navodilo, shema, razčlenitev),
+`services/ai-client.service.ts` (fetch, timeout, ena ponovitev; `setAiClientForTests`),
+`services/ai-usage.service.ts` (dnevna rezervacija), `services/ai-candidates.service.ts`
+(privzeti kavlji za generično shrambo), `services/ai-analysis.service.ts` (orkestracija).
+Podrobnosti: `specs/017-ai-analysis/`.
+
 ## Zbirke
 
 | zbirka | vsebina | TTL |
@@ -67,6 +85,8 @@ Dohitevanje je omejeno na EN termin na obseg (`latestDueSlot`); sprememba izraza
 | `scannerresults` | generični rezultati (`{definitionId, identityKey}` unikat, cena neobvezna) | `expiresAt` (tip ali 30 dni po zadnjem ogledu) |
 | `scannerresulthistories` | opazovanja rezultatov | `SCANNER_HISTORY_RETENTION_DAYS` |
 | `scannernotifications` | outbox dopisov (`{recipientUserId, runId}` unikat, `payload` postavke last tipa) | `SCANNER_RUN_RETENTION_DAYS` |
+| `scanneraicaches` | predpomnilnik analiz z umetno inteligenco po vhodu (017; `key` = hash vhoda) | `SCANNER_AI_CACHE_DAYS` |
+| `scanneraiusages` | dnevni proračun klicev modela (017; en zapis na dan) | 400 dni |
 
 Vsi TTL-ji so indeksi na `expiresAt` (`tests/integration/scanner/indexes.spec.ts`).
 

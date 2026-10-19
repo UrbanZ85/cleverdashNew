@@ -176,6 +176,9 @@ describe('obrazec', () => {
       updatedAt: '2026-10-17T00:00:00Z',
     };
     const roundTrip = toSearchInput(formFromSearch(search));
+    expect(roundTrip.aiEnabled).toBe(false); // 017: star zapis brez polja → izklopljeno
+    expect(toSearchInput(formFromSearch({ ...search, aiEnabled: true })).aiEnabled).toBe(true);
+    expect(emptySearchForm().aiEnabled).toBe(false);
     expect(roundTrip.destination).toEqual(search.destination);
     expect(roundTrip.excluded).toEqual(search.excluded);
     expect(roundTrip.dates).toEqual({ mode: 'rolling', months: 4 });

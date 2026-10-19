@@ -55,6 +55,8 @@ const scannerDefinitionSchema = new Schema(
     /** Oznaka registriranega tipa; tip lahko iz namestitve izgine — zapis ostane (FR-011). */
     type: { type: String, required: true },
     enabled: { type: Boolean, required: true, default: true },
+    /** Analiza rezultatov z umetno inteligenco (017): vklop na skener, privzeto IZKLOPLJENO (plačljivo). */
+    aiEnabled: { type: Boolean, required: true, default: false },
     schedule: { type: scheduleSchema, required: true },
     notifications: { type: notificationsSchema, required: true, default: () => ({}) },
     config: { type: Schema.Types.Mixed, required: true, default: () => ({}) },

@@ -380,6 +380,31 @@ aplikaciji (zbirka `ScannerTypeSettings`), urnik posameznega skenerja njegov las
 19. 10. 2026: podatki so bili testni) in to zabeleži kot `scanner.legacy.dropped`. Iskanja,
 ponudbe, ujemanja in zgodovina cen letov ostanejo.
 
+### Analiza rezultatov z umetno inteligenco (017)
+
+Neobvezen korak zagona skenerja (`specs/017-ai-analysis/`): nove in spremenjene rezultate
+skenerjev z vklopljeno analizo oceni OpenAI model prek strukturiranih izhodov. Brez ključa
+analiza **ni na voljo** — API vrne `ai.available: false`, stikala v obrazcih so onemogočena,
+skenerji delujejo enako kot prej. Ključ je **samo na strežniku** (člen IV): nikoli v odgovoru,
+dnevniku, `extras` zagona ali odjemalcu.
+
+| Spremenljivka | Privzeto | Vloga |
+|---|---|---|
+| `OPENAI_API_KEY` | *(prazno = ni na voljo)* | Ključ OpenAI; gre v glavo `Authorization`, nikamor drugam |
+| `OPENAI_MODEL` | `gpt-6.1-sol` | Model (Responses API, Structured Outputs, vhod slik); ime je tu, ker bo zastarelo prej kot koda |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Osnova; nastavljiva za združljive strežnike (isti razlog kot `NOTES_TRANSCRIPTION_URL`) |
+| `OPENAI_TIMEOUT_MS` | `30000` | Časovna omejitev ene zahteve; `429`/`5xx`/potek se enkrat ponovi |
+| `SCANNER_AI_MAX_ITEMS_PER_RUN` | `25` | Klici na en zagon; presežek se preskoči in pride na vrsto ob naslednjem |
+| `SCANNER_AI_DAILY_REQUEST_LIMIT` | `300` | Klici na koledarski dan (Europe/Ljubljana) za celo namestitev — rezervacija v bazi (`scanneraiusages`), ne v pomnilniku |
+| `SCANNER_AI_CACHE_DAYS` | `30` | TTL predpomnilnika analiz po vhodu (`scanneraicaches`): isti vhod drugje = brez klica |
+| `SCANNER_AI_IMAGES` | `false` | Pošiljanje do 3 `https` slik na rezultat (`detail: low`); dražje, privzeto izklopljeno |
+| `SCANNER_AI_MAX_INPUT_CHARS` | `6000` | Odrez vhoda (JSON): najprej opis, nato lastnosti od zadnje naprej |
+
+**Kaj gre modelu.** Samo to, kar tip označi kot vhod rezultata (naslov, opis, lastnosti, cena,
+vir, slike) — nikoli imena, e-naslovi ali identifikatorji oseb. Zahteva nosi `store: false`, da
+OpenAI vsebine ne hrani. Shema izhoda nima številskih polj za denar in navodilo modelu prepove
+izmišljanje cen, stroškov popravil in dobičkov.
+
 ## 3. E-pošta — ali je še potrebna
 
 Stari sistem pošilja e-pošto ob ustvarjanju urnika in ob napakah, poleg potisnih obvestil.

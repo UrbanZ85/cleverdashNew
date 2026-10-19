@@ -82,6 +82,15 @@ type Step = 1 | 2 | 3;
             <ion-item lines="none">
               <ion-toggle [(ngModel)]="notify" name="notify">Obveščaj me po e-pošti ob novih rezultatih in spremembah</ion-toggle>
             </ion-item>
+            <ion-item lines="none">
+              <ion-toggle [(ngModel)]="aiEnabled" name="aiEnabled" [disabled]="!aiAvailable()">Analiza rezultatov z umetno inteligenco</ion-toggle>
+              <app-help slot="end" topic="scanners.ai"></app-help>
+            </ion-item>
+            @if (!aiAvailable()) {
+              <ion-note class="cd-section-hint">Analiza v tej namestitvi ni na voljo — ključ OpenAI ni nastavljen. Skener deluje enako tudi brez nje.</ion-note>
+            } @else {
+              <ion-note class="cd-section-hint">Nove in spremenjene rezultate oceni jezikovni model (tveganja, pomanjkljivosti, priložnosti). Ocena ni nasvet; klici so plačljivi in omejeni.</ion-note>
+            }
             <div class="actions">
               <ion-button fill="outline" (click)="step.set(2)">Nazaj</ion-button>
               <ion-button [disabled]="saving()" (click)="save()">{{ saving() ? 'Shranjujem …' : 'Shrani' }}</ion-button>
@@ -146,6 +155,9 @@ export class ScannerWizardPage implements OnInit {
   name = '';
   enabled = true;
   notify = true;
+  /** 017: privzeto izklopljeno (plačljivo). */
+  aiEnabled = false;
+  readonly aiAvailable = signal(false);
   private schedule: ScheduleFormValue = { preset: 'daily-06', cronExpression: '0 6 * * *', timezone: 'Europe/Ljubljana' };
   readonly scheduleValue = signal<ScheduleFormValue>(this.schedule);
 
@@ -159,6 +171,7 @@ export class ScannerWizardPage implements OnInit {
       const ref = await this.api.types();
       this.types.set(ref.types);
       this.presets.set(ref.presets);
+      this.aiAvailable.set(ref.ai?.available ?? false);
       const id = this.route.snapshot.paramMap.get('scannerId');
       if (id) await this.loadExisting(id);
     } catch (err) {
@@ -174,6 +187,7 @@ export class ScannerWizardPage implements OnInit {
     this.name = scanner.name;
     this.enabled = scanner.enabled;
     this.notify = scanner.notifications.enabled;
+    this.aiEnabled = scanner.aiEnabled ?? false;
     this.schedule = {
       preset: scanner.schedule.preset ?? 'custom',
       cronExpression: scanner.schedule.cronExpression ?? '',
@@ -250,8 +264,8 @@ export class ScannerWizardPage implements OnInit {
     try {
       const id = this.editingId();
       const saved = id
-        ? await this.api.update(id, { name, enabled: this.enabled, schedule, notifications: { enabled: this.notify }, config })
-        : await this.api.create({ name, type: type.type, enabled: this.enabled, schedule, notifications: { enabled: this.notify }, config });
+        ? await this.api.update(id, { name, enabled: this.enabled, aiEnabled: this.aiEnabled, schedule, notifications: { enabled: this.notify }, config })
+        : await this.api.create({ name, type: type.type, enabled: this.enabled, aiEnabled: this.aiEnabled, schedule, notifications: { enabled: this.notify }, config });
       await this.router.navigateByUrl(saved.links.results);
     } catch (err) {
       this.error.set(describeError(err, 'Skenerja ni bilo mogoče shraniti.'));

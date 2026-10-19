@@ -375,6 +375,28 @@ const envSchema = z.object({
   // Testni tip "echo" z IZMIŠLJENIMI rezultati — samo za razvoj in avtomatizirane teste (FR-046).
   // V produkciji ga `loadEnv` zavrne (superRefine spodaj), kot `FLIGHT_FAKE_PROVIDER_ENABLED`.
   SCANNER_ECHO_ENABLED: boolFromString.default('false'),
+
+  // Analiza rezultatov z umetno inteligenco (017, specs/017-ai-analysis/research.md §12) —
+  // neobvezen korak zagona skenerja. Brez `OPENAI_API_KEY` analiza NI na voljo: jedro ne kliče
+  // ničesar, API vrne `ai.available: false`, obrazci to povedo ob stikalu. Ključ ostane IZKLJUČNO na
+  // strežniku (člen IV): nikoli v odgovoru, dnevniku, `extras` zagona ali odjemalcu.
+  //
+  // Ime modela je tu in ne v kodi, ker bo zastarelo prej kot koda; `gpt-6.1-sol` je model, ki ga
+  // naloga zahteva (preverjeno v uradni dokumentaciji 19. 10. 2026). Osnova je nastavljiva iz
+  // istega razloga kot pri prepisu govora (007): isti protokol govorijo tudi združljivi strežniki.
+  OPENAI_API_KEY: z.string().optional().or(z.literal('')),
+  OPENAI_MODEL: z.string().min(1).default('gpt-6.1-sol'),
+  OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
+  OPENAI_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  // Meje so varovala STROŠKA (člen VIII se tu bere kot "manj klicev"): na zagon, na dan (namestitev,
+  // ne uporabnik — en ključ, en račun) in predpomnilnik po vhodu, da se ista stvar ne analizira dvakrat.
+  SCANNER_AI_MAX_ITEMS_PER_RUN: z.coerce.number().int().positive().max(1_000).default(25),
+  SCANNER_AI_DAILY_REQUEST_LIMIT: z.coerce.number().int().positive().max(100_000).default(300),
+  SCANNER_AI_CACHE_DAYS: z.coerce.number().int().positive().max(3_650).default(30),
+  // Slike so dražji vhod in večina tipov jih nima; vklop je zavestna odločitev lastnika namestitve.
+  SCANNER_AI_IMAGES: boolFromString.default('false'),
+  // Odrez vhoda (znakov JSON), da en rezultat z romanom v opisu ne stane kot sto navadnih.
+  SCANNER_AI_MAX_INPUT_CHARS: z.coerce.number().int().positive().max(100_000).default(6_000),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === 'production' && env.FLIGHT_FAKE_PROVIDER_ENABLED) {
     ctx.addIssue({

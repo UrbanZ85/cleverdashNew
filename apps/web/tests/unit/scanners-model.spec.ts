@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aiAnalysisMeta,
   changeColor,
   changeLabel,
+  confidenceLabel,
   countersText,
+  riskColor,
+  riskLabel,
   formatPrice,
   formatPriceOrDash,
   lastRunText,
@@ -34,6 +38,29 @@ describe('cena in sprememba', () => {
     expect(changeColor('CHANGED')).toBe('primary');
     expect(changeColor('UNAVAILABLE')).toBe('medium');
     expect(changeColor('UNCHANGED')).toBeNull();
+  });
+});
+
+// 017: analiza z umetno inteligenco — značke in opomba o modelu.
+describe('analiza z umetno inteligenco', () => {
+  it('riskLabel/riskColor: nizko zeleno, srednje rumeno, visoko rdeče, neznano sivo; neznana vrednost ostane', () => {
+    expect(riskLabel('low')).toBe('nizko');
+    expect(riskLabel('x')).toBe('x');
+    expect(riskLabel(null)).toBe('');
+    expect(riskColor('low')).toBe('success');
+    expect(riskColor('medium')).toBe('warning');
+    expect(riskColor('high')).toBe('danger');
+    expect(riskColor('unknown')).toBe('medium');
+    expect(confidenceLabel('high')).toBe('visoko');
+  });
+
+  it('aiAnalysisMeta: model, čas v Ljubljani, predpomnilnik in opozorilo, da ni nasvet', () => {
+    const meta = aiAnalysisMeta({ model: 'gpt-6.1-sol', analyzedAt: '2026-10-19T10:00:00.000Z', cached: true });
+    expect(meta).toContain('Ocena modela gpt-6.1-sol');
+    expect(meta).toContain('19. 10. 2026');
+    expect(meta).toContain('iz predpomnilnika');
+    expect(meta).toContain('ni nasvet');
+    expect(aiAnalysisMeta({ model: 'm', analyzedAt: '2026-10-19T10:00:00.000Z', cached: false })).not.toContain('predpomnilnika');
   });
 });
 

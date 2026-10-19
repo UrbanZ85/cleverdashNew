@@ -82,6 +82,8 @@ const flightSearchRuleSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     name: { type: String, required: true, maxlength: 80 },
     active: { type: Boolean, required: true, default: true },
+    /** 017: analiza ponudb z umetno inteligenco za TO iskanje; privzeto IZKLOPLJENO (plačljivo). */
+    aiEnabled: { type: Boolean, required: true, default: false },
     /** IATA kode, velike črke, preverjene proti vgrajenemu naboru (domain/airports.ts). */
     departureAirports: { type: [String], required: true },
     destination: {
