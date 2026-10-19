@@ -6,10 +6,10 @@ import { resolveAutomationOwnerUserId } from '../../platform/auth/automation-own
 import { badRequest, forbidden, notFound } from '../../platform/errors/problem.js';
 import { isShareableUser, readUserSummaries } from '../../platform/users/directory.service.js';
 import { resolveCommutePlaces } from '../../platform/settings/commute.service.js';
+import { latestFinishedRun } from '../../platform/scanner/services/scheduler.service.js';
 import { FLIGHT_DEALS_SCOPES } from './scopes.js';
 import { FlightSearchRuleModel } from './models/flight-search-rule.model.js';
 import { FlightSearchMatchModel } from './models/flight-search-match.model.js';
-import { FlightSearchRunModel } from './models/flight-search-run.model.js';
 import { FlightProviderStatusModel } from './models/flight-provider-status.model.js';
 import { airportsNear, countryNameSl, findAirport, listCountries, missingAirports, searchAirports } from './domain/airports.js';
 import { buildPreview } from './domain/date-window.js';
@@ -105,10 +105,8 @@ flightDealsRouter.get('/flight-deals/overview', requireScopes(FLIGHT_DEALS_SCOPE
         offers: r.offers.filter((o) => (o as { change: { type: string } | null }).change !== null),
       })),
       listOffers(userId, { scope: 'all', sort: 'price', includeUnavailable: false, limit: query.limit }),
-      FlightSearchRunModel.findOne({ status: { $in: ['succeeded', 'partial', 'failed', 'cancelled', 'interrupted'] } })
-        .sort({ createdAt: -1 })
-        .select('finishedAt status')
-        .lean<{ finishedAt: Date | null; status: string } | null>(),
+      // 016: zagoni so v jedru skenerjev; modul bere zadnjega končanega za svoj tip.
+      latestFinishedRun('flights'),
     ]);
     res.json({
       searches,

@@ -37,7 +37,7 @@ describe('API ključ (US7)', () => {
     expect((await request(app).get('/api/v1/flight-deals/searches').set(AUTH(ana.token))).body.searches).toHaveLength(1);
     expect((await request(app).post('/api/v1/flight-deals/searches').set('X-API-Key', read).send(weekendInput())).status).toBe(403);
     expect((await request(app).put(`/api/v1/flight-deals/searches/${created.body.id}/recipients/${bor.userId}`).set('X-API-Key', write).send({})).status).toBe(403);
-    expect((await request(app).get('/api/v1/flight-deals/admin/scheduler').set('X-API-Key', write)).status).toBe(403);
+    expect((await request(app).get('/api/v1/scanners/admin/types/flights/schedule').set('X-API-Key', write)).status).toBe(403);
     expect((await request(app).get('/api/v1/flight-deals/offers').set('X-API-Key', read)).status).toBe(200);
   });
 });

@@ -23,7 +23,7 @@ const flightSearchMatchSchema = new Schema(
     /** Kaj je zadnji zagon pomenil za TO iskanje (`NEW` ob `firstMatchedAt`). */
     lastChangeType: { type: String, enum: CHANGE_TYPES, required: true },
     lastChangeAt: { type: Date, required: true },
-    lastRunId: { type: Schema.Types.ObjectId, ref: 'FlightSearchRun', required: true },
+    lastRunId: { type: Schema.Types.ObjectId, ref: 'ScannerRun', required: true },
     /** `stale` = ponudba še obstaja, a pravilom iskanja ne ustreza več (npr. cena čez mejo) — se
      * ne obvešča in se ne kaže med aktivnimi. */
     status: { type: String, enum: MATCH_STATUSES, required: true, default: 'active' },

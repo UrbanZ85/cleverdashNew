@@ -47,8 +47,12 @@ import { registerRecipesIngest } from './modules/recipes/ingest.js';
 import { registerSavedLinksIngest } from './modules/saved-links/ingest.js';
 import { registerNotesIngest } from './modules/notes/ingest.js';
 import { flightDealsRouter } from './modules/flight-deals/router.js';
-import { flightDealsAdminRouter } from './modules/flight-deals/admin.router.js';
-import { startFlightDealsScheduler } from './modules/flight-deals/services/tick.js';
+import { registerFlightScannerType } from './modules/flight-deals/scanner/index.js';
+import { scannersRouter } from './platform/scanner/router.js';
+import { scannersAdminRouter } from './platform/scanner/admin.router.js';
+import { dropLegacyFlightSchedulerCollections } from './platform/scanner/services/legacy-cleanup.service.js';
+import { startScannerScheduler } from './platform/scanner/services/tick.js';
+import { deprecatedEnvNames } from './platform/config/env.js';
 
 // Ta datoteka je edino mesto, ki poveže module z `/api/v1`. Dodajanje modula (dashboard,
 // settings, tabs — 004+ v tej funkcionalnosti) pomeni en nov `apiV1Router.use(...)` klic
@@ -143,12 +147,15 @@ export async function createApp() {
   // ključ, ki si obsegov ne izbere. Glej platform/ingest/keys.router.ts.
   apiV1Router.use(ingestKeysRouter);
   apiV1Router.use(ingestRouter);
-  // 015: iskalnik letalskih ponudb. Dva usmerjevalnika kot pri 009/013: uporabniška polovica pod
-  // `requireScopes` in ADMINISTRATORSKA polovica (`/flight-deals/admin/*`) pod lastnim varuhom, ki
-  // API ključa ne spusti skozi (modules/flight-deals/admin-guard.ts). Oba sta del istega modula in
-  // se z njim brišeta.
+  // 015: iskalnik letalskih ponudb — uporabniška polovica pod `requireScopes`. Administracija
+  // (urnik, zagoni, outbox) je od 016 v jedru skenerjev (`/scanners/admin/*` spodaj).
   apiV1Router.use(flightDealsRouter);
-  apiV1Router.use(flightDealsAdminRouter);
+  // 016: jedro skenerjev je SKUPNA zmogljivost (kot `/users`, `/tabs`, `/ingest`): seznam skenerjev
+  // vseh tipov in administracija urnikov, zagonov in dopisov. Tipe mu prispevajo moduli prek
+  // registra (glej registracije spodaj); jedro samo o nobenem tipu ne ve. Administracija je pod
+  // lastnim varuhom (platform/auth/admin-guard.ts), ki API ključa ne spusti skozi.
+  apiV1Router.use(scannersRouter);
+  apiV1Router.use(scannersAdminRouter);
 
   app.use('/api/v1', apiV1Router);
   app.use(problemErrorHandler());
@@ -166,6 +173,10 @@ export async function createApp() {
   registerSavedLinksIngest();
   registerNotesIngest();
 
+  // 016: tipi skenerjev. ENA vrstica na modul, kot cilji uvoza zgoraj — jedro (platform/scanner)
+  // o letih ne ve ničesar, dokler modul ne pokliče te vrstice. Brisanje modula = brisanje vrstice.
+  registerFlightScannerType();
+
   // 009: hramba deljenih datotek je na disku (nosilec `shared-files`), ne v bazi. Imenika
   // `tmp/` in `blobs/` morata obstajati, preden pride prvo nalaganje. Pometač teče takoj ob
   // zagonu (dohitevanje zaostanka po izpadu, člen V.2) in nato periodično — LASTEN, ne klic v
@@ -175,10 +186,16 @@ export async function createApp() {
   // med tem pobriše. Pometač se tam kliče neposredno (`runFileShareCleanup`), kar je tudi
   // edini način, da se ga da preveriti brez čakanja na uro.
   if (env.NODE_ENV !== 'test') startFileShareCleanup(logger);
-  // 015: LASTEN tik modula Leti (ne scheduler 002 — člen I; ne živ cron časovnik — člen V.1). Vsak
-  // tik vpraša bazo, kateri termin urnika je zapadel; urnik nastavlja administrator v aplikaciji.
-  // V testih ne, iz istega razloga kot pometač zgoraj — testi kličejo `runFlightTick` neposredno.
-  if (env.NODE_ENV !== 'test') startFlightDealsScheduler(env, logger);
+  // 016: tik jedra skenerjev (ne scheduler 002 — člen I; ne živ cron časovnik — člen V.1). Vsak tik
+  // vpraša bazo, kateri termini tipov in skenerjev so zapadli. PRED prvim tikom se enkrat dropnejo
+  // tri zastarele zbirke modula Leti (015), ki jih je nasledilo jedro — odločitev lastnika,
+  // research.md §9. V testih tik ne teče, iz istega razloga kot pometač zgoraj — testi kličejo
+  // `runScannerTick` neposredno.
+  for (const alias of deprecatedEnvNames()) {
+    logger.warn({ event: 'env.deprecated', ...alias }, `Spremenljivka ${alias.oldName} je zastarela — uporabi ${alias.newName}`);
+  }
+  await dropLegacyFlightSchedulerCollections(logger);
+  if (env.NODE_ENV !== 'test') startScannerScheduler(env, logger);
 
   // 002, research.md §8 "Integracijska podrobnost": scheduler tika prevzame odhodni ping
   // (vsakih SCHEDULER_TICK_SECONDS namesto ločenega 60-sekundnega intervala). `startHeartbeat`

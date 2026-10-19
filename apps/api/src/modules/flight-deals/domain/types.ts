@@ -17,20 +17,10 @@ export const PROVIDER_OUTCOMES = [
 ] as const;
 export type ProviderOutcome = (typeof PROVIDER_OUTCOMES)[number];
 
+// 016: nabor je del pogodbe 015 in ostane tu; jedro skenerjev ima še `CHANGED` (platform/scanner/types.ts),
+// ki ga leti ne izdajo. Stanja zagonov, dopisov in prednastavitve urnika so od 016 v jedru.
 export const CHANGE_TYPES = ['NEW', 'PRICE_DOWN', 'PRICE_UP', 'UNCHANGED', 'UNAVAILABLE'] as const;
 export type ChangeType = (typeof CHANGE_TYPES)[number];
-
-export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'partial', 'failed', 'cancelled', 'interrupted'] as const;
-export type RunStatus = (typeof RUN_STATUSES)[number];
-
-export const RUN_TRIGGERS = ['schedule', 'manual'] as const;
-export type RunTrigger = (typeof RUN_TRIGGERS)[number];
-
-export const NOTIFICATION_STATUSES = ['pending', 'sending', 'sent', 'failed', 'suppressed'] as const;
-export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
-
-export const SUPPRESSED_REASONS = ['smtp-not-configured', 'no-email', 'user-missing', 'no-items'] as const;
-export type SuppressedReason = (typeof SUPPRESSED_REASONS)[number];
 
 export const MATCH_STATUSES = ['active', 'unavailable', 'stale'] as const;
 export type MatchStatus = (typeof MATCH_STATUSES)[number];
@@ -43,9 +33,6 @@ export type DestinationMode = (typeof DESTINATION_MODES)[number];
 
 export const BAGGAGE_OPTIONS = ['any', 'cabin', 'checked'] as const;
 export type BaggageOption = (typeof BAGGAGE_OPTIONS)[number];
-
-export const SCHEDULE_PRESET_IDS = ['hourly', 'daily-06', 'daily-06-18', 'every-6h', 'monday-08', 'custom'] as const; // 016: 'hourly' dodan; nabor se seli v platform/scanner/types.ts (T045)
-export type SchedulePresetId = (typeof SCHEDULE_PRESET_IDS)[number];
 
 export const AVAILABILITIES = ['available', 'unavailable'] as const;
 export type Availability = (typeof AVAILABILITIES)[number];

@@ -7,7 +7,7 @@ import { setTestEnv } from '../../setup/test-env.js';
 import { AUTH, loginAs, loginAsAdmin, seedApiKey } from './_helpers.js';
 
 // FR-045, FR-055, SC-005: kdo pride kam. Administracija je zaprta vsem razen prijavljenemu adminu
-// — tudi API ključu z obsegom `admin`, ker je zapora LASTNA (admin-guard.ts).
+// — tudi API ključu z obsegom `admin`, ker je zapora LASTNA (platform/auth/admin-guard.ts).
 
 beforeAll(async () => {
   setTestEnv();
@@ -20,7 +20,8 @@ async function boot(): Promise<Express> {
   return (await createApp()).app;
 }
 
-const ADMIN_PATHS = ['/api/v1/flight-deals/admin/scheduler', '/api/v1/flight-deals/admin/runs', '/api/v1/flight-deals/admin/providers', '/api/v1/flight-deals/admin/notifications'];
+// 016: administracija je v jedru skenerjev; stanje virov letov je dodatek tipa v `/scanners/admin/types`.
+const ADMIN_PATHS = ['/api/v1/scanners/admin/types', '/api/v1/scanners/admin/types/flights/schedule', '/api/v1/scanners/admin/runs', '/api/v1/scanners/admin/notifications'];
 
 describe('dostop do modula Leti', () => {
   it('navaden uporabnik ima zavihek v GET /tabs in bere svoja iskanja', async () => {

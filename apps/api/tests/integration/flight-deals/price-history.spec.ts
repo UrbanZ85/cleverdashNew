@@ -4,7 +4,7 @@ import { setTestEnv } from '../../setup/test-env.js';
 import { FlightOfferModel } from '../../../src/modules/flight-deals/models/flight-offer.model.js';
 import { FlightOfferHistoryModel } from '../../../src/modules/flight-deals/models/flight-offer-history.model.js';
 import { FlightSearchMatchModel } from '../../../src/modules/flight-deals/models/flight-search-match.model.js';
-import { FlightSearchRunModel } from '../../../src/modules/flight-deals/models/flight-search-run.model.js';
+import { ScannerRunModel } from '../../../src/platform/scanner/models/scanner-run.model.js';
 import { UserModel } from '../../../src/modules/auth/models/user.model.js';
 import { resetFakeProviderForTests } from '../../../src/modules/flight-deals/providers/fake.provider.js';
 import { seedRule } from '../../contract/flight-deals/_helpers.js';
@@ -39,7 +39,7 @@ describe('zgodovina cen', () => {
     expect(offer1).toMatchObject({ price: { amount: 120, currency: 'EUR' }, lastChangeType: 'NEW', previousPrice: null });
     const m1 = await FlightSearchMatchModel.findOne({ ruleId: rule._id, offerId: offer1!._id }).lean();
     expect(m1?.lastChangeType).toBe('NEW');
-    expect((await FlightSearchRunModel.findById(r1.runId).lean())?.counters).toMatchObject({ newMatches: 2, priceDrops: 0 });
+    expect((await ScannerRunModel.findById(r1.runId).lean())?.counters).toMatchObject({ newMatches: 2, priceDrops: 0 });
 
     const r2 = await runOnce(new Date(t0 + 60_000));
     const offer2 = await FlightOfferModel.findById(offer1!._id).lean();
@@ -47,14 +47,14 @@ describe('zgodovina cen', () => {
     expect(offer2?.lastChangeType).toBe('PRICE_DOWN');
     expect(offer2?.previousPrice).toMatchObject({ amount: 120, currency: 'EUR' });
     expect((await FlightSearchMatchModel.findOne({ ruleId: rule._id, offerId: offer1!._id }).lean())?.lastChangeType).toBe('PRICE_DOWN');
-    expect((await FlightSearchRunModel.findById(r2.runId).lean())?.counters).toMatchObject({ newMatches: 0, priceDrops: 1, priceRises: 0 });
+    expect((await ScannerRunModel.findById(r2.runId).lean())?.counters).toMatchObject({ newMatches: 0, priceDrops: 1, priceRises: 0 });
 
     const r3 = await runOnce(new Date(t0 + 120_000));
     const offer3 = await FlightOfferModel.findById(offer1!._id).lean();
     expect(offer3?.price.amount).toBe(110);
     expect(offer3?.lastChangeType).toBe('PRICE_UP');
     expect(offer3?.previousPrice).toMatchObject({ amount: 89 });
-    expect((await FlightSearchRunModel.findById(r3.runId).lean())?.counters).toMatchObject({ priceRises: 1, unavailable: 1 });
+    expect((await ScannerRunModel.findById(r3.runId).lean())?.counters).toMatchObject({ priceRises: 1, unavailable: 1 });
 
     const history = await FlightOfferHistoryModel.find({ offerId: offer1!._id }).sort({ checkedAt: 1 }).lean();
     expect(history.map((h) => h.changeType)).toEqual(['NEW', 'PRICE_DOWN', 'PRICE_UP']);

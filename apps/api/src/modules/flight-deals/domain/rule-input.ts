@@ -156,22 +156,4 @@ export const recipientPutSchema = z.object({
   notify: z.boolean().default(true),
 });
 
-export const runsQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(200).default(30),
-});
-
-export const notificationsQuerySchema = z.object({
-  status: z.enum(['pending', 'sending', 'sent', 'failed', 'suppressed']).optional(),
-  runId: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-});
-
-export const schedulerPutSchema = z
-  .object({
-    enabled: z.boolean().optional(),
-    preset: z.enum(['daily-06', 'daily-06-18', 'every-6h', 'monday-08', 'custom']).optional(),
-    cronExpression: z.string().trim().min(1).max(100).optional(),
-    timezone: z.string().trim().min(1).max(64).optional(),
-  })
-  .refine((p) => Object.keys(p).length > 0, { message: 'Vsaj eno polje mora biti navedeno.' });
-export type SchedulerPatch = z.infer<typeof schedulerPutSchema>;
+// 016: sheme urnika, zagonov in outboxa so v platform/scanner/domain/definition-input.ts.

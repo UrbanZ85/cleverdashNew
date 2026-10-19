@@ -213,6 +213,9 @@ export interface ExecutionContext<TConfig = unknown> {
   previousRunCount: number;
   /** Pri `results: 'generic'` in `single`: shramba; sicer `null`. */
   results: GenericResultStore | null;
+  /** Možnosti, ki jih tipu podajo TESTI (npr. ničelni zamiki ponovitev); produkcijski tik poda
+   * `undefined`. Jedro jih ne tolmači. */
+  typeOptions: unknown;
   heartbeat(): Promise<void>;
   shouldCancel(): Promise<boolean>;
 }

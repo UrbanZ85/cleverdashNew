@@ -169,9 +169,7 @@ export async function requestManualRun(env: Env, scope: RunScope, actorUserId: s
     .select('_id status')
     .lean<{ _id: Types.ObjectId; status: string } | null>();
   if (active) {
-    throw new ProblemError(409, 'Zagon že teče', `Zagon ${String(active._id)} je v stanju "${active.status}". Počakaj, da se konča, ali ga prekini.`, {
-      runId: String(active._id),
-    });
+    throw new ProblemError(409, 'Zagon že teče', `Zagon ${String(active._id)} je v stanju "${active.status}". Počakaj, da se konča, ali ga prekini.`);
   }
   const id = new Types.ObjectId();
   await ScannerRunModel.create({

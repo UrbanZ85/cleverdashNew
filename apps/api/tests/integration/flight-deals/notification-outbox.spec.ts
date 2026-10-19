@@ -2,7 +2,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { clearTestDb, startTestDb, stopTestDb } from '../../setup/mongo-memory.js';
 import { setTestEnv } from '../../setup/test-env.js';
 
-// US4 in US5 (FR-033 do FR-044, SC-003, SC-004): outbox dopisov z mockanim nodemailerjem.
+// US4 in US5 iz 015 (FR-033 do FR-044, SC-003, SC-004): outbox dopisov z mockanim nodemailerjem — od 016
+// outbox teče v jedru skenerjev, pričakovanja so ista.
 
 const { mockSendMail } = vi.hoisted(() => ({ mockSendMail: vi.fn() }));
 vi.mock('nodemailer', () => ({
@@ -10,12 +11,12 @@ vi.mock('nodemailer', () => ({
   default: { createTransport: vi.fn(() => ({ sendMail: mockSendMail })) },
 }));
 
-const { FlightNotificationModel } = await import('../../../src/modules/flight-deals/models/flight-notification.model.js');
-const { FlightSearchRunModel } = await import('../../../src/modules/flight-deals/models/flight-search-run.model.js');
+const { ScannerNotificationModel: FlightNotificationModel } = await import('../../../src/platform/scanner/models/scanner-notification.model.js');
+const { ScannerRunModel: FlightSearchRunModel } = await import('../../../src/platform/scanner/models/scanner-run.model.js');
 const { FlightSearchRuleModel } = await import('../../../src/modules/flight-deals/models/flight-search-rule.model.js');
 const { UserModel } = await import('../../../src/modules/auth/models/user.model.js');
 const { resetFakeProviderForTests } = await import('../../../src/modules/flight-deals/providers/fake.provider.js');
-const { processNotificationOutbox, MAX_ATTEMPTS } = await import('../../../src/modules/flight-deals/services/notification-sender.service.js');
+const { processNotificationOutbox, MAX_ATTEMPTS } = await import('../../../src/platform/scanner/services/notification-sender.service.js');
 const { resetMailerForTests } = await import('../../../src/platform/email/mailer.service.js');
 const { loadEnv } = await import('../../../src/platform/config/env.js');
 const { seedRule } = await import('../../contract/flight-deals/_helpers.js');
@@ -91,7 +92,7 @@ describe('en dopis na prejemnika na zagon (FR-033, FR-034)', () => {
     expect(mockSendMail).toHaveBeenCalledTimes(1);
     const n = await FlightNotificationModel.findOne().lean();
     expect(n?.items.length).toBe(2); // STN in BGY, vsaka enkrat
-    expect(n?.items.every((i) => i.ruleName === 'Prvo · Drugo' || i.ruleName === 'Drugo · Prvo')).toBe(true);
+    expect(n?.items.every((i) => i.definitionName === 'Prvo · Drugo' || i.definitionName === 'Drugo · Prvo')).toBe(true);
   });
 
   it('prejemnik dobi lasten dopis z imenom lastnika; po odstranitvi med zagonom in pošiljanjem postavke izpadejo (FR-042)', async () => {
@@ -186,7 +187,7 @@ describe('neuspeh pošte in varno ponavljanje (FR-037, SC-004)', () => {
     expect(await FlightNotificationModel.findOne().lean()).toMatchObject({ status: 'failed', attemptCount: 1 });
   });
 
-  it('obtičal "sending" se po FLIGHT_RUN_STALE_MINUTES vrne v pending', async () => {
+  it('obtičal "sending" se po SCANNER_RUN_STALE_MINUTES vrne v pending', async () => {
     const ana = await user('ana');
     await seedRule(String(ana._id));
     await runOnce(new Date());

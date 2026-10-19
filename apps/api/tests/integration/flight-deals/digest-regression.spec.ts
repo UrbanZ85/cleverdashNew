@@ -6,7 +6,7 @@ import { UserModel } from '../../../src/modules/auth/models/user.model.js';
 import { resetFakeProviderForTests } from '../../../src/modules/flight-deals/providers/fake.provider.js';
 import { seedRule } from '../../contract/flight-deals/_helpers.js';
 import { runOnce } from './_run.js';
-import { FlightNotificationModel as NotificationModel } from '../../../src/modules/flight-deals/models/flight-notification.model.js';
+import { ScannerNotificationModel as NotificationModel } from '../../../src/platform/scanner/models/scanner-notification.model.js';
 
 // 016, SC-002: REGRESIJSKI POSNETEK dopisov modula Leti. Nastal je PRED refaktoringom v skupno
 // jedro skenerjev in je bil zelen nad kodo 015 (commit b57211e). Pričakovanja so zapisana
@@ -45,17 +45,18 @@ interface ItemView {
 /** Oblika postavke, neodvisna od modela: po refaktoringu se spremeni SAMO ta preslikava. */
 function itemView(item: {
   changeType: string;
-  ruleName: string;
-  ruleOwnerName: string | null;
-  price: { amount: number };
-  previousPrice: { amount: number } | null;
+  definitionName: string;
+  ownerName: string | null;
+  payload: unknown;
 }): ItemView {
+  // 016: postavka generičnega outboxa — iskanje je `definitionName`, cena je v `payload` tipa.
+  const payload = item.payload as { price: { amount: number }; previousPrice: { amount: number } | null };
   return {
     changeType: item.changeType,
-    amount: item.price.amount,
-    previousAmount: item.previousPrice?.amount ?? null,
-    ruleName: item.ruleName,
-    ruleOwnerName: item.ruleOwnerName,
+    amount: payload.price.amount,
+    previousAmount: payload.previousPrice?.amount ?? null,
+    ruleName: item.definitionName,
+    ruleOwnerName: item.ownerName,
   };
 }
 

@@ -22,7 +22,7 @@ const moneySchema = new Schema(
 const flightOfferHistorySchema = new Schema(
   {
     offerId: { type: Schema.Types.ObjectId, ref: 'FlightOffer', required: true },
-    runId: { type: Schema.Types.ObjectId, ref: 'FlightSearchRun', required: true },
+    runId: { type: Schema.Types.ObjectId, ref: 'ScannerRun', required: true },
     checkedAt: { type: Date, required: true },
     /** `null` pri `UNAVAILABLE`. */
     price: { type: moneySchema, default: null },

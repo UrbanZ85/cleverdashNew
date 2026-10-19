@@ -274,6 +274,9 @@ export async function reconcileRun(params: {
   logger?: Logger;
   shouldCancel?: () => Promise<boolean> | boolean;
   onRuleDone?: () => Promise<void> | void;
+  /** 016 (FR-017): napaka pri primerjavi ENEGA iskanja se sporoči sem in ostala iskanja tečejo
+   * naprej; brez kavlja se izjema širi kot prej. */
+  onRuleError?: (ruleId: string, err: unknown) => void;
 }): Promise<ReconcileOutcome> {
   const { runId, plan, executions, now, env } = params;
   const counters: ReconcileCounters = { offersSeen: 0, newMatches: 0, priceDrops: 0, priceRises: 0, unavailable: 0 };
@@ -296,6 +299,18 @@ export async function reconcileRun(params: {
     const stillThere = await FlightSearchRuleModel.exists({ _id: rule._id });
     if (!stillThere) continue;
 
+    try {
+      await reconcileRule(rule, windows);
+    } catch (err) {
+      if (!params.onRuleError) throw err;
+      params.onRuleError(String(rule._id), err);
+    }
+    await params.onRuleDone?.();
+  }
+
+  return { counters, events, offerChanges: changes };
+
+  async function reconcileRule(rule: RuleLean, windows: Windows): Promise<void> {
     const rulePlan = plan.perRule.get(String(rule._id));
     const input = ruleToInput(rule);
     const matchedOfferIds = new Set<string>();
@@ -412,10 +427,7 @@ export async function reconcileRun(params: {
       },
       { timestamps: false },
     );
-    await params.onRuleDone?.();
   }
-
-  return { counters, events, offerChanges: changes };
 }
 
 /** Zapis ponudbe nazaj v obliko, nad katero dela rule-matcher. */

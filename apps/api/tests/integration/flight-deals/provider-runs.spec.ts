@@ -4,8 +4,8 @@ import { setTestEnv } from '../../setup/test-env.js';
 import { FlightOfferModel } from '../../../src/modules/flight-deals/models/flight-offer.model.js';
 import { FlightSearchMatchModel } from '../../../src/modules/flight-deals/models/flight-search-match.model.js';
 import { FlightSearchRuleModel } from '../../../src/modules/flight-deals/models/flight-search-rule.model.js';
-import { FlightSearchRunModel } from '../../../src/modules/flight-deals/models/flight-search-run.model.js';
-import { FlightNotificationModel } from '../../../src/modules/flight-deals/models/flight-notification.model.js';
+import { ScannerRunModel } from '../../../src/platform/scanner/models/scanner-run.model.js';
+import { ScannerNotificationModel } from '../../../src/platform/scanner/models/scanner-notification.model.js';
 import { FlightProviderStatusModel } from '../../../src/modules/flight-deals/models/flight-provider-status.model.js';
 import { ExternalCacheModel } from '../../../src/platform/cache/model.js';
 import { UserModel } from '../../../src/modules/auth/models/user.model.js';
@@ -45,7 +45,7 @@ describe('deduplikacija poizvedb', () => {
     const first = await runOnce();
     expect(first.run?.status).toBe('succeeded');
     // 2 iskanji × 1 letališče × meseci okna, a vsak ključ enkrat: število klicev = število RAZLIČNIH mesecev.
-    const run1 = await FlightSearchRunModel.findById(first.runId).lean();
+    const run1 = await ScannerRunModel.findById(first.runId).lean();
     expect(run1?.counters?.queries).toBe(calls.length * 2);
     expect(run1?.counters?.providerRequests).toBe(calls.length);
     expect(calls.length).toBeGreaterThan(0);
@@ -65,7 +65,7 @@ describe('deduplikacija poizvedb', () => {
     const second = await runOnce(new Date(Date.now() + 1000));
     expect(second.run?.status).toBe('succeeded');
     expect(calls.length).toBe(before);
-    const run2 = await FlightSearchRunModel.findById(second.runId).lean();
+    const run2 = await ScannerRunModel.findById(second.runId).lean();
     expect(run2?.counters?.providerRequests).toBe(0);
   });
 
@@ -103,8 +103,8 @@ describe('izpad vira', () => {
     const fresh = await FlightSearchRuleModel.findById(rule._id).lean();
     const tp = fresh?.lastCheck?.outcomes.find((o) => o.providerId === 'travelpayouts');
     expect(tp?.outcome).toBe('unreachable');
-    expect(fresh?.lastSuccessfulCheckAt?.getTime()).toBe(first.run ? (await FlightSearchRunModel.findById(first.runId).lean())?.startedAt?.getTime() : 0);
-    expect(await FlightNotificationModel.countDocuments()).toBe(1); // samo iz prvega zagona (NOVO)
+    expect(fresh?.lastSuccessfulCheckAt?.getTime()).toBe(first.run ? (await ScannerRunModel.findById(first.runId).lean())?.startedAt?.getTime() : 0);
+    expect(await ScannerNotificationModel.countDocuments()).toBe(1); // samo iz prvega zagona (NOVO)
     const status = await FlightProviderStatusModel.findOne({ providerId: 'travelpayouts' }).lean();
     expect(status?.lastOutcome).toBe('unreachable');
     expect(status?.lastError).toBeTruthy();
@@ -117,7 +117,7 @@ describe('izpad vira', () => {
     const { run, runId } = await runOnce();
     expect(run?.status).toBe('succeeded');
     expect(calls.length).toBeGreaterThanOrEqual(2);
-    const doc = await FlightSearchRunModel.findById(runId).lean();
+    const doc = await ScannerRunModel.findById(runId).lean();
     expect(doc?.counters?.newMatches).toBe(1);
     expect(await FlightOfferModel.countDocuments()).toBe(1);
   });
@@ -128,7 +128,7 @@ describe('izpad vira', () => {
     const { calls } = stubTravelpayouts({ responses: [{ status: 429 }] });
     const { run, runId } = await runOnce();
     expect(run?.status).toBe('failed');
-    const months = (await FlightSearchRunModel.findById(runId).lean())?.counters?.queries ?? 0;
+    const months = (await ScannerRunModel.findById(runId).lean())?.counters?.queries ?? 0;
     expect(calls.length).toBe(months); // ena zahteva na poizvedbo, brez ponovitev
     const fresh = await FlightSearchRuleModel.findOne().lean();
     expect(fresh?.lastCheck?.outcomes.find((o) => o.providerId === 'travelpayouts')?.outcome).toBe('rateLimited');
@@ -150,7 +150,7 @@ describe('izpad vira', () => {
     expect(gone?.lastChangeType).toBe('UNAVAILABLE');
     expect(await FlightSearchMatchModel.countDocuments({ ruleId: rule._id, status: 'unavailable' })).toBe(1);
     expect(await FlightSearchMatchModel.countDocuments({ ruleId: rule._id, status: 'active' })).toBe(1);
-    expect((await FlightSearchRunModel.findById(runId).lean())?.counters?.unavailable).toBe(1);
+    expect((await ScannerRunModel.findById(runId).lean())?.counters?.unavailable).toBe(1);
   });
 
   it('brez vklopljenih virov zagon konča succeeded z napako "no-providers"', async () => {
@@ -159,7 +159,7 @@ describe('izpad vira', () => {
     await seedRule(String(ana._id), ANY_DAY);
     const { run, runId } = await runOnce();
     expect(run?.status).toBe('succeeded');
-    const doc = await FlightSearchRunModel.findById(runId).lean();
+    const doc = await ScannerRunModel.findById(runId).lean();
     expect(doc?.runErrors.map((e) => e.code)).toContain('no-providers');
     const fresh = await FlightSearchRuleModel.findOne().lean();
     expect(fresh?.lastCheck?.outcomes.every((o) => o.outcome === 'disabled')).toBe(true);

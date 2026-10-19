@@ -130,7 +130,7 @@ const flightSearchRuleSchema = new Schema(
     lastCheck: {
       type: new Schema(
         {
-          runId: { type: Schema.Types.ObjectId, ref: 'FlightSearchRun', required: true },
+          runId: { type: Schema.Types.ObjectId, ref: 'ScannerRun', required: true },
           at: { type: Date, required: true },
           outcomes: { type: [checkOutcomeSchema], default: [] },
           analysis: { type: checkAnalysisSchema, default: null },

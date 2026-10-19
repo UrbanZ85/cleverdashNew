@@ -3,20 +3,29 @@ import { DateTime } from 'luxon';
 import { Types } from 'mongoose';
 import { loadEnv } from '../../../src/platform/config/env.js';
 import { getLogger } from '../../../src/platform/logging/logger.js';
-import { executeRun } from '../../../src/modules/flight-deals/services/run-executor.service.js';
-import { requestManualRun } from '../../../src/modules/flight-deals/services/tick.js';
+import { executeRun } from '../../../src/platform/scanner/services/run-executor.service.js';
+import { requestManualRun } from '../../../src/platform/scanner/services/scheduler.service.js';
+import { registerFlightScannerType } from '../../../src/modules/flight-deals/scanner/index.js';
 import { nextFriday } from '../../contract/flight-deals/_helpers.js';
 
-// Pomožniki za integracijske teste zagona (015). Zagon se kliče NEPOSREDNO (člen IX): brez čakanja na
-// tik in z ničelnimi zamiki ponovitev.
+// Pomožniki za integracijske teste zagona (015, od 016 prek jedra skenerjev). Zagon se kliče
+// NEPOSREDNO (člen IX): brez čakanja na tik in z ničelnimi zamiki ponovitev. Tip `flights` se
+// registrira tu, ker ti testi ne zaganjajo `createApp()`.
 
 export const ACTOR = new Types.ObjectId().toString();
 
+/** Obseg zagona tipa leti — vsa aktivna iskanja v enem zagonu (batch). */
+export const FLIGHTS_SCOPE = { kind: 'type', type: 'flights' } as const;
+
+/** Možnosti za tip (ctx.typeOptions): ničelni zamiki ponovitev pri virih. */
+export const FLIGHT_TEST_OPTIONS = { runner: { retryDelaysMs: [0, 0] } };
+
 export async function runOnce(now = new Date(), options: { processOutbox?: boolean } = {}) {
+  registerFlightScannerType();
   const env = loadEnv();
-  const { runId } = await requestManualRun(env, ACTOR, now);
+  const { runId } = await requestManualRun(env, FLIGHTS_SCOPE, ACTOR, now);
   const run = await executeRun(runId, env, getLogger(env), now, {
-    runner: { retryDelaysMs: [0, 0] },
+    typeOptions: FLIGHT_TEST_OPTIONS,
     processOutbox: options.processOutbox ?? false,
   });
   return { runId, run };
