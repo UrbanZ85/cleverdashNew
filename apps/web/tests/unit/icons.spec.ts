@@ -31,6 +31,7 @@ const TAB_REGISTRY_ICONS = [
 const SCANNERS_ICONS = [
   'scan-outline', // zavihek
   'layers-outline', // tip echo
+  'cube-outline', // tip lego (018)
   'airplane-outline', // tip leti
   'play-outline', // "Zaženi zdaj"
   'stop-circle-outline', // "Prekini"

@@ -405,6 +405,26 @@ vir, slike) — nikoli imena, e-naslovi ali identifikatorji oseb. Zahteva nosi `
 OpenAI vsebine ne hrani. Shema izhoda nima številskih polj za denar in navodilo modelu prepove
 izmišljanje cen, stroškov popravil in dobičkov.
 
+### LEGO skener (018)
+
+Trije uradni viri; vsak je vklopljen samo, kadar so nastavljeni vsi njegovi ključi. Brez ključev tip
+`lego` še vedno obstaja: zagon pove, kateri vir manjka (`GET /lego-scanner/sources`). Ključi so
+**samo na strežniku** (člen IV): nikoli v odgovoru, predpomnilniku, dnevniku ali odjemalcu. Podrobnosti
+in pravila trditev: [`lego-scanner.md`](lego-scanner.md).
+
+| Spremenljivka | Privzeto | Vloga |
+|---|---|---|
+| `REBRICKABLE_API_KEY` | *(prazno)* | katalog setov; `REBRICKABLE_URL` osnova |
+| `BRICKLINK_CONSUMER_KEY`, `_CONSUMER_SECRET`, `_TOKEN`, `_TOKEN_SECRET` | *(prazno)* | cenik (OAuth 1.0, vsi štirje); v BrickLink računu registriraj IP strežnika; `BRICKLINK_URL` osnova |
+| `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | *(prazno)* | eBay Browse API (aplikacijski ključ, produkcija); `EBAY_API_URL` osnova |
+| `EBAY_MARKETPLACES` | `EBAY_DE,EBAY_IT` | tržnice, ki jih namestitev dovoli |
+| `LEGO_FAKE_SOURCE_ENABLED` | `false` | testni vir z IZMIŠLJENIMI podatki; v produkciji ga `loadEnv` **zavrne** |
+| `LEGO_REBRICKABLE_DAILY_LIMIT` / `LEGO_BRICKLINK_DAILY_LIMIT` / `LEGO_EBAY_DAILY_LIMIT` | 2000 / 1000 / 4000 | dnevne meje zahtev (rezervacija v bazi) |
+| `LEGO_CATALOG_CACHE_DAYS` / `LEGO_PRICE_CACHE_HOURS` / `LEGO_LISTING_CACHE_SECONDS` | 30 / 24 / 900 | TTL predpomnilnika |
+| `LEGO_EBAY_MAX_PAGES` / `LEGO_MAX_VALUATIONS_PER_RUN` / `LEGO_MAX_NAME_LOOKUPS_PER_RUN` | 2 / 30 / 20 | meje na zagon |
+| `LEGO_SELLING_FEE_PCT` / `LEGO_RISK_RESERVE_PCT` / `LEGO_CONSERVATIVE_DISCOUNT_PCT` / `LEGO_BUYER_FEE_PCT` | 12 / 5 / 10 / 0 | parametri izračuna priložnosti — **ocene, ne tržna dejstva**; prilagodi svoji realnosti |
+| `LEGO_TIMEOUT_MS` | 15000 | ena zahteva |
+
 ## 3. E-pošta — ali je še potrebna
 
 Stari sistem pošilja e-pošto ob ustvarjanju urnika in ob napakah, poleg potisnih obvestil.

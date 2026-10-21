@@ -397,7 +397,49 @@ const envSchema = z.object({
   SCANNER_AI_IMAGES: boolFromString.default('false'),
   // Odrez vhoda (znakov JSON), da en rezultat z romanom v opisu ne stane kot sto navadnih.
   SCANNER_AI_MAX_INPUT_CHARS: z.coerce.number().int().positive().max(100_000).default(6_000),
+
+  // LEGO skener (018, specs/018-lego-scanner/research.md §11) — trije uradni viri; vsak je vklopljen
+  // samo, kadar so v okolju vsi njegovi ključi (BrickLink: vsi štirje). Ključi ostanejo IZKLJUČNO na
+  // strežniku (člen IV). Brez ključev tip `lego` še vedno obstaja: zagon pove, kateri vir manjka.
+  REBRICKABLE_API_KEY: z.string().optional().or(z.literal('')),
+  REBRICKABLE_URL: z.string().url().default('https://rebrickable.com/api/v3'),
+  BRICKLINK_CONSUMER_KEY: z.string().optional().or(z.literal('')),
+  BRICKLINK_CONSUMER_SECRET: z.string().optional().or(z.literal('')),
+  BRICKLINK_TOKEN: z.string().optional().or(z.literal('')),
+  BRICKLINK_TOKEN_SECRET: z.string().optional().or(z.literal('')),
+  BRICKLINK_URL: z.string().url().default('https://api.bricklink.com/api/store/v1'),
+  EBAY_CLIENT_ID: z.string().optional().or(z.literal('')),
+  EBAY_CLIENT_SECRET: z.string().optional().or(z.literal('')),
+  EBAY_API_URL: z.string().url().default('https://api.ebay.com'),
+  // Tržnice, ki jih namestitev dovoli (iskanje jih izbira iz tega nabora).
+  EBAY_MARKETPLACES: z.string().default('EBAY_DE,EBAY_IT'),
+  // Testni vir z IZMIŠLJENIMI podatki — samo razvoj in testi; v produkciji ga `loadEnv` zavrne.
+  LEGO_FAKE_SOURCE_ENABLED: boolFromString.default('false'),
+  // Dnevne meje zahtev po viru (rezervacija v bazi, ne v pomnilniku). Uradne meje so višje.
+  LEGO_REBRICKABLE_DAILY_LIMIT: z.coerce.number().int().positive().max(100_000).default(2_000),
+  LEGO_BRICKLINK_DAILY_LIMIT: z.coerce.number().int().positive().max(100_000).default(1_000),
+  LEGO_EBAY_DAILY_LIMIT: z.coerce.number().int().positive().max(100_000).default(4_000),
+  // Predpomnilnik: katalog in cenik sta počasna podatka, oglasi hitri.
+  LEGO_CATALOG_CACHE_DAYS: z.coerce.number().int().positive().max(365).default(30),
+  LEGO_PRICE_CACHE_HOURS: z.coerce.number().int().positive().max(720).default(24),
+  LEGO_LISTING_CACHE_SECONDS: z.coerce.number().int().positive().max(86_400).default(900),
+  LEGO_EBAY_MAX_PAGES: z.coerce.number().int().positive().max(10).default(2),
+  LEGO_MAX_VALUATIONS_PER_RUN: z.coerce.number().int().positive().max(500).default(30),
+  LEGO_MAX_NAME_LOOKUPS_PER_RUN: z.coerce.number().int().nonnegative().max(500).default(20),
+  LEGO_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  // Parametri izračuna priložnosti — OCENE, ne tržna dejstva (v odstotkih).
+  LEGO_SELLING_FEE_PCT: z.coerce.number().min(0).max(60).default(12),
+  LEGO_RISK_RESERVE_PCT: z.coerce.number().min(0).max(60).default(5),
+  LEGO_CONSERVATIVE_DISCOUNT_PCT: z.coerce.number().min(0).max(90).default(10),
+  LEGO_BUYER_FEE_PCT: z.coerce.number().min(0).max(60).default(0),
 }).superRefine((env, ctx) => {
+  if (env.NODE_ENV === 'production' && env.LEGO_FAKE_SOURCE_ENABLED) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['LEGO_FAKE_SOURCE_ENABLED'],
+      message: 'Testni vir LEGO skenerja z izmišljenimi podatki v produkciji ni dovoljen (018)',
+    });
+  }
   if (env.NODE_ENV === 'production' && env.FLIGHT_FAKE_PROVIDER_ENABLED) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

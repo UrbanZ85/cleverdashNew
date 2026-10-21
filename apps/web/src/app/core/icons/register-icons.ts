@@ -40,6 +40,7 @@ import {
   homeOutline,
   imageOutline,
   layersOutline,
+  cubeOutline,
   linkOutline,
   listOutline,
   lockClosedOutline,
@@ -190,6 +191,7 @@ export const REGISTERED_ICONS = {
   // 016: zavihek Skenerji (ikona prihaja s STREŽNIKA, glej opombo pri Receptih) in testni tip echo.
   'scan-outline': scanOutline,
   'layers-outline': layersOutline,
+  'cube-outline': cubeOutline, // tip lego (018)
   'thermometer-outline': thermometerOutline,
   'time-outline': timeOutline,
   'trash-outline': trashOutline,

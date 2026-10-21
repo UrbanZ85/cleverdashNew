@@ -296,6 +296,25 @@ describe('loadEnv', () => {
     });
   });
 
+  // 018: LEGO skener — viri so neobvezni, testni vir v produkciji ni dovoljen.
+  describe('LEGO skener (018)', () => {
+    it('privzetki: brez ključev, tržnici DE in IT, meje, predpomnilnik in parametri izračuna', () => {
+      const env = loadEnv(VALID);
+      expect(env.REBRICKABLE_API_KEY ?? '').toBe('');
+      expect(env.EBAY_MARKETPLACES).toBe('EBAY_DE,EBAY_IT');
+      expect(env.LEGO_FAKE_SOURCE_ENABLED).toBe(false);
+      expect([env.LEGO_REBRICKABLE_DAILY_LIMIT, env.LEGO_BRICKLINK_DAILY_LIMIT, env.LEGO_EBAY_DAILY_LIMIT]).toEqual([2000, 1000, 4000]);
+      expect([env.LEGO_CATALOG_CACHE_DAYS, env.LEGO_PRICE_CACHE_HOURS, env.LEGO_LISTING_CACHE_SECONDS]).toEqual([30, 24, 900]);
+      expect([env.LEGO_SELLING_FEE_PCT, env.LEGO_RISK_RESERVE_PCT, env.LEGO_CONSERVATIVE_DISCOUNT_PCT, env.LEGO_BUYER_FEE_PCT]).toEqual([12, 5, 10, 0]);
+    });
+
+    it('testni vir v produkciji zavrnjen z imenom spremenljivke; v testih dovoljen', () => {
+      expect(() => loadEnv({ ...VALID, NODE_ENV: 'production', LEGO_FAKE_SOURCE_ENABLED: 'true' })).toThrowError(/LEGO_FAKE_SOURCE_ENABLED/);
+      resetEnvCacheForTests();
+      expect(loadEnv({ ...VALID, NODE_ENV: 'test', LEGO_FAKE_SOURCE_ENABLED: 'true' }).LEGO_FAKE_SOURCE_ENABLED).toBe(true);
+    });
+  });
+
   // 017: analiza z umetno inteligenco je neobvezna — brez ključa ni na voljo, vse ostalo ima privzetek.
   describe('Analiza z umetno inteligenco (017)', () => {
     it('brez ključa: model gpt-6.1-sol, uradna osnova, meje in izklopljene slike', () => {

@@ -480,6 +480,17 @@ generično shrambo jo dobi brez dela, leti prek dveh kavljev. Spremenljivke v
 [`docs/env-reference.md`](docs/env-reference.md), odločitve v
 [`specs/017-ai-analysis/research.md`](specs/017-ai-analysis/research.md).
 
+### LEGO skener (018)
+
+Nov tip skenerja `lego` v jedru (016): po urniku išče LEGO sete na eBayu (Nemčija, Italija), jih
+prepozna v katalogu Rebrickable, primerja s prodajami zadnjih šestih mesecev na BrickLinku in oceni
+priložnost z vidnim izračunom (cena, poštnina, davki, provizije, rezerva → dobiček). Sistem **ničesar
+ne domneva**: kompletnost rabljenega, poštnina, davki in vrednost so lahko "neznano", paketi, deli in
+prazne škatle niso seti, umik oglasa ni "prodano", zadnja ponudba na dražbi ni končna cena. Viri so
+vklopljeni samo s ključi v `.env` (ključi nikoli v odjemalcu ali gitu); brez njih vse ostalo deluje
+enako. Opis: [`docs/lego-scanner.md`](docs/lego-scanner.md), odločitve:
+[`specs/018-lego-scanner/research.md`](specs/018-lego-scanner/research.md).
+
 ---
 
 **Stack:** Ionic 8 + Angular 20 (web in Android prek Capacitorja), Node.js 22 + Express 5 +

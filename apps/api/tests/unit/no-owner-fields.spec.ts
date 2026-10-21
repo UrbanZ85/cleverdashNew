@@ -23,6 +23,7 @@ import { FlightSearchMatchModel } from '../../src/modules/flight-deals/models/fl
 import { ScannerDefinitionModel } from '../../src/platform/scanner/models/scanner-definition.model.js';
 import { ScannerResultModel } from '../../src/platform/scanner/models/scanner-result.model.js';
 import { ScannerRunModel } from '../../src/platform/scanner/models/scanner-run.model.js';
+import { LegoSourceUsageModel } from '../../src/modules/lego-scanner/models/lego-source-usage.model.js';
 
 // 004, data-model.md "Načelo lastništva zapisov": OBRNJENO iz 001/003 (glej git zgodovino
 // te datoteke) — sistem je zdaj večuporabniški. Ta test preveri OBE strani nove razmejitve
@@ -78,6 +79,11 @@ describe('data-model.md "Načelo lastništva zapisov": userId na osebnih podatki
   // je zagon tipa (vsi uporabniki v enem) nima.
   it('ScannerRun (namestitveni zapis) NE nosi userId', () => {
     expect(Object.keys(ScannerRunModel.schema.paths)).not.toContain('userId');
+  });
+
+  // 018: dnevna poraba zahtev na vir je namestitveni zapis (en ključ, ena meja pri ponudniku), ne osebni podatek.
+  it('LegoSourceUsage (namestitveni zapis) NE nosi userId', () => {
+    expect(Object.keys(LegoSourceUsageModel.schema.paths)).not.toContain('userId');
   });
 
   it('User nima lastnega userId (uporabnik je sam sebi entiteta, ne referenca)', () => {

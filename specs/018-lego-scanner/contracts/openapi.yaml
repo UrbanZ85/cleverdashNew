@@ -1,0 +1,244 @@
+openapi: 3.1.0
+
+info:
+  title: CleverDash — LEGO skener
+  version: 1.0.0
+  description: |
+    Dodatek k skenerjem (016): tip `lego`. Iskanja se ustvarjajo prek `/scanners` (pogodba 016) z
+    `type: lego` in `config` po shemi `LegoConfig`; rezultati prek `/scanners/{id}/results`, kjer
+    `Result.data` ustreza shemi `LegoResultData`. Ta pogodba doda samo pot za dostopnost virov.
+
+    Skrivnosti virov (ključi Rebrickable, BrickLink, eBay) nikoli niso v odgovoru; pot vrne samo
+    da/ne. Vse poti zahtevajo prijavo in obseg `scanners:read`.
+
+servers:
+  - url: /api/v1
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: lego-scanner
+    description: Stanje virov LEGO skenerja
+
+paths:
+  /lego-scanner/sources:
+    get:
+      tags: [lego-scanner]
+      summary: Kateri viri so vklopljeni v tej namestitvi
+      description: |
+        `enabled` je `true`, kadar so v okolju vsi ključi vira (BrickLink: vsi štirje) ali je vklopljen
+        testni vir. `marketplaces` so tržnice, dovoljene v namestitvi (`EBAY_MARKETPLACES`).
+        Obrazec iskanja pokaže, kaj manjka; zagon brez vira oglasov se konča z napako `lego:no-listing-source`.
+      operationId: getLegoSources
+      responses:
+        '200':
+          description: Viri
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [catalog, prices, listings, marketplaces, fake]
+                properties:
+                  catalog: { $ref: '#/components/schemas/SourceStatus' }
+                  prices: { $ref: '#/components/schemas/SourceStatus' }
+                  listings: { $ref: '#/components/schemas/SourceStatus' }
+                  marketplaces:
+                    type: array
+                    items: { $ref: '#/components/schemas/Marketplace' }
+                  fake: { type: boolean, description: Testni vir z izmišljenimi podatki je vklopljen }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  responses:
+    Unauthorized:
+      description: Ni prijave
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Manjka obseg
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+
+    Marketplace:
+      type: string
+      enum: [EBAY_DE, EBAY_IT]
+
+    LegoCondition:
+      type: string
+      enum: [NEW_SEALED, NEW_OPEN_BOX, USED_COMPLETE, USED_INCOMPLETE, PARTS_ONLY, UNKNOWN]
+
+    SourceStatus:
+      type: object
+      required: [enabled, label]
+      properties:
+        enabled: { type: boolean }
+        label: { type: string, description: "Slovensko ime vira (npr. Rebrickable)" }
+        reason: { type: [string, 'null'], description: "Slovensko, zakaj ni vklopljen" }
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: number }
+        currency: { type: string }
+
+    LegoConfig:
+      type: object
+      description: |
+        `config` skenerja tipa `lego`. Vsaj eno od `setNumber`, `keywords`, `theme`, `maxPrice`.
+        Polja za "upokojen" ni (noben dovoljen vir tega ne pove zanesljivo).
+      properties:
+        setNumber: { type: string, description: "Normalizirano v NNNNN-V ob shranjevanju (npr. 75192-1)" }
+        keywords: { type: string, maxLength: 120 }
+        theme: { type: string, maxLength: 60 }
+        subtheme: { type: string, maxLength: 60 }
+        minYear: { type: integer, minimum: 1949, maximum: 2100 }
+        maxYear: { type: integer, minimum: 1949, maximum: 2100 }
+        minPrice: { type: number, minimum: 0 }
+        maxPrice: { type: number, minimum: 0 }
+        currency: { type: string, default: EUR }
+        marketplaces:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items: { $ref: '#/components/schemas/Marketplace' }
+          default: [EBAY_DE]
+        sellerCountries:
+          type: array
+          maxItems: 10
+          items: { type: string, minLength: 2, maxLength: 2 }
+        conditions:
+          type: array
+          description: "Prazno = vsa stanja; filtrira se po razvrstitvi"
+          items: { $ref: '#/components/schemas/LegoCondition' }
+        listingTypes:
+          type: array
+          items: { type: string, enum: [FIXED_PRICE, AUCTION] }
+        minDiscountPct: { type: number, minimum: 0, maximum: 100 }
+        minProfit: { type: number }
+        maxShipping: { type: number, minimum: 0 }
+        notifyMinProfit: { type: number, description: "Prag obvestila (ne filter)" }
+        auctionEndingHours: { type: integer, minimum: 1, maximum: 72, default: 6 }
+
+    LegoAttributes:
+      type: object
+      required: [condition]
+      properties:
+        setNumber: { type: string }
+        setName: { type: string }
+        theme: { type: string }
+        subtheme: { type: string }
+        releaseYear: { type: integer }
+        pieceCount: { type: integer }
+        retired: { type: boolean, description: "Samo kadar vir zanesljivo pove (v 018 nikoli)" }
+        condition: { $ref: '#/components/schemas/LegoCondition' }
+        completenessVerified: { type: boolean }
+        boxIncluded: { type: boolean }
+        instructionsIncluded: { type: boolean }
+        listingType: { type: string, enum: [FIXED_PRICE, AUCTION] }
+        sellerCountry: { type: string }
+        shippingCost: { type: number }
+
+    LegoResultData:
+      type: object
+      description: "`Result.data` rezultata tipa `lego` (glej data-model.md)"
+      required: [lego, listing, identification, opportunity, alerts]
+      properties:
+        lego: { $ref: '#/components/schemas/LegoAttributes' }
+        listing:
+          type: object
+          required: [marketplace, itemId, listingType, shippingKnown, images]
+          properties:
+            marketplace: { $ref: '#/components/schemas/Marketplace' }
+            itemId: { type: string }
+            listingType: { type: string, enum: [FIXED_PRICE, AUCTION] }
+            endsAt: { type: [string, 'null'], format: date-time }
+            bidCount: { type: [integer, 'null'] }
+            shipping:
+              oneOf:
+                - $ref: '#/components/schemas/Money'
+                - type: 'null'
+            shippingKnown: { type: boolean }
+            images: { type: array, items: { type: string } }
+        identification:
+          type: object
+          required: [kind, confidence, reason, needsReview]
+          properties:
+            kind: { type: string, enum: [SET, BUNDLE, PARTS, MINIFIG, EMPTY_BOX, OTHER, UNIDENTIFIED] }
+            confidence: { type: string, enum: [high, medium, low, none] }
+            reason: { type: string }
+            needsReview: { type: boolean }
+            catalog:
+              type: [object, 'null']
+              properties:
+                setNumber: { type: string }
+                name: { type: string }
+                theme: { type: [string, 'null'] }
+                subtheme: { type: [string, 'null'] }
+                year: { type: [integer, 'null'] }
+                pieces: { type: [integer, 'null'] }
+                imageUrl: { type: [string, 'null'] }
+                url: { type: [string, 'null'] }
+        valuation:
+          type: [object, 'null']
+          properties:
+            basis: { type: string, enum: [sold] }
+            newOrUsed: { type: [string, 'null'], enum: [N, U, null] }
+            currency: { type: [string, 'null'] }
+            average: { type: [number, 'null'] }
+            median: { type: [number, 'null'] }
+            salesCount: { type: integer }
+            periodMonths: { type: integer }
+            confidence: { type: string, enum: [high, medium, low, insufficient] }
+            stale: { type: boolean }
+            comparable: { type: boolean }
+            note: { type: [string, 'null'] }
+            active:
+              type: [object, 'null']
+              properties:
+                average: { type: [number, 'null'] }
+                min: { type: [number, 'null'] }
+                count: { type: integer }
+        opportunity:
+          type: object
+          required: [illustrative, price, buyerFees, missing]
+          properties:
+            illustrative: { type: boolean, enum: [true] }
+            price: { type: number }
+            shipping: { type: [number, 'null'] }
+            taxes: { type: [number, 'null'] }
+            buyerFees: { type: number }
+            acquisitionCost: { type: [number, 'null'] }
+            conservativeValue: { type: [number, 'null'] }
+            sellingFees: { type: [number, 'null'] }
+            riskReserve: { type: [number, 'null'] }
+            profit: { type: [number, 'null'] }
+            roi: { type: [number, 'null'] }
+            discountPct: { type: [number, 'null'] }
+            score: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+            missing: { type: array, items: { type: string } }
+        alerts:
+          type: object
+          required: [profitNotified, auctionEndingNotified]
+          properties:
+            profitNotified: { type: boolean }
+            auctionEndingNotified: { type: boolean }

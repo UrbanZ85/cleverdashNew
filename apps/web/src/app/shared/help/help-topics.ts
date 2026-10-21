@@ -585,6 +585,18 @@ export const HELP_TOPICS = {
     ],
     ifEmpty: 'Brez ključa OpenAI v namestitvi je stikalo onemogočeno in skener deluje enako kot brez analize.',
   },
+  'scanners.lego': {
+    title: 'LEGO skener',
+    what: 'Po urniku išče LEGO sete na eBayu (Nemčija, Italija), jih prepozna v katalogu Rebrickable, primerja s prodajami zadnjih šestih mesecev na BrickLinku in oceni, ali je oglas podcenjen. Vse številke so ocene iz podatkov virov, ne nasvet za nakup.',
+    how: [
+      'Vpiši vsaj eno od: številka seta, ključne besede, tema ali najvišja cena. Več iskanj je neodvisnih: vsako ima svoje filtre, urnik in obvestila.',
+      'Stanje: zapečateno in kompletno rabljeno se vrednotita ločeno; kompletnost rabljenega se NE domneva — dokler jo prodajalec izrecno ne navede, je stanje "ni znano" in dobička ni.',
+      'Paketi več setov, deli, minifigure in prazne škatle so označeni in nimajo ocene priložnosti; oglas, ki ga ni mogoče zanesljivo prepoznati, je označen za ročni pregled.',
+      'Dobiček = konservativna prodajna vrednost − provizije prodaje − rezerva za tveganje − skupni strošek (cena, poštnina, davki). Brez poštnine, davkov ali vrednosti dobiček ni izračunan.',
+      'Umik oglasa ne pomeni, da je bil prodan; pri dražbi je prikazana zadnja vidna ponudba, ne končna cena.',
+    ],
+    ifEmpty: 'Brez ključev virov v namestitvi obrazec pove, kaj manjka; brez vira oglasov zagon ne najde ničesar, brez cenika oglasi ostanejo brez tržne vrednosti.',
+  },
 } as const satisfies Record<string, HelpTopic>;
 
 export type HelpTopicId = keyof typeof HELP_TOPICS;

@@ -236,6 +236,13 @@ Izbriši mapo modula na obeh straneh, vrstico `register<Ime>ScannerType()` v `ma
 oznako "tip ni na voljo", se ne izvajajo in jih lastnik lahko izbriše. `npm run typecheck`,
 `npm run lint` in testi morajo po tem ostati čisti.
 
+## Zgled z zunanjimi viri: LEGO (018)
+
+Tip `lego` (`modules/lego-scanner/`) je prvi produkcijski `single` + `generic` tip z več zunanjimi viri:
+viri po vzorcu Leti (`sources/`: opis zahteve, čista razčlenitev, skupni predpomnilnik, dnevna meja),
+čista domena (`domain/`), lastni dogodki obvestil (`events.ts`) in lasten prikaz rezultatov na odjemalcu.
+Glej [`lego-scanner.md`](lego-scanner.md).
+
 ## Analiza z umetno inteligenco (017) — kaj mora tip povedati
 
 Nič, kadar ima tip **generično shrambo**: jedro iz naslova, vira, cene, povezave in `data`
