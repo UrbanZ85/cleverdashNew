@@ -11,9 +11,8 @@ import type { CatalogSet, ListingType, LegoMarketplace, RawListing } from '../do
 
 export type SourceId = 'rebrickable' | 'bricklink' | 'ebay' | 'fake';
 
-export type FailureCode = 'disabled' | 'daily-limit' | 'rate-limited' | 'unauthorized' | 'unreachable' | 'invalid';
-
-export type SourceOutcome<T> = { ok: true; value: T; stale: boolean } | { ok: false; code: FailureCode; message: string };
+export type { FailureCode, SourceOutcome } from '../../../platform/external-sources/types.js';
+import type { SourceOutcome } from '../../../platform/external-sources/types.js';
 
 /** Kar vir potrebuje za delo: okolje, dnevnik, "zdaj" in razmiki (testi jih ničelno nastavijo). */
 export interface SourceRuntime {

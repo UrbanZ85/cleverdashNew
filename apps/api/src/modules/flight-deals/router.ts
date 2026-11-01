@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { Router, type Request } from 'express';
 import { Types } from 'mongoose';
 import { loadEnv } from '../../platform/config/env.js';
@@ -26,7 +27,7 @@ import {
 } from './domain/rule-input.js';
 import { normalizeRule, validateRule } from './domain/rule-validation.js';
 import { FLIGHT_PROVIDERS } from './providers/index.js';
-import { getOfferDetail, listOffers, listOffersForRule } from './services/offer-query.service.js';
+import { getOfferDetail, listOffers, listOffersForRule, setOfferPinned } from './services/offer-query.service.js';
 import {
   assertRoomForRule,
   inputToDocument,
@@ -316,6 +317,17 @@ flightDealsRouter.get('/flight-deals/offers/:offerId', requireScopes(FLIGHT_DEAL
   try {
     const userId = await actorUserId(req);
     res.json(await getOfferDetail(userId, String(req.params.offerId)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+flightDealsRouter.put('/flight-deals/offers/:offerId/pin', requireScopes(FLIGHT_DEALS_SCOPES.write), async (req, res, next) => {
+  try {
+    const userId = await actorUserId(req);
+    const { pinned } = z.object({ pinned: z.boolean() }).strict().parse(req.body);
+    await setOfferPinned(userId, String(req.params.offerId), pinned, new Date());
+    res.json({ pinned });
   } catch (err) {
     next(err);
   }

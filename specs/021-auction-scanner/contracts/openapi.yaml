@@ -1,0 +1,139 @@
+openapi: 3.1.0
+info:
+  title: CleverDash — Dražbeni skener (021)
+  version: 0.1.0
+  description: >
+    Razširitev pogodbe 016. Ustvarjanje, urejanje, zagon, rezultati in obvestila uporabljajo
+    obstoječe poti `/scanners/*` (tip `auctions`). Tu sta samo opisa virov in konfiguracije ter
+    sheme `AuctionsConfig` in `AuctionsResultData`.
+servers:
+  - url: /api/v1
+paths:
+  /auctions-scanner/sources:
+    get:
+      summary: Viri dražb z oznako dostopnosti
+      description: >
+        Vrne vsak vir z stanjem (`supported|partial|manual|unavailable|reference`) in razlogom.
+        Ne vsebuje skrivnosti, samo imena manjkajočih spremenljivk okolja.
+      security: [{ bearerAuth: [] }, { apiKey: [] }]
+      responses:
+        '200':
+          description: Seznam virov
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sources]
+                properties:
+                  sources:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuctionSourceInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auctions-scanner/presets:
+    get:
+      summary: Predloge konfiguracije (dražbe / EU dražbe / likvidacije)
+      security: [{ bearerAuth: [] }, { apiKey: [] }]
+      responses:
+        '200':
+          description: Predloge
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [presets]
+                properties:
+                  presets:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, label, defaults]
+                      properties:
+                        id: { type: string, enum: [auctions, eu-auctions, liquidations] }
+                        label: { type: string }
+                        defaults: { $ref: '#/components/schemas/AuctionsConfig' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+    apiKey: { type: apiKey, in: header, name: X-API-Key }
+  responses:
+    Unauthorized:
+      description: Ni prijave ali obsega
+  schemas:
+    AuctionSourceInfo:
+      type: object
+      required: [id, label, country, status, selectable, officialUrl, verifiedAt, requiresEnv]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        country: { type: string }
+        status: { type: string, enum: [supported, partial, manual, unavailable, reference] }
+        reason: { type: [string, 'null'] }
+        officialUrl: { type: string, format: uri }
+        docsUrl: { type: [string, 'null'], format: uri }
+        requiresEnv: { type: array, items: { type: string } }
+        selectable: { type: boolean }
+        verifiedAt: { type: string, format: date }
+    ValuationAssumptions:
+      type: object
+      properties:
+        estimatedMarketValue: { type: number, minimum: 0 }
+        appraisalToMarketPct: { type: number, minimum: 0, maximum: 100 }
+        conservativeDiscountPct: { type: number, minimum: 0, maximum: 100 }
+        sellingFeePct: { type: number, minimum: 0, maximum: 100 }
+        riskReservePct: { type: number, minimum: 0, maximum: 100 }
+        transport: { type: number, minimum: 0 }
+        registrationCosts: { type: number, minimum: 0 }
+        otherCosts: { type: number, minimum: 0 }
+        minProfit: { type: number, minimum: 0 }
+    AuctionsConfig:
+      type: object
+      required: [preset, sources, countries]
+      properties:
+        preset: { type: string, enum: [auctions, eu-auctions, liquidations] }
+        sources: { type: array, items: { type: string } }
+        countries: { type: array, items: { type: string, pattern: '^[A-Z]{2}$' } }
+        regions: { type: array, items: { type: string } }
+        categories: { type: array, items: { type: string } }
+        keywords: { type: array, items: { type: string } }
+        excludeKeywords: { type: array, items: { type: string } }
+        minStartingPrice: { type: number }
+        maxStartingPrice: { type: number }
+        minAppraisedValue: { type: number }
+        maxDeposit: { type: number }
+        methods: { type: array, items: { type: string, enum: [ONLINE, IN_PERSON, WRITTEN_BID, UNKNOWN] } }
+        auctionFrom: { type: string, format: date }
+        auctionTo: { type: string, format: date }
+        registrationBy: { type: string, format: date }
+        onlineOnly: { type: boolean }
+        requireAppraisedValue: { type: boolean }
+        endingWithinHours: { type: number }
+        minDiscountPct: { type: number }
+        minProfit: { type: number }
+        currency: { type: string, default: EUR }
+        assumptions: { $ref: '#/components/schemas/ValuationAssumptions' }
+        alerts:
+          type: object
+          properties:
+            registrationHours: { type: number }
+            startingHours: { type: number }
+            endingHours: { type: number }
+            scoreThreshold: { type: number }
+        aiEnabled: { type: boolean, default: false }
+    AuctionsResultData:
+      type: object
+      description: Vsebina `Result.data` za tip `auctions`. Manjkajoče vrednosti so `null`.
+      required: [attributes, evaluation, risks, lifecycle]
+      properties:
+        attributes: { type: object, additionalProperties: true }
+        evaluation: { type: object, additionalProperties: true }
+        risks:
+          type: array
+          items:
+            type: object
+            required: [code, severity, text]
+            properties:
+              code: { type: string }
+              severity: { type: string, enum: [info, warn] }
+              text: { type: string }
+        lifecycle: { type: object, additionalProperties: true }

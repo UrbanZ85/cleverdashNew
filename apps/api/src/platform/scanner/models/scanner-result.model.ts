@@ -60,6 +60,8 @@ const scannerResultSchema = new Schema(
     expiresAt: { type: Date, required: true },
     /** Analiza z umetno inteligenco (017); `null` brez nje. Izklop analize je ne briše (FR-015). */
     aiAnalysis: { type: aiAnalysisSchema, default: null },
+    /** Uporabnik ga posebej spremlja (pripet); pripet rezultat ne poteče (`expiresAt` ga ne briše). */
+    pinnedAt: { type: Date, default: null },
   },
   { timestamps: false, versionKey: false },
 );

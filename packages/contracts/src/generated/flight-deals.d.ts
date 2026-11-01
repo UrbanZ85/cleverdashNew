@@ -200,6 +200,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/flight-deals/offers/{offerId}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offerId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Pripne ali odpne ponudbo (klicatelj jo posebej spremlja)
+         * @description Pripeta je ponudba za klicatelja, ne za vse; ob izteku ponudbe izgine tudi pripetost. `404` kot pri podrobnostih.
+         */
+        put: operations["setFlightOfferPinned"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/flight-deals/airports": {
         parameters: {
             query?: never;
@@ -542,6 +564,8 @@ export interface components {
             /** @enum {string} */
             availability: "available" | "unavailable";
             matches: components["schemas"]["OfferMatch"][];
+            /** @description Klicatelj ponudbo posebej spremlja (pripeta) */
+            pinned?: boolean;
             /** @description 017 — analiza ponudbe z umetno inteligenco; `null` brez nje (oblika kot `AiAnalysis` v pogodbi 016) */
             aiAnalysis?: components["schemas"]["AiAnalysis"] | null;
         };
@@ -980,6 +1004,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OfferDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setFlightOfferPinned: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    pinned: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Novo stanje */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pinned: boolean;
+                    };
                 };
             };
             404: components["responses"]["NotFound"];

@@ -315,6 +315,25 @@ describe('loadEnv', () => {
     });
   });
 
+  describe('Zbirateljski skener (019)', () => {
+    it('privzetki: brez ključa PriceCharting, meje, predpomnilnik in parametri izračuna', () => {
+      const env = loadEnv(VALID);
+      expect(env.PRICECHARTING_API_KEY ?? '').toBe('');
+      expect(env.TCGDEX_URL).toBe('https://api.tcgdex.net/v2');
+      expect(env.COLLECTIBLES_FAKE_SOURCE_ENABLED).toBe(false);
+      expect([env.COLLECTIBLES_EBAY_DAILY_LIMIT, env.COLLECTIBLES_TCGDEX_DAILY_LIMIT, env.COLLECTIBLES_PRICECHARTING_DAILY_LIMIT]).toEqual([4000, 5000, 500]);
+      expect([env.COLLECTIBLES_CATALOG_CACHE_DAYS, env.COLLECTIBLES_PRICE_CACHE_HOURS, env.COLLECTIBLES_LISTING_CACHE_SECONDS]).toEqual([30, 24, 900]);
+      expect([env.COLLECTIBLES_SELLING_FEE_PCT, env.COLLECTIBLES_CONSERVATIVE_DISCOUNT_PCT, env.COLLECTIBLES_BUYER_FEE_PCT]).toEqual([13, 10, 0]);
+      expect([env.COLLECTIBLES_RISK_RESERVE_PCT_CARDS, env.COLLECTIBLES_RISK_RESERVE_PCT_RETRO]).toEqual([8, 6]);
+    });
+
+    it('testni vir v produkciji zavrnjen z imenom spremenljivke; v testih dovoljen', () => {
+      expect(() => loadEnv({ ...VALID, NODE_ENV: 'production', COLLECTIBLES_FAKE_SOURCE_ENABLED: 'true' })).toThrowError(/COLLECTIBLES_FAKE_SOURCE_ENABLED/);
+      resetEnvCacheForTests();
+      expect(loadEnv({ ...VALID, NODE_ENV: 'test', COLLECTIBLES_FAKE_SOURCE_ENABLED: 'true' }).COLLECTIBLES_FAKE_SOURCE_ENABLED).toBe(true);
+    });
+  });
+
   // 017: analiza z umetno inteligenco je neobvezna — brez ključa ni na voljo, vse ostalo ima privzetek.
   describe('Analiza z umetno inteligenco (017)', () => {
     it('brez ključa: model gpt-6.1-sol, uradna osnova, meje in izklopljene slike', () => {

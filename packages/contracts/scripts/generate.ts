@@ -14,6 +14,7 @@
  * - `specs/015-flight-deals/contracts/openapi.yaml` → `src/generated/flight-deals.d.ts`
  * - `specs/016-scanner-engine/contracts/openapi.yaml` → `src/generated/scanners.d.ts`
  * - `specs/018-lego-scanner/contracts/openapi.yaml` → `src/generated/scanners-lego.d.ts`
+ * - `specs/019-collectibles-scanner/contracts/openapi.yaml` → `src/generated/scanners-collectibles.d.ts`
  *
  * 004 (Keycloak SSO) svoje pogodbe nima: spremenil je poti `/auth/*`, ki so last 001,
  * zato je bila posodobljena tam.
@@ -82,6 +83,10 @@ const targets = [
   {
     spec: resolve(here, '../../../specs/018-lego-scanner/contracts/openapi.yaml'),
     out: resolve(here, '../src/generated/scanners-lego.d.ts'),
+  },
+  {
+    spec: resolve(here, '../../../specs/019-collectibles-scanner/contracts/openapi.yaml'),
+    out: resolve(here, '../src/generated/scanners-collectibles.d.ts'),
   },
 ];
 

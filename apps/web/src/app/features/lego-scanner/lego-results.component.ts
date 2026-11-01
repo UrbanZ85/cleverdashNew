@@ -1,5 +1,5 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
-import { IonBadge, IonItem, IonLabel, IonNote, IonSelect, IonSelectOption, IonText, IonToggle } from '@ionic/angular/standalone';
+import { IonBadge, IonIcon, IonItem, IonLabel, IonNote, IonSelect, IonSelectOption, IonText, IonToggle } from '@ionic/angular/standalone';
 import { ScannersApi } from '../../core/scanners/scanners.api.js';
 import type { ScannerResultsView } from '../../core/scanners/scanner-results-view.js';
 import { changeColor, changeLabel, formatLjubljana, formatPrice, formatPriceOrDash, riskColor, riskLabel, type HistoryPoint, type Result } from '../../core/scanners/scanners.model.js';
@@ -41,7 +41,7 @@ interface Row {
 @Component({
   selector: 'app-lego-results',
   standalone: true,
-  imports: [AiAnalysisCardComponent, IonBadge, IonItem, IonLabel, IonNote, IonSelect, IonSelectOption, IonText, IonToggle],
+  imports: [AiAnalysisCardComponent, IonBadge, IonIcon, IonItem, IonLabel, IonNote, IonSelect, IonSelectOption, IonText, IonToggle],
   template: `
     <div class="tools">
       <ion-item lines="none">
@@ -62,7 +62,7 @@ interface Row {
       @for (row of rows(); track row.result.id) {
         @let r = row.result;
         @let d = row.lego;
-        <article class="card" [class.unavailable]="r.availability === 'unavailable'" [class.open]="expanded() === r.id">
+        <article class="card" [class.unavailable]="r.availability === 'unavailable'" [class.open]="expanded() === r.id" [class.pinned]="isPinned(r.id)">
           <button type="button" class="head" [attr.aria-expanded]="expanded() === r.id" (click)="toggle(r)">
             @if (image(row); as img) {
               <img [src]="img" alt="" loading="lazy" class="thumb" />
@@ -120,6 +120,16 @@ interface Row {
                 }
               }
             </span>
+          </button>
+          <button
+            type="button"
+            class="pin"
+            [attr.aria-pressed]="isPinned(r.id)"
+            [attr.aria-label]="isPinned(r.id) ? 'Odstrani iz spremljanih' : 'Spremljaj ta zapis'"
+            [title]="isPinned(r.id) ? 'Odstrani iz spremljanih' : 'Spremljaj ta zapis'"
+            (click)="togglePin(r.id)"
+          >
+            <ion-icon [name]="isPinned(r.id) ? 'star' : 'star-outline'"></ion-icon>
           </button>
 
           @if (expanded() === r.id && d) {
@@ -263,10 +273,37 @@ interface Row {
         gap: var(--cd-space-2);
       }
       .card {
+        position: relative;
         border: 1px solid var(--cd-divider);
         border-radius: var(--cd-radius-lg);
         background: var(--cd-surface-raised);
         box-shadow: var(--cd-shadow-sm);
+      }
+      .card.pinned {
+        border-color: var(--ion-color-primary);
+        box-shadow: 0 0 0 2px var(--ion-color-primary), var(--cd-shadow-sm);
+      }
+      .card .head {
+        padding-right: 44px;
+      }
+      .pin {
+        all: unset;
+        box-sizing: border-box;
+        position: absolute;
+        top: var(--cd-space-2);
+        right: var(--cd-space-2);
+        display: flex;
+        padding: 4px;
+        border-radius: var(--cd-radius-md);
+        cursor: pointer;
+        color: var(--cd-text-muted);
+        font-size: 20px;
+      }
+      .card.pinned .pin {
+        color: var(--ion-color-warning);
+      }
+      .pin:focus-visible {
+        outline: 2px solid var(--ion-color-primary);
       }
       .card.unavailable {
         opacity: 0.6;
@@ -407,6 +444,8 @@ export class LegoResultsComponent implements ScannerResultsView {
   readonly sort = signal<LegoSort>('score');
   readonly onlyProfit = signal(false);
   readonly expanded = signal<string | null>(null);
+  /** Stanje pripenjanja, ki ga je uporabnik spremenil, dokler seznam ni osvežen s strežnika. */
+  readonly pinOverride = signal<Record<string, boolean>>({});
   readonly history = signal<Record<string, HistoryPoint[]>>({});
 
   readonly sortOptions = Object.keys(SORT_LABELS) as LegoSort[];
@@ -414,6 +453,8 @@ export class LegoResultsComponent implements ScannerResultsView {
 
   readonly rows = computed<Row[]>(() => {
     const sorted = sortResults(this.results(), this.sort());
+    // Spremljani zapisi so vedno na vrhu; med seboj ohranijo izbrani vrstni red.
+    sorted.sort((a, b) => Number(this.isPinned(b.id)) - Number(this.isPinned(a.id)));
     const rows = sorted.map((result) => ({ result, lego: readLegoData(result.data) }));
     return this.onlyProfit() ? rows.filter((r) => r.lego?.opportunity.profit !== null && r.lego?.opportunity.profit !== undefined) : rows;
   });
@@ -450,6 +491,20 @@ export class LegoResultsComponent implements ScannerResultsView {
   image(row: Row): string | null {
     const url = row.lego?.listing.images[0] ?? row.lego?.identification.catalog?.imageUrl ?? null;
     return url && url.startsWith('https://') ? url : null;
+  }
+
+  isPinned(id: string): boolean {
+    return this.pinOverride()[id] ?? this.results().find((r) => r.id === id)?.pinned ?? false;
+  }
+
+  async togglePin(id: string): Promise<void> {
+    const next = !this.isPinned(id);
+    this.pinOverride.update((o) => ({ ...o, [id]: next }));
+    try {
+      await this.api.setPinned(this.scannerId(), id, next);
+    } catch {
+      this.pinOverride.update((o) => ({ ...o, [id]: !next }));
+    }
   }
 
   async toggle(r: Result): Promise<void> {

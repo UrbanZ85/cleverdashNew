@@ -50,6 +50,7 @@ import { flightDealsRouter } from './modules/flight-deals/router.js';
 import { registerFlightScannerType } from './modules/flight-deals/scanner/index.js';
 import { registerEchoScannerType } from './modules/echo-scanner/index.js';
 import { legoScannerRouter, registerLegoScannerType } from './modules/lego-scanner/index.js';
+import { collectiblesScannerRouter, registerCollectiblesScannerType } from './modules/collectibles-scanner/index.js';
 import { scannersRouter } from './platform/scanner/router.js';
 import { scannersAdminRouter } from './platform/scanner/admin.router.js';
 import { dropLegacyFlightSchedulerCollections } from './platform/scanner/services/legacy-cleanup.service.js';
@@ -161,6 +162,7 @@ export async function createApp() {
   apiV1Router.use(scannersAdminRouter);
   apiV1Router.use(scannersRouter);
   apiV1Router.use(legoScannerRouter);
+  apiV1Router.use(collectiblesScannerRouter);
 
   app.use('/api/v1', apiV1Router);
   app.use(problemErrorHandler());
@@ -184,6 +186,7 @@ export async function createApp() {
   // 016: testni tip (brez zavihka) — dokaz, da nov tip pride brez spremembe jedra (FR-046).
   registerEchoScannerType();
   registerLegoScannerType();
+  registerCollectiblesScannerType();
 
   // 009: hramba deljenih datotek je na disku (nosilec `shared-files`), ne v bazi. Imenika
   // `tmp/` in `blobs/` morata obstajati, preden pride prvo nalaganje. Pometač teče takoj ob

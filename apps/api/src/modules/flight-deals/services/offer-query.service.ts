@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { notFound } from '../../../platform/errors/problem.js';
 import { readUserSummaries, type UserSummary } from '../../../platform/users/directory.service.js';
 import { FlightOfferModel } from '../models/flight-offer.model.js';
+import { FlightOfferPinModel } from '../models/flight-offer-pin.model.js';
 import { FlightOfferHistoryModel } from '../models/flight-offer-history.model.js';
 import { FlightSearchMatchModel } from '../models/flight-search-match.model.js';
 import { FlightSearchRuleModel } from '../models/flight-search-rule.model.js';
@@ -113,6 +114,7 @@ export interface OfferMatchResponse {
 export function toOfferResponse(
   offer: OfferLean,
   matches: OfferMatchResponse[],
+  pinned = false,
 ): Record<string, unknown> {
   const provider = providerById(offer.providerId);
   const origin = airportResponse(offer.origin);
@@ -151,6 +153,7 @@ export function toOfferResponse(
     dataAt: offer.dataAt.toISOString(),
     lastCheckedAt: offer.lastCheckedAt.toISOString(),
     availability: offer.availability,
+    pinned,
     matches,
     aiAnalysis: offer.aiAnalysis
       ? { ...offer.aiAnalysis, analyzedAt: offer.aiAnalysis.analyzedAt instanceof Date ? offer.aiAnalysis.analyzedAt.toISOString() : offer.aiAnalysis.analyzedAt }
@@ -243,6 +246,21 @@ export async function listOffers(userId: string, query: OffersQuery): Promise<Of
     .lean<OfferLean[]>();
   if (query.sort === 'change') offers = offers.sort((a, b) => changeAbsolute(a) - changeAbsolute(b)).slice(0, query.limit);
 
+  // Pripete ponudbe uporabnika: vedno v seznamu in na vrhu, tudi če bi jih omejitev odrezala.
+  const pins = await FlightOfferPinModel.find({ userId: new Types.ObjectId(userId), offerId: { $in: [...byOffer.keys()].map((id) => new Types.ObjectId(id)) } })
+    .sort({ pinnedAt: -1 })
+    .select('offerId')
+    .lean<Array<{ offerId: Types.ObjectId }>>();
+  const pinnedIds = pins.map((p) => String(p.offerId));
+  if (pinnedIds.length > 0) {
+    const pinnedOffers = await FlightOfferModel.find({ ...offerFilter, _id: { $in: pinnedIds.map((id) => new Types.ObjectId(id)) } }).lean<OfferLean[]>();
+    const pinnedSet = new Set(pinnedOffers.map((o) => String(o._id)));
+    const order = new Map(pinnedIds.map((id, i) => [id, i]));
+    pinnedOffers.sort((a, b) => order.get(String(a._id))! - order.get(String(b._id))!);
+    offers = [...pinnedOffers, ...offers.filter((o) => !pinnedSet.has(String(o._id)))].slice(0, Math.max(query.limit, pinnedOffers.length));
+  }
+  const pinned = new Set(pinnedIds);
+
   const ownerIds = [...new Set([...visible.shared.values()].map((s) => s.ownerId))];
   const owners = await readUserSummaries(ownerIds);
 
@@ -251,6 +269,7 @@ export async function listOffers(userId: string, query: OffersQuery): Promise<Of
       toOfferResponse(
         offer,
         (byOffer.get(String(offer._id)) ?? []).map((m) => matchResponse(m, visible, owners)),
+        pinned.has(String(offer._id)),
       ),
     ),
     total,
@@ -290,6 +309,7 @@ export async function getOfferDetail(userId: string, offerId: string): Promise<R
   const offer = await FlightOfferModel.findById(id).lean<OfferLean | null>();
   if (!offer) throw notFound('Ponudba ne obstaja.');
 
+  const pin = await FlightOfferPinModel.exists({ userId: new Types.ObjectId(userId), offerId: offer._id });
   const [history, owners] = await Promise.all([
     FlightOfferHistoryModel.find({ offerId: offer._id })
       .sort({ checkedAt: 1 })
@@ -308,9 +328,23 @@ export async function getOfferDetail(userId: string, offerId: string): Promise<R
     ...toOfferResponse(
       offer,
       matches.map((m) => matchResponse(m, visible, owners)),
+      pin !== null,
     ),
     history: points,
   };
+}
+
+/** Pripne ali odpne ponudbo za uporabnika; 404 brez vidnega ujemanja (kot podrobnosti). */
+export async function setOfferPinned(userId: string, offerId: string, pinned: boolean, now: Date): Promise<void> {
+  const id = requireObjectId(offerId, 'Ponudba');
+  const visible = await visibleRules(userId);
+  const allVisible = [...visible.ownIds, ...visible.shared.keys()].map((r) => new Types.ObjectId(r));
+  const seen = await FlightSearchMatchModel.exists({ offerId: new Types.ObjectId(id), ruleId: { $in: allVisible } });
+  const offer = seen ? await FlightOfferModel.findById(id).select('expiresAt').lean<{ _id: Types.ObjectId; expiresAt: Date } | null>() : null;
+  if (!offer) throw notFound('Ponudba ne obstaja.');
+  const filter = { userId: new Types.ObjectId(userId), offerId: offer._id };
+  if (pinned) await FlightOfferPinModel.updateOne(filter, { $setOnInsert: { pinnedAt: now }, $set: { expiresAt: offer.expiresAt } }, { upsert: true });
+  else await FlightOfferPinModel.deleteOne(filter);
 }
 
 /** Ponudbe enega LASTNEGA iskanja (po `requireOwnRule`). */

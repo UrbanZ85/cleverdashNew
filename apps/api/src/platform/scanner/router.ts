@@ -1,5 +1,6 @@
 import { Router, type Request } from 'express';
 import { Types } from 'mongoose';
+import { z } from 'zod';
 import { loadEnv } from '../config/env.js';
 import { requireScopes } from '../auth/scopes.js';
 import { resolveAutomationOwnerUserId } from '../auth/automation-owner.js';
@@ -28,7 +29,7 @@ import {
   type DefinitionLean,
 } from './services/definition-access.service.js';
 import { findSummaryForUser, listSummariesForUser, toGenericSummary, toSummaryResponse } from './services/definition-listing.service.js';
-import { deleteResultsOfDefinition, genericResultReader } from './services/result-store.service.js';
+import { deleteResultsOfDefinition, genericResultReader, setResultPinned } from './services/result-store.service.js';
 import { executeRun } from './services/run-executor.service.js';
 import { aiAvailable } from './services/ai-analysis.service.js';
 import { requestManualRun, type RunLean } from './services/scheduler.service.js';
@@ -106,6 +107,7 @@ async function scannerResponse(def: DefinitionLean, env: ReturnType<typeof loadE
 function toResultResponse(r: ResultView | ResultDetailView) {
   return {
     ...r,
+    pinned: r.pinned ?? false,
     dataAt: r.dataAt.toISOString(),
     firstSeenAt: r.firstSeenAt.toISOString(),
     lastSeenAt: r.lastSeenAt.toISOString(),
@@ -310,6 +312,25 @@ scannersRouter.get('/scanners/:scannerId/results/:resultId', requireScopes(SCANN
     const detail = await reader.get(id, String(req.params.resultId), userId, env);
     if (!detail) throw notFound('Rezultat ne obstaja.');
     res.json(toResultResponse(detail));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const pinBodySchema = z.object({ pinned: z.boolean() }).strict();
+
+scannersRouter.put('/scanners/:scannerId/results/:resultId/pin', requireScopes(SCANNER_SCOPES.write), async (req, res, next) => {
+  try {
+    const env = loadEnv();
+    const userId = await actorUserId(req);
+    const id = String(req.params.scannerId);
+    const body = pinBodySchema.parse(req.body);
+    const found = await findSummaryForUser(userId, id, req.auth?.scopes ?? [], env, new Date());
+    if (!found) throw notFound('Skener ne obstaja.');
+    if (!found.generic) throw badRequest(`Rezultatov tipa "${found.row.typeLabel}" ni mogoče pripenjati.`);
+    if (found.type) requireTypeWrite(req, found.type);
+    if (!(await setResultPinned(id, String(req.params.resultId), userId, body.pinned, new Date()))) throw notFound('Rezultat ne obstaja.');
+    res.json({ pinned: body.pinned });
   } catch (err) {
     next(err);
   }

@@ -80,6 +80,10 @@ export class ScannersApi {
     return firstValueFrom(this.http.get<ResultDetail>(this.path(`/${id}/results/${resultId}`), this.opts));
   }
 
+  setPinned(id: string, resultId: string, pinned: boolean): Promise<{ pinned: boolean }> {
+    return firstValueFrom(this.http.put<{ pinned: boolean }>(this.path(`/${id}/results/${resultId}/pin`), { pinned }, this.opts));
+  }
+
   // ─── administracija ───
 
   adminTypes(): Promise<{ types: ScannerTypeAdmin[]; email: { configured: boolean } }> {

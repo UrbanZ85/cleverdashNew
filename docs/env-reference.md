@@ -425,6 +425,26 @@ in pravila trditev: [`lego-scanner.md`](lego-scanner.md).
 | `LEGO_SELLING_FEE_PCT` / `LEGO_RISK_RESERVE_PCT` / `LEGO_CONSERVATIVE_DISCOUNT_PCT` / `LEGO_BUYER_FEE_PCT` | 12 / 5 / 10 / 0 | parametri izračuna priložnosti — **ocene, ne tržna dejstva**; prilagodi svoji realnosti |
 | `LEGO_TIMEOUT_MS` | 15000 | ena zahteva |
 
+### Zbirateljski skener (019)
+
+Ponovno uporabi `EBAY_*` (oglasi) in `OPENAI_*` (analiza). Katalog kartic TCGdex ne potrebuje ključa;
+cenik retro iger PriceCharting je **plačljiv** in izbiren — brez ključa so retro rezultati brez vrednosti
+("premalo podatkov"). Ključi so samo na strežniku (člen IV). eBay dnevni števec je skupen z LEGO
+(ena meja na ključ aplikacije).
+
+| Spremenljivka | Privzeto | Vloga |
+|---|---|---|
+| `PRICECHARTING_API_KEY` | *(prazno)* | cenik retro iger; `PRICECHARTING_URL` osnova |
+| `TCGDEX_URL` | `https://api.tcgdex.net/v2` | katalog Pokémon kartic (brez ključa) |
+| `COLLECTIBLES_FAKE_SOURCE_ENABLED` | `false` | testni vir z IZMIŠLJENIMI podatki; v produkciji ga `loadEnv` **zavrne** |
+| `COLLECTIBLES_EBAY_DAILY_LIMIT` / `_TCGDEX_DAILY_LIMIT` / `_PRICECHARTING_DAILY_LIMIT` | 4000 / 5000 / 500 | dnevne meje zahtev |
+| `COLLECTIBLES_CATALOG_CACHE_DAYS` / `_PRICE_CACHE_HOURS` / `_LISTING_CACHE_SECONDS` | 30 / 24 / 900 | TTL predpomnilnika |
+| `COLLECTIBLES_EBAY_MAX_PAGES` / `_MAX_CATALOG_LOOKUPS_PER_RUN` / `_MAX_VALUATIONS_PER_RUN` | 2 / 40 / 30 | meje na zagon |
+| `COLLECTIBLES_SELLING_FEE_PCT` / `_CONSERVATIVE_DISCOUNT_PCT` / `_BUYER_FEE_PCT` | 13 / 10 / 0 | parametri izračuna — **ocene, ne tržna dejstva** |
+| `COLLECTIBLES_RISK_RESERVE_PCT_CARDS` / `_RETRO` | 8 / 6 | osnovna rezerva za tveganje po kategoriji |
+| `COLLECTIBLES_RISK_UNVERIFIED_GRADE_PCT` / `_REPRO_SUSPECT_PCT` | 5 / 5 | dodatek: ocena brez potrjenega certifikata / dvoumen opis |
+| `COLLECTIBLES_TIMEOUT_MS` | 15000 | ena zahteva |
+
 ## 3. E-pošta — ali je še potrebna
 
 Stari sistem pošilja e-pošto ob ustvarjanju urnika in ob napakah, poleg potisnih obvestil.

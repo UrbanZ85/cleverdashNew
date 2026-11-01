@@ -303,6 +303,39 @@ paths:
               schema: { $ref: '#/components/schemas/ResultDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /scanners/{scannerId}/results/{resultId}/pin:
+    parameters:
+      - $ref: '#/components/parameters/ScannerId'
+      - { name: resultId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [results]
+      summary: Pripne ali odpne rezultat (uporabnik ga posebej spremlja)
+      description: Pripeti rezultati so na vrhu seznama in ne potečejo. Samo tipi z generično shrambo.
+      operationId: setScannerResultPinned
+      security:
+        - bearerAuth: [scanners:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pinned]
+              properties:
+                pinned: { type: boolean }
+      responses:
+        '200':
+          description: Novo stanje
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pinned]
+                properties:
+                  pinned: { type: boolean }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ───────────────────────────── administracija ─────────────────────────────
   /scanners/admin/types:
     get:
@@ -746,6 +779,7 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AiAnalysis'
             - type: 'null'
+        pinned: { type: boolean, description: Uporabnik rezultat posebej spremlja (pripet) }
 
     AiAnalysis:
       type: object

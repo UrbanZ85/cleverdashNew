@@ -1,8 +1,9 @@
-import { Component, computed, input, model, signal } from '@angular/core';
+import { Component, computed, inject, input, model, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonBadge, IonButton, IonCheckbox, IonChip, IonIcon, IonLabel, IonNote, IonSearchbar, IonSegment, IonSegmentButton, IonText } from '@ionic/angular/standalone';
 import { riskColor, riskLabel } from '../../core/scanners/scanners.model.js';
 import { AiAnalysisCardComponent } from '../../shared/ai-analysis/ai-analysis-card.component.js';
+import { FlightDealsApi } from './flight-deals.api.js';
 import {
   airlinesText,
   changeColor,
@@ -146,6 +147,7 @@ const COLUMN_COUNT = 9;
                 class="row"
                 [class.expired]="isExpired(row)"
                 [class.open]="expanded() === row.id"
+                [class.pinned]="isPinned(row)"
                 tabindex="0"
                 role="button"
                 [attr.aria-expanded]="expanded() === row.id"
@@ -154,6 +156,19 @@ const COLUMN_COUNT = 9;
                 (keydown.space)="toggle(row.id); $event.preventDefault()"
               >
                 <td class="status">
+                  <button
+                    type="button"
+                    class="pin"
+                    [class.on]="isPinned(row)"
+                    [attr.aria-pressed]="isPinned(row)"
+                    [attr.aria-label]="isPinned(row) ? 'Odstrani iz spremljanih' : 'Spremljaj to ponudbo'"
+                    [title]="isPinned(row) ? 'Odstrani iz spremljanih' : 'Spremljaj to ponudbo'"
+                    (click)="togglePin(row); $event.stopPropagation()"
+                    (keydown.enter)="$event.stopPropagation()"
+                    (keydown.space)="$event.stopPropagation()"
+                  >
+                    <ion-icon [name]="isPinned(row) ? 'star' : 'star-outline'"></ion-icon>
+                  </button>
                   @if (status(row); as s) {
                     @if (s.label) {
                       <ion-badge [color]="s.color">{{ s.label }}</ion-badge>
@@ -432,6 +447,27 @@ const COLUMN_COUNT = 9;
         color: var(--cd-text-muted);
         font-size: var(--cd-font-size-xs);
       }
+      tr.row.pinned td {
+        background: color-mix(in srgb, var(--ion-color-primary) 8%, transparent);
+      }
+      tr.row.pinned td:first-child {
+        box-shadow: inset 3px 0 0 var(--ion-color-primary);
+      }
+      .pin {
+        all: unset;
+        display: inline-flex;
+        padding: 2px;
+        cursor: pointer;
+        color: var(--cd-text-muted);
+        font-size: 18px;
+        vertical-align: middle;
+      }
+      .pin.on {
+        color: var(--ion-color-warning);
+      }
+      .pin:focus-visible {
+        outline: 2px solid var(--ion-color-primary);
+      }
       td.status {
         width: 1%;
         white-space: nowrap;
@@ -532,6 +568,8 @@ const COLUMN_COUNT = 9;
   ],
 })
 export class FlightOfferTableComponent {
+  private readonly api = inject(FlightDealsApi);
+
   readonly offers = input.required<Offer[]>();
   /** Skupno število na strežniku; če je večje od dolžine `offers`, se izpiše opomba o prvih N. */
   readonly total = input(0);
@@ -568,7 +606,13 @@ export class FlightOfferTableComponent {
   /** Shranjen obseg "deljene" brez deljenih ponudb bi dal prazno tabelo brez preklopa nazaj → takrat velja "vse". */
   readonly effectiveView = computed<OfferView>(() => (this.scopeVisible() ? this.view() : { ...this.view(), scope: 'all' }));
   readonly filters = computed(() => offerViewFilters(this.effectiveView(), this.query()));
-  readonly rows = computed(() => sortOffers(filterOffers(this.offers(), this.filters(), this.now()), this.view().sort));
+  /** Stanje pripenjanja, ki ga je uporabnik spremenil, dokler seznam ni osvežen s strežnika. */
+  readonly pinOverride = signal<Record<string, boolean>>({});
+  /** Pripete ponudbe so vedno na vrhu; med seboj ohranijo izbrani vrstni red. */
+  readonly rows = computed(() => {
+    const sorted = sortOffers(filterOffers(this.offers(), this.filters(), this.now()), this.view().sort);
+    return sorted.sort((a, b) => Number(this.isPinned(b)) - Number(this.isPinned(a)));
+  });
   readonly counts = computed(() => offerCounts(this.offers(), this.filters(), this.now()));
 
   patch(change: Partial<OfferView>): void {
@@ -586,6 +630,20 @@ export class FlightOfferTableComponent {
 
   setSort(key: OfferSortKey): void {
     this.patch({ sort: toggleOfferSort(this.view().sort, key) });
+  }
+
+  isPinned(offer: Offer): boolean {
+    return this.pinOverride()[offer.id] ?? offer.pinned ?? false;
+  }
+
+  async togglePin(offer: Offer): Promise<void> {
+    const next = !this.isPinned(offer);
+    this.pinOverride.update((o) => ({ ...o, [offer.id]: next }));
+    try {
+      await this.api.setOfferPinned(offer.id, next);
+    } catch {
+      this.pinOverride.update((o) => ({ ...o, [offer.id]: !next }));
+    }
   }
 
   toggle(id: string): void {

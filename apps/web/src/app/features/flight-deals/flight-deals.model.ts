@@ -190,6 +190,8 @@ export interface Offer {
   lastCheckedAt: string;
   availability: 'available' | 'unavailable';
   matches: OfferMatch[];
+  /** Uporabnik ponudbo spremlja (pripeta, shranjeno v bazi). */
+  pinned?: boolean;
   /** 017: analiza ponudbe z umetno inteligenco; `null`/izpuščeno brez nje. */
   aiAnalysis?: AiAnalysis | null;
 }

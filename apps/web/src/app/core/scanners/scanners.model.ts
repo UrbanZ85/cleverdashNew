@@ -158,6 +158,8 @@ export interface Result {
   change: PriceChange | null;
   /** 017; `null` brez analize. */
   aiAnalysis: AiAnalysis | null;
+  /** Uporabnik rezultat spremlja (pripet, shranjeno v bazi). */
+  pinned?: boolean;
 }
 
 export interface HistoryPoint {

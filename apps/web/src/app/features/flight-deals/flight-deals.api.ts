@@ -83,6 +83,10 @@ export class FlightDealsApi {
     return firstValueFrom(this.http.get<OfferDetail>(this.path(`/offers/${id}`), this.opts));
   }
 
+  setOfferPinned(id: string, pinned: boolean): Promise<{ pinned: boolean }> {
+    return firstValueFrom(this.http.put<{ pinned: boolean }>(this.path(`/offers/${id}/pin`), { pinned }, this.opts));
+  }
+
   searchOffers(searchId: string, sort: OfferSort = 'price', limit = 100): Promise<OfferList> {
     return firstValueFrom(this.http.get<OfferList>(this.path(`/searches/${searchId}/offers?sort=${sort}&limit=${limit}`), this.opts));
   }

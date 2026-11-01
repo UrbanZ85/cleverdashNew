@@ -18,6 +18,7 @@ import { RemoteSessionModel } from '../../src/modules/time-tracking/models/remot
 import { TodoListModel } from '../../src/modules/todos/models/todo-list.model.js';
 import { FileInboxModel } from '../../src/modules/file-sharing/models/file-inbox.model.js';
 import { FlightSearchRuleModel } from '../../src/modules/flight-deals/models/flight-search-rule.model.js';
+import { FlightOfferPinModel } from '../../src/modules/flight-deals/models/flight-offer-pin.model.js';
 import { FlightOfferModel } from '../../src/modules/flight-deals/models/flight-offer.model.js';
 import { FlightSearchMatchModel } from '../../src/modules/flight-deals/models/flight-search-match.model.js';
 import { ScannerDefinitionModel } from '../../src/platform/scanner/models/scanner-definition.model.js';
@@ -51,6 +52,8 @@ describe('data-model.md "Načelo lastništva zapisov": userId na osebnih podatki
     // samo ponudbe prek ujemanj, zato je `{ _id, userId }` še vedno pogoj vsakega dostopa
     // (specs/015-flight-deals/data-model.md, "Načelo lastništva zapisov").
     ['FlightSearchRule', FlightSearchRuleModel],
+    // Pripetost ponudbe je lastnost para (uporabnik, ponudba), ne skupne ponudbe.
+    ['FlightOfferPin', FlightOfferPinModel],
     // 016: skener je oseben zapis kot vsak drug; prejemnikov nima (deljenje je lastnost tipa).
     ['ScannerDefinition', ScannerDefinitionModel],
     // 016: rezultat v generični shrambi je LAST skenerja in nosi denormaliziranega lastnika — v

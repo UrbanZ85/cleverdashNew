@@ -243,6 +243,12 @@ viri po vzorcu Leti (`sources/`: opis zahteve, čista razčlenitev, skupni predp
 čista domena (`domain/`), lastni dogodki obvestil (`events.ts`) in lasten prikaz rezultatov na odjemalcu.
 Glej [`lego-scanner.md`](lego-scanner.md).
 
+Tip `collectibles` (`modules/collectibles-scanner/`, 019) je drugi tak tip in kaže dva dodatna vzorca: **skupna
+koda v `platform/`** (eBay odjemalec, prenos z dnevno mejo, aritmetika priložnosti, odločanje o dogodkih — modula
+se ne uvažata med sabo, zato jo izvlečeš v `platform/` in LEGO postane tanek ovoj) in **register kategorij**, iz
+katerega odjemalec zgradi obrazec (`GET /collectibles-scanner/categories`). Glej
+[`collectibles-scanner.md`](collectibles-scanner.md).
+
 ## Analiza z umetno inteligenco (017) — kaj mora tip povedati
 
 Nič, kadar ima tip **generično shrambo**: jedro iz naslova, vira, cene, povezave in `data`

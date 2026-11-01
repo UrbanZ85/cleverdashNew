@@ -41,6 +41,7 @@ import {
   imageOutline,
   layersOutline,
   cubeOutline,
+  albumsOutline,
   linkOutline,
   listOutline,
   lockClosedOutline,
@@ -192,6 +193,7 @@ export const REGISTERED_ICONS = {
   'scan-outline': scanOutline,
   'layers-outline': layersOutline,
   'cube-outline': cubeOutline, // tip lego (018)
+  'albums-outline': albumsOutline, // tip collectibles (019)
   'thermometer-outline': thermometerOutline,
   'time-outline': timeOutline,
   'trash-outline': trashOutline,

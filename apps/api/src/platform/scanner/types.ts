@@ -375,6 +375,8 @@ export interface ResultView {
   change: PriceChangeView | null;
   /** Analiza z umetno inteligenco (017); `null` brez nje. */
   aiAnalysis: AiAnalysis | null;
+  /** Pripet pri uporabniku; lastna shramba (leti) ga ne pozna. */
+  pinned?: boolean;
 }
 
 export interface HistoryPointView {

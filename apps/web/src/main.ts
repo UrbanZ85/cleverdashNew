@@ -9,6 +9,7 @@ import { registerIcons } from './app/core/icons/register-icons.js';
 import { registerFlightScannerUi } from './app/features/flight-deals/scanner-ui.js';
 import { registerEchoScannerUi } from './app/features/echo-scanner/scanner-ui.js';
 import { registerLegoScannerUi } from './app/features/lego-scanner/scanner-ui.js';
+import { registerCollectiblesScannerUi } from './app/features/collectibles-scanner/scanner-ui.js';
 
 // Ionic 8 + Angular 20, standalone komponente, brez NgModule (plan.md, Technical Context) —
 // stari projekt je uporabljal Angular 17 z moduli, nov naj tega pristopa ne podeduje.
@@ -27,6 +28,7 @@ registerIcons();
 registerFlightScannerUi();
 registerEchoScannerUi();
 registerLegoScannerUi();
+registerCollectiblesScannerUi();
 
 bootstrapApplication(AppComponent, {
   providers: [

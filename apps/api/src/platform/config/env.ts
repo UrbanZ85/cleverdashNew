@@ -432,7 +432,40 @@ const envSchema = z.object({
   LEGO_RISK_RESERVE_PCT: z.coerce.number().min(0).max(60).default(5),
   LEGO_CONSERVATIVE_DISCOUNT_PCT: z.coerce.number().min(0).max(90).default(10),
   LEGO_BUYER_FEE_PCT: z.coerce.number().min(0).max(60).default(0),
+
+  // Zbirateljski skener (019, specs/019-collectibles-scanner/research.md §13). eBay in OpenAI ključa se
+  // ponovno uporabita; TCGdex ključa ne potrebuje; PriceCharting je plačljiv in izbirni (brez ključa vira
+  // ni, retro rezultati so brez vrednosti). Ključi ostanejo IZKLJUČNO na strežniku (člen IV).
+  PRICECHARTING_API_KEY: z.string().optional().or(z.literal('')),
+  PRICECHARTING_URL: z.string().url().default('https://www.pricecharting.com'),
+  TCGDEX_URL: z.string().url().default('https://api.tcgdex.net/v2'),
+  COLLECTIBLES_FAKE_SOURCE_ENABLED: boolFromString.default('false'),
+  COLLECTIBLES_EBAY_DAILY_LIMIT: z.coerce.number().int().positive().max(100_000).default(4_000),
+  COLLECTIBLES_TCGDEX_DAILY_LIMIT: z.coerce.number().int().positive().max(100_000).default(5_000),
+  COLLECTIBLES_PRICECHARTING_DAILY_LIMIT: z.coerce.number().int().positive().max(100_000).default(500),
+  COLLECTIBLES_CATALOG_CACHE_DAYS: z.coerce.number().int().positive().max(365).default(30),
+  COLLECTIBLES_PRICE_CACHE_HOURS: z.coerce.number().int().positive().max(720).default(24),
+  COLLECTIBLES_LISTING_CACHE_SECONDS: z.coerce.number().int().positive().max(86_400).default(900),
+  COLLECTIBLES_EBAY_MAX_PAGES: z.coerce.number().int().positive().max(10).default(2),
+  COLLECTIBLES_MAX_CATALOG_LOOKUPS_PER_RUN: z.coerce.number().int().nonnegative().max(500).default(40),
+  COLLECTIBLES_MAX_VALUATIONS_PER_RUN: z.coerce.number().int().positive().max(500).default(30),
+  COLLECTIBLES_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  // Parametri izračuna priložnosti — OCENE lastnika namestitve, ne tržna dejstva (v odstotkih).
+  COLLECTIBLES_SELLING_FEE_PCT: z.coerce.number().min(0).max(60).default(13),
+  COLLECTIBLES_CONSERVATIVE_DISCOUNT_PCT: z.coerce.number().min(0).max(90).default(10),
+  COLLECTIBLES_BUYER_FEE_PCT: z.coerce.number().min(0).max(60).default(0),
+  COLLECTIBLES_RISK_RESERVE_PCT_CARDS: z.coerce.number().min(0).max(60).default(8),
+  COLLECTIBLES_RISK_RESERVE_PCT_RETRO: z.coerce.number().min(0).max(60).default(6),
+  COLLECTIBLES_RISK_UNVERIFIED_GRADE_PCT: z.coerce.number().min(0).max(60).default(5),
+  COLLECTIBLES_RISK_REPRO_SUSPECT_PCT: z.coerce.number().min(0).max(60).default(5),
 }).superRefine((env, ctx) => {
+  if (env.NODE_ENV === 'production' && env.COLLECTIBLES_FAKE_SOURCE_ENABLED) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['COLLECTIBLES_FAKE_SOURCE_ENABLED'],
+      message: 'Testni vir zbirateljskega skenerja z izmišljenimi podatki v produkciji ni dovoljen (019)',
+    });
+  }
   if (env.NODE_ENV === 'production' && env.LEGO_FAKE_SOURCE_ENABLED) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

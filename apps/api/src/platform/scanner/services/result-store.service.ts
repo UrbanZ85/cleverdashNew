@@ -52,9 +52,13 @@ export interface ResultLean {
   expiresAt: Date;
   /** 017; stari zapisi ga nimajo. */
   aiAnalysis?: AiAnalysis | null;
+  /** Stari zapisi ga nimajo. */
+  pinnedAt?: Date | null;
 }
 
 const DEFAULT_RESULT_TTL_DAYS = 30;
+/** Pripet rezultat ne poteče: TTL indeks ga ne dosega. */
+const PINNED_EXPIRES_AT = new Date('2100-01-01T00:00:00Z');
 
 function daysAfter(date: Date, days: number): Date {
   return new Date(date.getTime() + days * 86_400_000);
@@ -164,7 +168,8 @@ export async function reconcileResults(params: ReconcileParams): Promise<{ event
         lastSeenAt: now,
         lastCheckedAt: now,
         availability: 'available',
-        expiresAt,
+        // Pripetemu rezultatu se rok ne skrajša: uporabnik ga spremlja.
+        ...(existing.pinnedAt ? {} : { expiresAt }),
       };
       if (changeType === 'PRICE_DOWN' || changeType === 'PRICE_UP') {
         previousPrice = existing.price ? { amount: existing.price.amount, currency: existing.price.currency } : null;
@@ -266,6 +271,7 @@ export function toResultView(r: ResultLean): ResultView {
           ? { type: 'UNAVAILABLE', absolute: 0, percent: 0 }
           : null,
     aiAnalysis: r.aiAnalysis ?? null,
+    pinned: Boolean(r.pinnedAt),
   };
 }
 
@@ -295,7 +301,11 @@ export const genericResultReader: ResultReader = {
       .sort(sortSpec(query.sort))
       .limit(query.sort === 'change' ? Math.max(query.limit * 4, 200) : query.limit)
       .lean<ResultLean[]>();
-    if (query.sort === 'change') rows = rows.sort((a, b) => changeAbsolute(a) - changeAbsolute(b)).slice(0, query.limit);
+    if (query.sort === 'change') rows = rows.sort((a, b) => changeAbsolute(a) - changeAbsolute(b));
+    // Pripeti so vedno na vrhu (in zmeraj v seznamu, tudi če bi jih omejitev odrezala).
+    const pinned = await ScannerResultModel.find({ ...filter, pinnedAt: { $ne: null } }).sort({ pinnedAt: -1 }).lean<ResultLean[]>();
+    const pinnedIds = new Set(pinned.map((r) => String(r._id)));
+    rows = [...pinned, ...rows.filter((r) => !pinnedIds.has(String(r._id)))].slice(0, Math.max(query.limit, pinned.length));
     return { results: rows.map(toResultView), total };
   },
 
@@ -324,6 +334,17 @@ export const genericResultReader: ResultReader = {
     return detail;
   },
 };
+
+/** Pripne ali odpne rezultat lastnika; `false`, kadar rezultata ni (ali ni njegov). */
+export async function setResultPinned(definitionId: string, resultId: string, userId: string, pinned: boolean, now: Date): Promise<boolean> {
+  if (!Types.ObjectId.isValid(resultId)) return false;
+  const filter = { _id: new Types.ObjectId(resultId), definitionId: new Types.ObjectId(definitionId), userId: new Types.ObjectId(userId) };
+  const set = pinned
+    ? { pinnedAt: now, expiresAt: PINNED_EXPIRES_AT }
+    : { pinnedAt: null, expiresAt: daysAfter(now, DEFAULT_RESULT_TTL_DAYS) };
+  const res = await ScannerResultModel.updateOne(filter, { $set: set });
+  return res.matchedCount > 0;
+}
 
 /** Ob izbrisu skenerja gredo z njim rezultati in zgodovina (FR-009). */
 export async function deleteResultsOfDefinition(definitionId: Types.ObjectId | string): Promise<void> {

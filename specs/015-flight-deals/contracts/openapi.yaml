@@ -344,6 +344,37 @@ paths:
               schema: { $ref: '#/components/schemas/OfferDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /flight-deals/offers/{offerId}/pin:
+    parameters:
+      - { name: offerId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [offers]
+      summary: Pripne ali odpne ponudbo (klicatelj jo posebej spremlja)
+      description: Pripeta je ponudba za klicatelja, ne za vse; ob izteku ponudbe izgine tudi pripetost. `404` kot pri podrobnostih.
+      operationId: setFlightOfferPinned
+      security:
+        - bearerAuth: [flight-deals:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pinned]
+              properties:
+                pinned: { type: boolean }
+      responses:
+        '200':
+          description: Novo stanje
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pinned]
+                properties:
+                  pinned: { type: boolean }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ───────────────────────────── referenčno ─────────────────────────────
   /flight-deals/airports:
     get:
@@ -803,6 +834,7 @@ components:
         matches:
           type: array
           items: { $ref: '#/components/schemas/OfferMatch' }
+        pinned: { type: boolean, description: Klicatelj ponudbo posebej spremlja (pripeta) }
         aiAnalysis:
           description: 017 — analiza ponudbe z umetno inteligenco; `null` brez nje (oblika kot `AiAnalysis` v pogodbi 016)
           oneOf:

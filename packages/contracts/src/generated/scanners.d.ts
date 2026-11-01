@@ -158,6 +158,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scanners/{scannerId}/results/{resultId}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scannerId: components["parameters"]["ScannerId"];
+                resultId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Pripne ali odpne rezultat (uporabnik ga posebej spremlja)
+         * @description Pripeti rezultati so na vrhu seznama in ne potečejo. Samo tipi z generično shrambo.
+         */
+        put: operations["setScannerResultPinned"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/scanners/admin/types": {
         parameters: {
             query?: never;
@@ -454,6 +477,8 @@ export interface components {
                 percent?: number;
             } | null;
             aiAnalysis: components["schemas"]["AiAnalysis"] | null;
+            /** @description Uporabnik rezultat posebej spremlja (pripet) */
+            pinned?: boolean;
         };
         /**
          * @description Analiza rezultata z umetno inteligenco (017, specs/017-ai-analysis). Ocena modela, ne
@@ -903,6 +928,39 @@ export interface operations {
                     "application/json": components["schemas"]["ResultDetail"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setScannerResultPinned: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scannerId: components["parameters"]["ScannerId"];
+                resultId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    pinned: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Novo stanje */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pinned: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
         };
     };
