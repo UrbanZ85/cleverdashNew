@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import type { Env } from '../../../platform/config/env.js';
 import { readUserSummaries, type UserSummary } from '../../../platform/users/directory.service.js';
+import { FlightOfferModel } from '../models/flight-offer.model.js';
 import { FlightSearchMatchModel } from '../models/flight-search-match.model.js';
 import { buildPreview, type SearchPreview } from '../domain/date-window.js';
 import { findAirport } from '../domain/airports.js';
@@ -64,10 +65,18 @@ export function collectRecipientIds(rules: readonly RuleLean[]): string[] {
   return [...ids];
 }
 
-export async function readOfferCounts(ruleIds: readonly Types.ObjectId[]): Promise<Map<string, number>> {
+/**
+ * Število ponudb iskanja, kot ga kaže vmesnik: aktivna ujemanja, katerih ponudba je še na voljo IN odhod še ni
+ * minil. Seznam ponudb pretečene (odhod minil ali ponudba umaknjena) privzeto skrije (`isExpiredOffer` na
+ * odjemalcu), zato bi brez tega značka ("Samo vikendi 4") kazala več, kot jih seznam pokaže (2).
+ */
+export async function readOfferCounts(ruleIds: readonly Types.ObjectId[], now: Date = new Date()): Promise<Map<string, number>> {
   if (ruleIds.length === 0) return new Map();
   const rows = await FlightSearchMatchModel.aggregate<{ _id: Types.ObjectId; count: number }>([
     { $match: { ruleId: { $in: ruleIds }, status: 'active' } },
+    { $lookup: { from: FlightOfferModel.collection.name, localField: 'offerId', foreignField: '_id', as: 'offer' } },
+    { $unwind: '$offer' },
+    { $match: { 'offer.availability': { $ne: 'unavailable' }, 'offer.outbound.departureAt': { $gte: now } } },
     { $group: { _id: '$ruleId', count: { $sum: 1 } } },
   ]);
   return new Map(rows.map((r) => [String(r._id), r.count]));

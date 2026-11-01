@@ -1,6 +1,6 @@
 import { Component, forwardRef, input, output, signal } from '@angular/core';
 import { NG_VALUE_ACCESSOR, type ControlValueAccessor } from '@angular/forms';
-import { IonInput, IonNote } from '@ionic/angular/standalone';
+import { IonButton, IonDatetime, IonIcon, IonInput, IonModal, IonNote } from '@ionic/angular/standalone';
 import { completeTime, formatTimeInput, isValidTime } from './time-field.util.js';
 
 // Polje za uro `HH:MM` (ControlValueAccessor: deluje z `[(ngModel)]` kot `<ion-input type="time">`).
@@ -11,7 +11,7 @@ import { completeTime, formatTimeInput, isValidTime } from './time-field.util.js
 @Component({
   selector: 'app-time-field',
   standalone: true,
-  imports: [IonInput, IonNote],
+  imports: [IonButton, IonDatetime, IonIcon, IonInput, IonModal, IonNote],
   providers: [{ provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => TimeFieldComponent), multi: true }],
   template: `
     <ion-input
@@ -28,7 +28,25 @@ import { completeTime, formatTimeInput, isValidTime } from './time-field.util.js
       [disabled]="disabled()"
       (ionInput)="onInput($any($event))"
       (ionBlur)="onBlur()"
-    ></ion-input>
+    >
+      <ion-button slot="end" fill="clear" type="button" aria-label="Izberi uro" [disabled]="disabled()" (click)="openPicker()">
+        <ion-icon slot="icon-only" name="time-outline"></ion-icon>
+      </ion-button>
+    </ion-input>
+    <ion-modal [isOpen]="pickerOpen()" (didDismiss)="pickerOpen.set(false)" class="time-modal">
+      <ng-template>
+        <ion-datetime
+          presentation="time"
+          hourCycle="h23"
+          [value]="pickerValue()"
+          [showDefaultButtons]="true"
+          doneText="V redu"
+          cancelText="Prekliči"
+          (ionChange)="onPick($any($event))"
+          (ionCancel)="pickerOpen.set(false)"
+        ></ion-datetime>
+      </ng-template>
+    </ion-modal>
     @if (invalid()) {
       <ion-note color="danger" class="err">Vpiši uro kot HH:MM (npr. 17:30).</ion-note>
     }
@@ -55,6 +73,7 @@ export class TimeFieldComponent implements ControlValueAccessor {
   readonly text = signal('');
   readonly disabled = signal(false);
   readonly invalid = signal(false);
+  readonly pickerOpen = signal(false);
 
   private onChangeFn: (value: string) => void = () => undefined;
   private onTouchedFn: () => void = () => undefined;
@@ -88,6 +107,29 @@ export class TimeFieldComponent implements ControlValueAccessor {
     if (target) target.value = formatted;
     this.invalid.set(false);
     this.emit(isValidTime(formatted) ? formatted : '');
+  }
+
+  /** ISO vrednost za `ion-datetime` (samo ura je pomembna); prazno polje začne ob 12:00. */
+  pickerValue(): string {
+    const t = isValidTime(this.text()) ? this.text() : '12:00';
+    return `2000-01-01T${t}:00`;
+  }
+
+  openPicker(): void {
+    if (!this.disabled()) this.pickerOpen.set(true);
+  }
+
+  onPick(event: CustomEvent<{ value?: string | string[] | null }>): void {
+    const raw = event.detail.value;
+    const iso = Array.isArray(raw) ? raw[0] : raw;
+    const m = iso ? /T(\d{2}:\d{2})/.exec(iso) : null;
+    if (m?.[1] && isValidTime(m[1])) {
+      this.text.set(m[1]);
+      this.invalid.set(false);
+      this.emit(m[1]);
+    }
+    this.pickerOpen.set(false);
+    this.onTouchedFn();
   }
 
   onBlur(): void {

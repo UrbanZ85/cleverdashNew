@@ -136,6 +136,22 @@ describe('GET / PATCH / DELETE', () => {
     expect(res.status).toBe(200);
     expect(res.body.offerCount).toBe(2);
   });
+
+  it('offerCount ne šteje pretečenih (odhod minil) in umaknjenih ponudb — enako, kot jih pokaže seznam', async () => {
+    await boot();
+    const ana = await loginAs(app, 'ana');
+    const rule = await seedRule(ana.userId);
+    const future = new Date(Date.now() + 30 * 86_400_000);
+    const past = new Date(Date.now() - 2 * 86_400_000);
+    const segment = (departureAt: Date) => ({ departureAt, arrivalAt: new Date(departureAt.getTime() + 2 * 3_600_000), durationMinutes: 120, stops: 0 });
+    await seedMatch(rule, await seedOffer({ outbound: { ...(await seedOffer()).outbound.toObject(), ...segment(future) } }));
+    await seedMatch(rule, await seedOffer({ outbound: { ...(await seedOffer()).outbound.toObject(), ...segment(past) } })); // odhod je minil
+    await seedMatch(rule, await seedOffer({ availability: 'unavailable', lastChangeType: 'UNAVAILABLE' })); // umaknjena
+    const res = await request(app).get(`/api/v1/flight-deals/searches/${rule._id}`).set(AUTH(ana.token));
+    expect(res.body.offerCount).toBe(1);
+    const list = await request(app).get('/api/v1/scanners').set(AUTH(ana.token));
+    expect(list.body.scanners.find((s: { id: string }) => s.id === String(rule._id)).resultCount).toBe(1);
+  });
 });
 
 // 017 (FR-004): stikalo analize z umetno inteligenco na iskanju — privzeto izklopljeno; `limits.aiAvailable`.

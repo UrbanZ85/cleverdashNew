@@ -228,7 +228,9 @@ export class FlightDealsPage implements OnInit {
       }
       const [data, list] = await Promise.all([
         this.api.overview(20),
-        this.api.listOffers({ scope: 'all', sort: 'price', includeUnavailable: true, limit: OFFER_LIMIT }),
+        // Izbrano iskanje se filtrira NA STREŽNIKU: sicer bi seznam vseh iskanj (prvih 200 najcenejših) skrival ponudbe
+        // iskanja, ki niso med njimi, in sporočilo "prvih 200 od 584" bi veljalo za napačno množico.
+        this.api.listOffers({ scope: 'all', sort: 'price', includeUnavailable: true, limit: OFFER_LIMIT, ...(this.view().searchId ? { searchId: this.view().searchId! } : {}) }),
       ]);
       this.overview.set(data);
       this.offers.set(list.offers);
@@ -250,8 +252,24 @@ export class FlightDealsPage implements OnInit {
   }
 
   onView(view: OfferView): void {
+    const searchChanged = view.searchId !== this.view().searchId;
     this.view.set(view);
     this.viewStore.save('overview', view);
+    if (searchChanged && this.initialised) void this.loadOffers();
+  }
+
+  /** Samo ponudbe (po izbranem iskanju); pregled iskanj ostane. */
+  private async loadOffers(): Promise<void> {
+    const searchId = this.view().searchId;
+    try {
+      const list = await this.api.listOffers({ scope: 'all', sort: 'price', includeUnavailable: true, limit: OFFER_LIMIT, ...(searchId ? { searchId } : {}) });
+      if (searchId !== this.view().searchId) return; // uporabnik je medtem izbral drugo iskanje
+      this.offers.set(list.offers);
+      this.total.set(list.total);
+      this.now.set(Date.now());
+    } catch (err) {
+      this.error.set(describeError(err, 'Ponudb ni bilo mogoče naložiti.'));
+    }
   }
 
   /** Klik na že izbrani čip iskanja ga izklopi. */
