@@ -7,7 +7,6 @@ import {
   IonButton,
   IonContent,
   IonIcon,
-  IonInput,
   IonSelect,
   IonSelectOption,
   IonText,
@@ -26,6 +25,7 @@ import {
   mergeDays,
   type MergedDay,
 } from './month-cells.js';
+import { TimeFieldComponent } from '../../../shared/time-field/time-field.component.js';
 
 interface CalendarDayResponse {
   localDate: string;
@@ -142,6 +142,7 @@ function problemDetail(err: unknown): string | null {
   selector: 'app-time-tracking-calendar-page',
   standalone: true,
   imports: [
+    TimeFieldComponent,
     PageHeaderComponent,
     CalendarGridComponent,
     FormsModule,
@@ -149,7 +150,6 @@ function problemDetail(err: unknown): string | null {
     IonButton,
     IonContent,
     IonIcon,
-    IonInput,
     IonSelect,
     IonSelectOption,
     IonText,
@@ -238,13 +238,7 @@ function problemDetail(err: unknown): string | null {
                   @for (row of dayDraft(); track row.id) {
                     <div class="day-row">
                       <span class="day-action">{{ row.actionName }}</span>
-                      <ion-input
-                        class="day-time"
-                        type="time"
-                        aria-label="Ura"
-                        [disabled]="!row.editable"
-                        [(ngModel)]="row.time"
-                      ></ion-input>
+                      <app-time-field class="day-time" ariaLabel="Ura" [(ngModel)]="row.time" [ngModelOptions]="{ standalone: true }" [disabled]="!row.editable"></app-time-field>
                       @if (!row.editable) {
                         <ion-badge color="medium">{{ row.state }}</ion-badge>
                       }

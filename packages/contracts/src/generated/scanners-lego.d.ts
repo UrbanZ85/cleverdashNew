@@ -32,7 +32,7 @@ export interface components {
             detail?: string;
         };
         /** @enum {string} */
-        Marketplace: "EBAY_DE" | "EBAY_IT";
+        Marketplace: "EBAY_DE" | "EBAY_IT" | "EBAY_FR" | "EBAY_ES" | "EBAY_AT" | "EBAY_NL" | "EBAY_BE" | "EBAY_IE" | "EBAY_PL" | "EBAY_GB" | "EBAY_US";
         /** @enum {string} */
         LegoCondition: "NEW_SEALED" | "NEW_OPEN_BOX" | "USED_COMPLETE" | "USED_INCOMPLETE" | "PARTS_ONLY" | "UNKNOWN";
         SourceStatus: {

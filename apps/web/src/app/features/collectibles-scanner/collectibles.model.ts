@@ -9,7 +9,8 @@ import { formatPrice, type Money } from '../../core/scanners/scanners.model.js';
 
 export type Category = 'trading-cards' | 'retro-gaming';
 export type Condition = 'NEW' | 'LIKE_NEW' | 'USED' | 'FOR_PARTS' | 'UNKNOWN';
-export type Marketplace = 'EBAY_DE' | 'EBAY_IT' | 'EBAY_FR' | 'EBAY_ES';
+/** Identifikator tržnice eBay (Evropa, Združeno kraljestvo, ZDA); seznam dovoljenih določi namestitev. */
+export type Marketplace = string;
 export type ListingType = 'FIXED_PRICE' | 'AUCTION';
 export type PriceBasis = 'asking' | 'estimate' | 'guide' | 'sold';
 export type Confidence = 'high' | 'medium' | 'low' | 'insufficient';
@@ -158,7 +159,19 @@ export function confidenceText(c: string): string {
   return CONFIDENCE_LABELS[c] ?? c;
 }
 
-export const MARKETPLACE_LABELS: Record<Marketplace, string> = { EBAY_DE: 'eBay Nemčija', EBAY_IT: 'eBay Italija', EBAY_FR: 'eBay Francija', EBAY_ES: 'eBay Španija' };
+export const MARKETPLACE_LABELS: Record<string, string> = {
+  EBAY_DE: 'eBay Nemčija',
+  EBAY_IT: 'eBay Italija',
+  EBAY_FR: 'eBay Francija',
+  EBAY_ES: 'eBay Španija',
+  EBAY_AT: 'eBay Avstrija',
+  EBAY_NL: 'eBay Nizozemska',
+  EBAY_BE: 'eBay Belgija',
+  EBAY_IE: 'eBay Irska',
+  EBAY_PL: 'eBay Poljska',
+  EBAY_GB: 'eBay Združeno kraljestvo',
+  EBAY_US: 'eBay ZDA',
+};
 
 export function marketplaceLabel(m: Marketplace | string): string {
   return MARKETPLACE_LABELS[m as Marketplace] ?? String(m);

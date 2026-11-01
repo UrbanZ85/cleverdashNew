@@ -1,3 +1,4 @@
+import { EBAY_MARKETPLACE_IDS } from '../../../platform/ebay/marketplaces.js';
 import type { EbayListing } from '../../../platform/ebay/client.js';
 import type { Opportunity as MathOpportunity, OpportunityParams, ValueConfidence } from '../../../platform/scanner/domain/opportunity-math.js';
 
@@ -10,8 +11,9 @@ import type { Opportunity as MathOpportunity, OpportunityParams, ValueConfidence
 export const COLLECTIBLE_CATEGORIES = ['trading-cards', 'retro-gaming'] as const;
 export type CollectibleCategoryId = (typeof COLLECTIBLE_CATEGORIES)[number];
 
-export const COLLECTIBLES_MARKETPLACES = ['EBAY_DE', 'EBAY_IT', 'EBAY_FR', 'EBAY_ES'] as const;
-export type CollectiblesMarketplace = (typeof COLLECTIBLES_MARKETPLACES)[number];
+// Tržnice so skupne (`platform/ebay/marketplaces.ts`): Evropa, Združeno kraljestvo in ZDA.
+export const COLLECTIBLES_MARKETPLACES = EBAY_MARKETPLACE_IDS;
+export type CollectiblesMarketplace = string;
 
 export const LISTING_TYPES = ['FIXED_PRICE', 'AUCTION'] as const;
 export type ListingType = (typeof LISTING_TYPES)[number];

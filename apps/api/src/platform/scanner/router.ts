@@ -205,7 +205,11 @@ scannersRouter.patch('/scanners/:scannerId', requireScopes(SCANNER_SCOPES.write)
     if (patch.config !== undefined) {
       // Delni vnos se zlije z obstoječim in preveri KOT CELOTA (tip, ki ga ni, ne more preveriti → 400).
       if (!type) throw badRequest(`Tip skenerja "${existing.type}" v tej namestitvi ni na voljo; nastavitev ni mogoče preveriti.`);
-      set.config = validateConfigWithType(type, { ...existing.config, ...patch.config }, env);
+      // `null` pri ključu pomeni "polje odstrani" (obrazec pošlje null za polja, ki jih je uporabnik izpraznil;
+      // sicer bi izpraznjeno polje ostalo v shranjeni nastavitvi in še naprej filtriralo).
+      const merged: Record<string, unknown> = { ...existing.config, ...patch.config };
+      for (const [key, value] of Object.entries(patch.config)) if (value === null) delete merged[key];
+      set.config = validateConfigWithType(type, merged, env);
     }
     if (patch.schedule) {
       const schedule = resolveSchedule(patch.schedule, existing.schedule);

@@ -417,7 +417,7 @@ in pravila trditev: [`lego-scanner.md`](lego-scanner.md).
 | `REBRICKABLE_API_KEY` | *(prazno)* | katalog setov; `REBRICKABLE_URL` osnova |
 | `BRICKLINK_CONSUMER_KEY`, `_CONSUMER_SECRET`, `_TOKEN`, `_TOKEN_SECRET` | *(prazno)* | cenik (OAuth 1.0, vsi štirje); v BrickLink računu registriraj IP strežnika; `BRICKLINK_URL` osnova |
 | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | *(prazno)* | eBay Browse API (aplikacijski ključ, produkcija); `EBAY_API_URL` osnova |
-| `EBAY_MARKETPLACES` | `EBAY_DE,EBAY_IT` | tržnice, ki jih namestitev dovoli |
+| `EBAY_MARKETPLACES` | `EBAY_DE,EBAY_IT` | tržnice, ki jih namestitev dovoli (LEGO in zbirateljski skener). Podprte: `EBAY_DE`, `EBAY_IT`, `EBAY_FR`, `EBAY_ES`, `EBAY_AT`, `EBAY_NL`, `EBAY_BE`, `EBAY_IE`, `EBAY_PL`, `EBAY_GB`, `EBAY_US`. Oglasi iz GB (GBP), PL (PLN) in ZDA (USD) so v drugi valuti: brez pretvorbe nimajo primerljive vrednosti in dobička, ob nastavljeni ceni v EUR pa so izločeni |
 | `LEGO_FAKE_SOURCE_ENABLED` | `false` | testni vir z IZMIŠLJENIMI podatki; v produkciji ga `loadEnv` **zavrne** |
 | `LEGO_REBRICKABLE_DAILY_LIMIT` / `LEGO_BRICKLINK_DAILY_LIMIT` / `LEGO_EBAY_DAILY_LIMIT` | 2000 / 1000 / 4000 | dnevne meje zahtev (rezervacija v bazi) |
 | `LEGO_CATALOG_CACHE_DAYS` / `LEGO_PRICE_CACHE_HOURS` / `LEGO_LISTING_CACHE_SECONDS` | 30 / 24 / 900 | TTL predpomnilnika |

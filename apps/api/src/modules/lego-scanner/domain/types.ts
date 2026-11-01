@@ -1,3 +1,5 @@
+import { EBAY_MARKETPLACE_IDS } from '../../../platform/ebay/marketplaces.js';
+
 // Čisti tipi LEGO skenerja (018, data-model.md). Brez mongoose in expressa (člen IX).
 //
 // Dogovor, ki velja povsod v modulu: polje, ki ga vir ne da, je `null` ali izpuščeno — NIKOLI
@@ -6,8 +8,9 @@
 export const LEGO_CONDITIONS = ['NEW_SEALED', 'NEW_OPEN_BOX', 'USED_COMPLETE', 'USED_INCOMPLETE', 'PARTS_ONLY', 'UNKNOWN'] as const;
 export type LegoCondition = (typeof LEGO_CONDITIONS)[number];
 
-export const LEGO_MARKETPLACES = ['EBAY_DE', 'EBAY_IT'] as const;
-export type LegoMarketplace = (typeof LEGO_MARKETPLACES)[number];
+// Tržnice so skupne (`platform/ebay/marketplaces.ts`): Evropa, Združeno kraljestvo in ZDA.
+export const LEGO_MARKETPLACES = EBAY_MARKETPLACE_IDS;
+export type LegoMarketplace = string;
 
 export const LISTING_TYPES = ['FIXED_PRICE', 'AUCTION'] as const;
 export type ListingType = (typeof LISTING_TYPES)[number];

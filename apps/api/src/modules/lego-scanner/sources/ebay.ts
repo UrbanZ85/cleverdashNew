@@ -8,7 +8,8 @@ import {
   searchEbayListings,
 } from '../../../platform/ebay/client.js';
 import type { RawListing } from '../domain/types.js';
-import { LEGO_MARKETPLACES, type LegoMarketplace } from '../domain/types.js';
+import { allowedEbayMarketplaces } from '../../../platform/ebay/marketplaces.js';
+import type { LegoMarketplace } from '../domain/types.js';
 import type { ListingQuery, ListingSource, SourceOutcome } from './types.js';
 
 // eBay Browse API — OGLASI za LEGO (018, research §5). Od 019 je odjemalec (žeton, URL iskanja,
@@ -24,8 +25,7 @@ export function resetEbayTokenForTests(): void {
 }
 
 export function enabledMarketplaces(env: Pick<Env, 'EBAY_MARKETPLACES'>): LegoMarketplace[] {
-  const wanted = env.EBAY_MARKETPLACES.split(',').map((s) => s.trim().toUpperCase());
-  return LEGO_MARKETPLACES.filter((m) => wanted.includes(m));
+  return allowedEbayMarketplaces(env);
 }
 
 /** URL iskanja (brez skrivnosti); `offset` je odmik strani. */

@@ -53,7 +53,7 @@ export interface components {
             detail?: string;
         };
         /** @enum {string} */
-        Marketplace: "EBAY_DE" | "EBAY_IT" | "EBAY_FR" | "EBAY_ES";
+        Marketplace: "EBAY_DE" | "EBAY_IT" | "EBAY_FR" | "EBAY_ES" | "EBAY_AT" | "EBAY_NL" | "EBAY_BE" | "EBAY_IE" | "EBAY_PL" | "EBAY_GB" | "EBAY_US";
         /** @enum {string} */
         Category: "trading-cards" | "retro-gaming";
         SourceStatus: {

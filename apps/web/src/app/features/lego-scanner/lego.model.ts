@@ -8,7 +8,8 @@
 import { formatPrice, type Money } from '../../core/scanners/scanners.model.js';
 
 export type LegoCondition = 'NEW_SEALED' | 'NEW_OPEN_BOX' | 'USED_COMPLETE' | 'USED_INCOMPLETE' | 'PARTS_ONLY' | 'UNKNOWN';
-export type LegoMarketplace = 'EBAY_DE' | 'EBAY_IT';
+/** Identifikator tržnice eBay (Evropa, Združeno kraljestvo, ZDA); seznam dovoljenih določi namestitev. */
+export type LegoMarketplace = string;
 export type ListingType = 'FIXED_PRICE' | 'AUCTION';
 export type IdentificationKind = 'SET' | 'BUNDLE' | 'PARTS' | 'MINIFIG' | 'EMPTY_BOX' | 'OTHER' | 'UNIDENTIFIED';
 export type ValuationConfidence = 'high' | 'medium' | 'low' | 'insufficient';
@@ -142,7 +143,19 @@ export function confidenceText(c: string): string {
   return CONFIDENCE_LABELS[c] ?? c;
 }
 
-export const MARKETPLACE_LABELS: Record<LegoMarketplace, string> = { EBAY_DE: 'eBay Nemčija', EBAY_IT: 'eBay Italija' };
+export const MARKETPLACE_LABELS: Record<string, string> = {
+  EBAY_DE: 'eBay Nemčija',
+  EBAY_IT: 'eBay Italija',
+  EBAY_FR: 'eBay Francija',
+  EBAY_ES: 'eBay Španija',
+  EBAY_AT: 'eBay Avstrija',
+  EBAY_NL: 'eBay Nizozemska',
+  EBAY_BE: 'eBay Belgija',
+  EBAY_IE: 'eBay Irska',
+  EBAY_PL: 'eBay Poljska',
+  EBAY_GB: 'eBay Združeno kraljestvo',
+  EBAY_US: 'eBay ZDA',
+};
 
 export function marketplaceLabel(m: LegoMarketplace | string): string {
   return MARKETPLACE_LABELS[m as LegoMarketplace] ?? String(m);

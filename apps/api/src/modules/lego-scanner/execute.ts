@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { EBAY_RESULT_HOSTS } from '../../platform/ebay/marketplaces.js';
 import { ScannerResultModel } from '../../platform/scanner/models/scanner-result.model.js';
 import { comparableHash, detectChange } from '../../platform/scanner/domain/change-detection.js';
 import { identityKeyOf } from '../../platform/scanner/domain/identity.js';
@@ -190,15 +191,20 @@ export async function executeLego(ctx: ExecutionContext<LegoConfig>): Promise<Ex
     const numbers = extractSetNumbers(l.title);
 
     // ── 4. filtri po katalogu (kar ni preverljivo, ne ustreza — nič se ne domneva) ──
+    // Izločen oglas se šteje v `dropped` (sicer števci pri zagonu z 200 oglasi in 0 rezultati ne povedo, zakaj).
+    const skip = (): boolean => {
+      counters.dropped += 1;
+      return true;
+    };
     if (config.setNumber) {
       const matches = catalogSet?.setNumber === config.setNumber || numbers.includes(config.setNumber);
-      if (!matches) continue;
+      if (!matches && skip()) continue;
     }
-    if (config.theme && !(catalogSet && sameText(catalogSet.theme, config.theme))) continue;
-    if (config.subtheme && !(catalogSet && sameText(catalogSet.subtheme, config.subtheme))) continue;
-    if (config.minYear !== undefined && !(catalogSet?.year != null && catalogSet.year >= config.minYear)) continue;
-    if (config.maxYear !== undefined && !(catalogSet?.year != null && catalogSet.year <= config.maxYear)) continue;
-    if (config.conditions.length > 0 && !config.conditions.includes(cond.condition)) continue;
+    if (config.theme && !(catalogSet && sameText(catalogSet.theme, config.theme)) && skip()) continue;
+    if (config.subtheme && !(catalogSet && sameText(catalogSet.subtheme, config.subtheme)) && skip()) continue;
+    if (config.minYear !== undefined && !(catalogSet?.year != null && catalogSet.year >= config.minYear) && skip()) continue;
+    if (config.maxYear !== undefined && !(catalogSet?.year != null && catalogSet.year <= config.maxYear) && skip()) continue;
+    if (config.conditions.length > 0 && !config.conditions.includes(cond.condition) && skip()) continue;
 
     const data: LegoResultData = {
       lego: {
@@ -343,7 +349,7 @@ export async function executeLego(ctx: ExecutionContext<LegoConfig>): Promise<Ex
   }
 
   // ── 9. shramba ───────────────────────────────────────────────────────────
-  const stored = await results.reconcile(items, { sourceSucceeded, allowedHosts: ['ebay.de', 'ebay.it', 'ebay.com'] });
+  const stored = await results.reconcile(items, { sourceSucceeded, allowedHosts: EBAY_RESULT_HOSTS });
   const events: ScannerEvent[] = [];
   if (plans.size > 0) {
     const rows = await ScannerResultModel.find({ definitionId: new Types.ObjectId(definition.id), identityKey: { $in: [...plans.keys()] } })

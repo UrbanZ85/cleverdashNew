@@ -153,6 +153,25 @@ describe('POST /scanners z type: collectibles', () => {
     expect(bad.body.detail).toContain('cena');
   });
 
+  it('urejanje: polje z vrednostjo null se odstrani iz shranjene nastavitve (izpraznjeno polje ne ostane v filtru)', async () => {
+    await boot();
+    const ana = await loginAs(app, 'ana');
+    const id = (await request(app).post('/api/v1/scanners').set(AUTH(ana.token)).send(CARDS)).body.id as string;
+    // Brez null se izpuščeno polje ohrani (delni vnos): to je pogodba PATCH za odjemalce API.
+    const kept = await request(app).patch(`/api/v1/scanners/${id}`).set(AUTH(ana.token)).send({ config: { keywords: 'Pikachu' } });
+    expect(kept.body.config).toMatchObject({ keywords: 'Pikachu', maxPrice: 100 });
+    // null = odstrani.
+    const cleared = await request(app).patch(`/api/v1/scanners/${id}`).set(AUTH(ana.token)).send({ config: { maxPrice: null, cards: null, keywords: 'Pikachu' } });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.config).not.toHaveProperty('maxPrice');
+    expect(cleared.body.config.cards).toMatchObject({ language: 'any', gradingCompany: 'any' });
+    expect(cleared.body.config.cards.cardNumber).toBeUndefined();
+    // Brez preostalega kriterija je odstranitev zavrnjena z jasnim razlogom.
+    const bad = await request(app).patch(`/api/v1/scanners/${id}`).set(AUTH(ana.token)).send({ config: { keywords: null } });
+    expect(bad.status).toBe(400);
+    expect(bad.body.detail).toContain('vsaj eno');
+  });
+
   it('rezultati praznega skenerja: seznam brez rezultatov', async () => {
     await boot();
     const ana = await loginAs(app, 'ana');

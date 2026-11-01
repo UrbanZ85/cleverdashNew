@@ -258,7 +258,10 @@ export class ScannerWizardPage implements OnInit {
     }
     const current = this.scheduleForm?.currentDraft() ?? this.schedule;
     const schedule = current.preset === 'custom' ? { cronExpression: current.cronExpression, timezone: current.timezone } : { preset: current.preset, timezone: current.timezone };
-    const config = this.lastConfig ?? {};
+    const config: Record<string, unknown> = { ...(this.lastConfig ?? {}) };
+    // Pri urejanju strežnik delni vnos zlije z obstoječim: polje, ki ga je uporabnik izpraznil in ga obrazec zato
+    // izpusti, bi ostalo v shranjeni nastavitvi. `null` pove strežniku, naj ga odstrani.
+    if (this.editingId()) for (const key of Object.keys(this.initialConfig() ?? {})) if (!(key in config)) config[key] = null;
     this.saving.set(true);
     this.error.set(null);
     try {

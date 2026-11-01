@@ -38,7 +38,7 @@ describe('collectiblesConfigSchema', () => {
     expect(collectiblesConfigSchema.safeParse({ category: 'trading-cards', cards: { grade: '11' } }).success).toBe(false);
     expect(collectiblesConfigSchema.safeParse({ category: 'retro-gaming', retro: { platform: 'atari' } }).success).toBe(false);
     expect(collectiblesConfigSchema.safeParse({ category: 'trading-cards', minDiscountPct: 120 }).success).toBe(false);
-    expect(collectiblesConfigSchema.safeParse({ category: 'trading-cards', marketplaces: ['EBAY_US'] }).success).toBe(false);
+    expect(collectiblesConfigSchema.safeParse({ category: 'trading-cards', marketplaces: ['EBAY_CA'] }).success).toBe(false);
     expect(collectiblesConfigSchema.safeParse({ category: 'trading-cards', listingTypes: [] }).success).toBe(false);
   });
 });
@@ -117,7 +117,7 @@ describe('describeCollectiblesConfig', () => {
 
 describe('allowedMarketplaces', () => {
   it('presek z znanimi tržnicami', () => {
-    expect(allowedMarketplaces({ EBAY_MARKETPLACES: 'ebay_de, EBAY_US,EBAY_ES' })).toEqual(['EBAY_DE', 'EBAY_ES']);
+    expect(allowedMarketplaces({ EBAY_MARKETPLACES: 'ebay_de, EBAY_US,EBAY_ES,EBAY_CA' })).toEqual(['EBAY_DE', 'EBAY_ES', 'EBAY_US']);
   });
 });
 

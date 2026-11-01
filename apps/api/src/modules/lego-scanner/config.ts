@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Env } from '../../platform/config/env.js';
+import { EBAY_MARKETPLACE_IDS, allowedEbayMarketplaces } from '../../platform/ebay/marketplaces.js';
 import { normalizeSetNumber } from './domain/set-number.js';
 import { LEGO_CONDITIONS, LEGO_MARKETPLACES, LISTING_TYPES, type LegoCondition, type LegoMarketplace } from './domain/types.js';
 
@@ -50,7 +51,7 @@ export const legoConfigSchema = z.object({
     .toUpperCase()
     .regex(/^[A-Z]{3}$/, 'Valuta mora biti tričrkovna oznaka (npr. EUR).')
     .default('EUR'),
-  marketplaces: z.array(z.enum(LEGO_MARKETPLACES)).min(1, 'Izberi vsaj eno tržnico.').max(2).default(['EBAY_DE']),
+  marketplaces: z.array(z.enum(LEGO_MARKETPLACES)).min(1, 'Izberi vsaj eno tržnico.').max(EBAY_MARKETPLACE_IDS.length).default(['EBAY_DE']),
   sellerCountries: z
     .array(z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'Država prodajalca je dvočrkovna oznaka (npr. DE).'))
     .max(10)
@@ -68,8 +69,7 @@ export type LegoConfig = z.infer<typeof legoConfigSchema>;
 
 /** Seznam tržnic, ki jih namestitev dovoli (`EBAY_MARKETPLACES`), presek z znanimi. */
 export function allowedMarketplaces(env: Pick<Env, 'EBAY_MARKETPLACES'>): LegoMarketplace[] {
-  const wanted = env.EBAY_MARKETPLACES.split(',').map((s) => s.trim().toUpperCase());
-  return LEGO_MARKETPLACES.filter((m) => wanted.includes(m));
+  return allowedEbayMarketplaces(env);
 }
 
 /** Pomen konfiguracije — slovenski stavek ali `null`. */

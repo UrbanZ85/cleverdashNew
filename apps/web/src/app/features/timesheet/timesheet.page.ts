@@ -27,6 +27,7 @@ import {
   type TimesheetForm,
   type TimesheetPreview,
 } from './timesheet.model.js';
+import { TimeFieldComponent } from '../../shared/time-field/time-field.component.js';
 
 // Zavihek "Evidenca delovnega časa" (register: platform/tabs/registry.ts, id `timesheet`).
 // Prenos samostojne aplikacije Kaja_EDC: obrazec pošlje mesec, ime, tedenske ure, delovni čas
@@ -38,6 +39,7 @@ import {
   selector: 'app-timesheet-page',
   standalone: true,
   imports: [
+    TimeFieldComponent,
     FormsModule,
     PageHeaderComponent,
     MonthGridComponent,
@@ -97,16 +99,16 @@ import {
         <h2>Delovni čas</h2>
         <ion-note class="hint">Velja za vsak delovni dan v mesecu; odsotnosti se odštejejo spodaj.</ion-note>
         <ion-item>
-          <ion-input label="Prihod" labelPlacement="stacked" type="time" [(ngModel)]="arrival" (ionChange)="refresh()"></ion-input>
+          <app-time-field label="Prihod" [(ngModel)]="arrival" (valueChange)="refresh()"></app-time-field>
         </ion-item>
         <ion-item>
-          <ion-input label="Odhod" labelPlacement="stacked" type="time" [(ngModel)]="departure" (ionChange)="refresh()"></ion-input>
+          <app-time-field label="Odhod" [(ngModel)]="departure" (valueChange)="refresh()"></app-time-field>
         </ion-item>
         <ion-item>
-          <ion-input label="Malica od" labelPlacement="stacked" type="time" [(ngModel)]="breakStart" (ionChange)="refresh()"></ion-input>
+          <app-time-field label="Malica od" [(ngModel)]="breakStart" (valueChange)="refresh()"></app-time-field>
         </ion-item>
         <ion-item>
-          <ion-input label="Malica do" labelPlacement="stacked" type="time" [(ngModel)]="breakEnd" (ionChange)="refresh()"></ion-input>
+          <app-time-field label="Malica do" [(ngModel)]="breakEnd" (valueChange)="refresh()"></app-time-field>
         </ion-item>
         <ion-button expand="block" fill="outline" [disabled]="savingDefaults()" (click)="saveDefaults()">
           {{ savingDefaults() ? 'Shranjujem ...' : 'Shrani kot privzeto' }}

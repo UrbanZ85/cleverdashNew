@@ -1,3 +1,4 @@
+import { EBAY_RESULT_HOSTS } from '../../platform/ebay/marketplaces.js';
 import type { ResultView, ScannerType } from '../../platform/scanner/types.js';
 import { describeLegoConfig, legoConfigSchema, validateLegoConfig, type LegoConfig } from './config.js';
 import { executeLego } from './execute.js';
@@ -8,7 +9,7 @@ import type { LegoResultData } from './domain/types.js';
 // zapisi lastnika v generični shrambi jedra. `isEnabled: () => true` — tip mora biti izbiren tudi brez
 // ključev virov: obrazec in zagon povesta, kaj manjka (spec US1.3). Po vzoru `echo` (016).
 
-const EBAY_HOSTS = ['ebay.de', 'ebay.it', 'ebay.com'] as const;
+const EBAY_HOSTS = EBAY_RESULT_HOSTS;
 
 /** Vhod za analizo z umetno inteligenco (017): samo podatki oglasa in kataloga, brez oseb (FR-003, FR-022). */
 export function describeForAi(result: ResultView) {

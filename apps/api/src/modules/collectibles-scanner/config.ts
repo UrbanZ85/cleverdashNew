@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Env } from '../../platform/config/env.js';
+import { allowedEbayMarketplaces } from '../../platform/ebay/marketplaces.js';
 import { getCategory } from './categories/registry.js';
 import { cardsFilterSchema } from './categories/trading-cards.js';
 import { retroFilterSchema } from './categories/retro-gaming.js';
@@ -23,7 +24,7 @@ const optionalNumber = (min: number, max: number, message: string) => z.number({
 const common = z.object({
   keywords: optionalText(120),
   excludedKeywords: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
-  marketplaces: z.array(z.enum(COLLECTIBLES_MARKETPLACES)).min(1, 'Izberi vsaj eno tržnico.').max(4).default(['EBAY_DE']),
+  marketplaces: z.array(z.enum(COLLECTIBLES_MARKETPLACES)).min(1, 'Izberi vsaj eno tržnico.').max(COLLECTIBLES_MARKETPLACES.length).default(['EBAY_DE']),
   sellerCountries: z
     .array(z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'Država prodajalca je dvočrkovna oznaka (npr. DE).'))
     .max(10)
@@ -55,8 +56,7 @@ export type CollectiblesConfig = z.infer<typeof collectiblesConfigSchema>;
 
 /** Seznam tržnic, ki jih namestitev dovoli (`EBAY_MARKETPLACES`), presek z znanimi. */
 export function allowedMarketplaces(env: Pick<Env, 'EBAY_MARKETPLACES'>): CollectiblesMarketplace[] {
-  const wanted = env.EBAY_MARKETPLACES.split(',').map((s) => s.trim().toUpperCase());
-  return COLLECTIBLES_MARKETPLACES.filter((m) => wanted.includes(m));
+  return allowedEbayMarketplaces(env);
 }
 
 /** Pomen konfiguracije — slovenski stavek ali `null`. */

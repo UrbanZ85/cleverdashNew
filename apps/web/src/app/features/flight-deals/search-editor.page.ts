@@ -38,6 +38,7 @@ import {
   type SearchForm,
   type SearchPreview,
 } from './flight-deals.model.js';
+import { TimeFieldComponent } from '../../shared/time-field/time-field.component.js';
 
 // Ustvari / uredi iskanje (US1, FR-002 do FR-013). Obrazec je NAVADEN OBJEKT in ne signal:
 // `[(ngModel)]` piše vanj neposredno (vzorec 013). Validacija je imperativna v `save()` z ENIM
@@ -51,6 +52,7 @@ import {
   selector: 'app-flight-search-editor-page',
   standalone: true,
   imports: [
+    TimeFieldComponent,
     FormsModule,
     PageHeaderComponent,
     HelpButtonComponent,
@@ -212,8 +214,8 @@ import {
             }
           </div>
           <div class="row">
-            <ion-item><ion-input label="Odhod najprej ob" labelPlacement="stacked" type="time" [(ngModel)]="form.outboundEarliest" name="outboundEarliest"></ion-input></ion-item>
-            <ion-item><ion-input label="Odhod najpozneje ob" labelPlacement="stacked" type="time" [(ngModel)]="form.outboundLatest" name="outboundLatest"></ion-input></ion-item>
+            <ion-item><app-time-field label="Odhod najprej ob" [(ngModel)]="form.outboundEarliest" name="outboundEarliest"></app-time-field></ion-item>
+            <ion-item><app-time-field label="Odhod najpozneje ob" [(ngModel)]="form.outboundLatest" name="outboundLatest"></app-time-field></ion-item>
           </div>
           <ion-note class="facts">Ure so v lokalnem času letališča. Brez izbranih dni velja kateri koli dan.</ion-note>
           @if (!form.oneWay) {
@@ -224,8 +226,8 @@ import {
               }
             </div>
             <div class="row">
-              <ion-item><ion-input label="Povratek najprej ob" labelPlacement="stacked" type="time" [(ngModel)]="form.inboundEarliest" name="inboundEarliest"></ion-input></ion-item>
-              <ion-item><ion-input label="Povratek najpozneje ob" labelPlacement="stacked" type="time" [(ngModel)]="form.inboundLatest" name="inboundLatest"></ion-input></ion-item>
+              <ion-item><app-time-field label="Povratek najprej ob" [(ngModel)]="form.inboundEarliest" name="inboundEarliest"></app-time-field></ion-item>
+              <ion-item><app-time-field label="Povratek najpozneje ob" [(ngModel)]="form.inboundLatest" name="inboundLatest"></app-time-field></ion-item>
             </div>
             <ion-item><ion-input label="Najmanj ur na destinaciji" labelPlacement="stacked" type="number" inputmode="numeric" min="0" [(ngModel)]="form.minStayHours" name="minStayHours"></ion-input></ion-item>
           }

@@ -14,6 +14,7 @@ import {
   IonIcon,
 } from '@ionic/angular/standalone';
 import { apiUrl } from '../../../core/api/api-base.js';
+import { TimeFieldComponent } from '../../../shared/time-field/time-field.component.js';
 
 export interface ProfileActionValue {
   actionName: string;
@@ -121,6 +122,7 @@ function problemDetail(err: unknown): string | null {
   selector: 'app-schedule-profile-form',
   standalone: true,
   imports: [
+    TimeFieldComponent,
     FormsModule,
     IonItem,
     IonInput,
@@ -196,13 +198,7 @@ function problemDetail(err: unknown): string | null {
               <ion-select-option [value]="option.value">{{ option.label }}</ion-select-option>
             }
           </ion-select>
-          <ion-input
-            class="action-time"
-            label="Ura"
-            labelPlacement="stacked"
-            type="time"
-            [(ngModel)]="action.localTime"
-          ></ion-input>
+          <app-time-field class="action-time" label="Ura" [(ngModel)]="action.localTime"></app-time-field>
           <ion-input
             class="action-jitter"
             label="Raztros (s)"

@@ -202,7 +202,7 @@ describe('konfiguracija iskanja', () => {
   it('neveljavno: številka seta, država, tržnica, stanje, meje', () => {
     expect(parse({ setNumber: '12' }).success).toBe(false);
     expect(parse({ keywords: 'x', sellerCountries: ['DEU'] }).success).toBe(false);
-    expect(parse({ keywords: 'x', marketplaces: ['EBAY_US'] }).success).toBe(false);
+    expect(parse({ keywords: 'x', marketplaces: ['EBAY_CA'] }).success).toBe(false);
     expect(parse({ keywords: 'x', conditions: ['MINT'] }).success).toBe(false);
     expect(parse({ keywords: 'x', minDiscountPct: 120 }).success).toBe(false);
     expect(parse({ keywords: 'x', marketplaces: [] }).success).toBe(false);

@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { EBAY_RESULT_HOSTS } from '../../platform/ebay/marketplaces.js';
 import { ScannerResultModel } from '../../platform/scanner/models/scanner-result.model.js';
 import { comparableHash, detectChange } from '../../platform/scanner/domain/change-detection.js';
 import { identityKeyOf } from '../../platform/scanner/domain/identity.js';
@@ -30,7 +31,7 @@ import type { FailureCode, SourceRuntime } from './sources/types.js';
 export type CollectiblesTypeOptions = RuntimeOptions;
 
 const DELIVERY_COUNTRY = 'SI';
-export const ALLOWED_RESULT_HOSTS = ['ebay.de', 'ebay.it', 'ebay.fr', 'ebay.es', 'ebay.com'] as const;
+export const ALLOWED_RESULT_HOSTS = EBAY_RESULT_HOSTS;
 
 type RunError = ExecutionOutcome['errors'][number];
 

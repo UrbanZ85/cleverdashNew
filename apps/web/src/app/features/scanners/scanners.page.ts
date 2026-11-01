@@ -47,7 +47,7 @@ import { describeError, lastRunText, scheduleSummary, type Limits, type ScannerS
         }
         <ion-list lines="full">
           @for (s of scanners(); track s.id) {
-            <ion-item [routerLink]="s.links.results" detail="true" [class.unavailable]="!s.typeAvailable">
+            <ion-item button (click)="open(s)" detail="true" [class.unavailable]="!s.typeAvailable">
               <ion-label>
                 <h2>
                   {{ s.name }}

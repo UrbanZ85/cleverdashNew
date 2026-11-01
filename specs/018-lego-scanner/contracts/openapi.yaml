@@ -80,7 +80,7 @@ components:
 
     Marketplace:
       type: string
-      enum: [EBAY_DE, EBAY_IT]
+      enum: [EBAY_DE, EBAY_IT, EBAY_FR, EBAY_ES, EBAY_AT, EBAY_NL, EBAY_BE, EBAY_IE, EBAY_PL, EBAY_GB, EBAY_US]
 
     LegoCondition:
       type: string

@@ -1,6 +1,7 @@
 import type { Env } from '../../../platform/config/env.js';
 import { EBAY_GAP_MS as SHARED_EBAY_GAP_MS, hasEbayCredentials, searchEbayListings } from '../../../platform/ebay/client.js';
-import { COLLECTIBLES_MARKETPLACES, type CollectiblesMarketplace } from '../domain/types.js';
+import { allowedEbayMarketplaces } from '../../../platform/ebay/marketplaces.js';
+import type { CollectiblesMarketplace } from '../domain/types.js';
 import type { ListingSource } from './types.js';
 
 // eBay Browse za zbirateljske predmete (019, research §1). Odjemalec je skupen z LEGO
@@ -10,8 +11,7 @@ import type { ListingSource } from './types.js';
 export const EBAY_GAP_MS = SHARED_EBAY_GAP_MS;
 
 export function enabledMarketplaces(env: Pick<Env, 'EBAY_MARKETPLACES'>): CollectiblesMarketplace[] {
-  const wanted = env.EBAY_MARKETPLACES.split(',').map((s) => s.trim().toUpperCase());
-  return COLLECTIBLES_MARKETPLACES.filter((m) => wanted.includes(m));
+  return allowedEbayMarketplaces(env);
 }
 
 export const ebayListings: ListingSource = {
