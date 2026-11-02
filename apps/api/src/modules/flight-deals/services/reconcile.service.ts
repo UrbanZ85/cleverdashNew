@@ -3,6 +3,7 @@ import type { Env } from '../../../platform/config/env.js';
 import type { Logger } from '../../../platform/logging/logger.js';
 import { FlightOfferModel } from '../models/flight-offer.model.js';
 import { FlightOfferHistoryModel } from '../models/flight-offer-history.model.js';
+import { FlightOfferPinModel } from '../models/flight-offer-pin.model.js';
 import { FlightSearchMatchModel } from '../models/flight-search-match.model.js';
 import { FlightSearchRuleModel } from '../models/flight-search-rule.model.js';
 import { findAirport } from '../domain/airports.js';
@@ -249,6 +250,43 @@ async function markUnavailable(
   }
 }
 
+/**
+ * Aktivna ujemanja iskanja, katerih ponudba pravilom (po spremembi iskanja ali oknu, ki se je
+ * premaknilo) ne ustreza več → `stale`. Presoja se po pravilih, ne po tem, ali je poizvedba ponudbo
+ * vrnila: stara poizvedba (npr. prejšnji datumi) se ne izvede več in ponudbe nihče ne bi označil.
+ * Ponudbe, ki jih je kdorkoli pripel (zvezdica), ostanejo; `skipOfferIds` so že ocenjene v tem zagonu.
+ */
+export async function staleOutdatedMatches(
+  rule: RuleLean,
+  windows: Windows,
+  skipOfferIds: ReadonlySet<string> = new Set(),
+): Promise<number> {
+  const matches = await FlightSearchMatchModel.find({ ruleId: rule._id, status: 'active' })
+    .select('offerId')
+    .lean<Array<{ offerId: Types.ObjectId }>>();
+  const offerIds = matches.map((m) => m.offerId).filter((id) => !skipOfferIds.has(String(id)));
+  if (offerIds.length === 0) return 0;
+
+  const pinned = new Set(
+    (await FlightOfferPinModel.find({ offerId: { $in: offerIds } }).select('offerId').lean<Array<{ offerId: Types.ObjectId }>>()).map((p) =>
+      String(p.offerId),
+    ),
+  );
+  const offers = await FlightOfferModel.find({ _id: { $in: offerIds } }).lean<OfferLean[]>();
+  const input = ruleToInput(rule);
+  const outdated: Types.ObjectId[] = [];
+  for (const offer of offers) {
+    if (pinned.has(String(offer._id))) continue;
+    if (!offerMatchesRule(toNormalized(offer), input, { windows, airports: findAirport }).ok) outdated.push(offer._id);
+  }
+  if (outdated.length === 0) return 0;
+  const res = await FlightSearchMatchModel.updateMany(
+    { ruleId: rule._id, offerId: { $in: outdated }, status: 'active' },
+    { $set: { status: 'stale' } },
+  );
+  return res.modifiedCount;
+}
+
 function aggregateOutcome(outcomes: ProviderOutcome[]): ProviderOutcome {
   if (outcomes.length === 0) return 'disabled';
   for (const o of ['rateLimited', 'unreachable', 'incomplete'] as const) if (outcomes.includes(o)) return o;
@@ -386,6 +424,8 @@ export async function reconcileRun(params: {
         { $set: { status: 'stale', lastRunId: runId } },
       );
     }
+
+    await staleOutdatedMatches(rule, windows, matchedOfferIds);
 
     const outcomes: RuleCheckOutcomeLean[] = params.allProviderIds.map((providerId) => {
       const tally = outcomesByProvider.get(providerId);

@@ -14,7 +14,8 @@ import { FlightSearchRuleModel } from './models/flight-search-rule.model.js';
 import { FlightSearchMatchModel } from './models/flight-search-match.model.js';
 import { FlightProviderStatusModel } from './models/flight-provider-status.model.js';
 import { airportsNear, countryNameSl, findAirport, listCountries, missingAirports, searchAirports } from './domain/airports.js';
-import { buildPreview } from './domain/date-window.js';
+import { buildPreview, computeWindows } from './domain/date-window.js';
+import { staleOutdatedMatches } from './services/reconcile.service.js';
 import {
   airportsQuerySchema,
   offersQuerySchema,
@@ -197,6 +198,12 @@ flightDealsRouter.patch('/flight-deals/searches/:searchId', requireScopes(FLIGHT
     // obstoječim nočitvam in obratno.
     const merged = parseAndValidate(searchCreateSchema.parse({ ...ruleToInput(existing), ...patch }));
     await FlightSearchRuleModel.updateOne({ _id: existing._id, userId: existing.userId }, { $set: inputToDocument(merged) });
+    // Ponudbe, ki novim nastavitvam ne ustrezajo več, takoj izginejo s seznama (pripete ostanejo).
+    const updated = await FlightSearchRuleModel.findById(existing._id).lean<RuleLean | null>();
+    if (updated) {
+      const now = new Date();
+      await staleOutdatedMatches(updated, computeWindows(merged, now, originTimezoneOf(updated)));
+    }
     auditSearchUpdated(req.log, { userId, ruleId: String(existing._id), fields: Object.keys(patch) });
     res.json(await respondWithRule(existing._id, userId, new Date()));
   } catch (err) {
