@@ -54,6 +54,10 @@ export interface components {
             /** @description Normalizirano v NNNNN-V ob shranjevanju (npr. 75192-1) */
             setNumber?: string;
             keywords?: string;
+            /** @description Dodatni kompleti; vsak je svoja poizvedba pri viru oglasov (normalizirano v NNNNN-V). Skupaj s `searches` največ 30 poizvedb na tržnico. */
+            setNumbers?: string[];
+            /** @description Dodatni iskalni nizi; vsak je svoja poizvedba (pred njim se doda `LEGO`). */
+            searches?: string[];
             theme?: string;
             subtheme?: string;
             minYear?: number;

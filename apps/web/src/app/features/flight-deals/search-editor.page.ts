@@ -153,8 +153,8 @@ import { TimeFieldComponent } from '../../shared/time-field/time-field.component
             </div>
           } @else if (form.dateMode === 'range') {
             <div class="row">
-              <ion-item><ion-input label="Od" labelPlacement="stacked" type="date" [(ngModel)]="form.from" name="from"></ion-input></ion-item>
-              <ion-item><ion-input label="Do" labelPlacement="stacked" type="date" [(ngModel)]="form.to" name="to"></ion-input></ion-item>
+              <ion-item><ion-input label="Od" labelPlacement="stacked" type="date" [(ngModel)]="form.from" (ngModelChange)="onRangeFromChange()" name="from"></ion-input></ion-item>
+              <ion-item><ion-input label="Do" labelPlacement="stacked" type="date" [min]="form.from || null" [(ngModel)]="form.to" (ngModelChange)="onRangeToChange()" name="to"></ion-input></ion-item>
             </div>
           } @else {
             <ion-item><ion-input label="Mesecev vnaprej" labelPlacement="stacked" type="number" inputmode="numeric" min="1" max="12" [(ngModel)]="form.months" name="months"></ion-input></ion-item>
@@ -446,6 +446,18 @@ export class FlightSearchEditorPage implements OnInit {
     } else {
       this.schedulePreview();
     }
+  }
+
+  /** Začetek obdobja: konec je prazen ali pred njim → postane isti dan (izbirnik se odpre v pravem mesecu). */
+  onRangeFromChange(): void {
+    if (this.form.from && (!this.form.to || this.form.to < this.form.from)) this.form.to = this.form.from;
+    this.schedulePreview();
+  }
+
+  /** Konec obdobja ne more biti pred začetkom (ročni vnos mimo `min` izbirnika). */
+  onRangeToChange(): void {
+    if (this.form.from && this.form.to && this.form.to < this.form.from) this.form.to = this.form.from;
+    this.schedulePreview();
   }
 
   setFlex(preset: FlexPreset): void {

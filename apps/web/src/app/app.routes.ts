@@ -1,6 +1,7 @@
 import type { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard.js';
 import { tabGuard } from './core/tabs/tab-guard.js';
+import { flightAffiliateScriptGuard } from './features/flight-deals/flight-affiliate-script.js';
 
 // Statične poti za ogrodje in dashboard. Od US3 dalje (tasks.md T085) usmerjanje zavihkov
 // nastane dinamično iz `TabRegistryService`, ki razreši register s strežnika — ta datoteka
@@ -192,7 +193,7 @@ export const APP_ROUTES: Routes = [
   {
     path: 'flight-deals',
     loadComponent: () => import('./features/flight-deals/flight-deals.page.js').then((m) => m.FlightDealsPage),
-    canActivate: [authGuard, tabGuard],
+    canActivate: [authGuard, tabGuard, flightAffiliateScriptGuard],
   },
   {
     path: 'flight-deals/searches',

@@ -590,6 +590,7 @@ export const HELP_TOPICS = {
     what: 'Po urniku išče LEGO sete na eBayu (Nemčija, Italija), jih prepozna v katalogu Rebrickable, primerja s prodajami zadnjih šestih mesecev na BrickLinku in oceni, ali je oglas podcenjen. Vse številke so ocene iz podatkov virov, ne nasvet za nakup.',
     how: [
       'Vpiši vsaj eno od: številka seta, ključne besede, tema ali najvišja cena. Več iskanj je neodvisnih: vsako ima svoje filtre, urnik in obvestila.',
+      'Več kompletov ali iskalnih nizov v enem skenerju: vpiši jih v polji "Dodatni kompleti" in "Dodatna iskanja". Vsak je svoja poizvedba pri eBayu (skupaj največ 30), oglasi pa se združijo; filtri, cena in obvestila veljajo za vse.',
       'Stanje: zapečateno in kompletno rabljeno se vrednotita ločeno; kompletnost rabljenega se NE domneva — dokler jo prodajalec izrecno ne navede, je stanje "ni znano" in dobička ni.',
       'Paketi več setov, deli, minifigure in prazne škatle so označeni in nimajo ocene priložnosti; oglas, ki ga ni mogoče zanesljivo prepoznati, je označen za ročni pregled.',
       'Dobiček = konservativna prodajna vrednost − provizije prodaje − rezerva za tveganje − skupni strošek (cena, poštnina, davki). Brez poštnine, davkov ali vrednosti dobiček ni izračunan.',

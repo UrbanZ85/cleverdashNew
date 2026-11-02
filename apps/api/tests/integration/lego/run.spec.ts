@@ -132,6 +132,15 @@ describe('filtri iskanja', () => {
     expect(t.every((x) => /75192/.test(x))).toBe(true);
   });
 
+  it('več kompletov in iskanj: oglasi vseh poizvedb se združijo, brez dvojnikov', async () => {
+    const one = await titlesFor({ setNumber: '75192' });
+    const technic = await titlesFor({ setNumber: '42115' });
+    const both = await titlesFor({ setNumbers: ['75192', '42115'] });
+    expect(both).toEqual([...one, ...technic].sort());
+    // Dodaten iskalni niz in komplet, ki že je v seznamu, ne podvojita oglasov.
+    expect(await titlesFor({ setNumbers: ['75192', '42115'], searches: ['Lamborghini'] })).toEqual(both);
+  });
+
   it('tema zahteva prepoznan set: Technic → samo Technic oglasa; neprepoznani oglasi ne ustrezajo', async () => {
     expect((await titlesFor({ theme: 'Technic' })).sort()).toEqual(['LEGO Technic 42115 Lamborghini Sián NEU OVP', 'LEGO Technic 42115 Lamborghini Sián komplett gebraucht']);
     // Iskalni niz vsebuje temo ("LEGO Star Wars"): oglas brez te besede v naslovu vir ne vrne; podtemo uveljavi katalog.

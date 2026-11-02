@@ -24,6 +24,10 @@ const optionalNumber = (min: number, max: number, message: string) =>
     .max(max, message)
     .optional();
 
+const MAX_LIST_ITEMS = 20;
+/** Največ poizvedb pri viru oglasov na tržnico in zagon (komplet, iskalni niz in združeno iskanje skupaj). */
+export const MAX_QUERIES_PER_MARKETPLACE = 30;
+
 export const legoConfigSchema = z.object({
   setNumber: z
     .string()
@@ -39,6 +43,26 @@ export const legoConfigSchema = z.object({
     })
     .optional(),
   keywords: optionalText(120),
+  // Več kompletov in več iskalnih nizov v enem skenerju (vsak je svoja poizvedba pri viru oglasov).
+  setNumbers: z
+    .array(
+      z.string().trim().transform((s, ctx) => {
+        const normalized = normalizeSetNumber(s);
+        if (!normalized) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Številka seta mora imeti 4 do 6 števk (npr. 75192 ali 75192-1).' });
+          return z.NEVER;
+        }
+        return normalized;
+      }),
+    )
+    .max(MAX_LIST_ITEMS, `Največ ${MAX_LIST_ITEMS} kompletov.`)
+    .default([])
+    .transform((list) => [...new Set(list)]),
+  searches: z
+    .array(z.string().trim().min(1, 'Iskalni niz ne sme biti prazen.').max(120, 'Iskalni niz ima največ 120 znakov.'))
+    .max(MAX_LIST_ITEMS, `Največ ${MAX_LIST_ITEMS} iskalnih nizov.`)
+    .default([])
+    .transform((list) => [...new Set(list)]),
   theme: optionalText(60),
   subtheme: optionalText(60),
   minYear: optionalNumber(1949, 2100, 'Letnik mora biti med 1949 in 2100.'),
@@ -74,9 +98,11 @@ export function allowedMarketplaces(env: Pick<Env, 'EBAY_MARKETPLACES'>): LegoMa
 
 /** Pomen konfiguracije — slovenski stavek ali `null`. */
 export function validateLegoConfig(config: LegoConfig, env: Pick<Env, 'EBAY_MARKETPLACES'>): string | null {
-  if (!config.setNumber && !config.keywords && !config.theme && config.maxPrice === undefined) {
+  if (!config.setNumber && !config.keywords && config.setNumbers.length === 0 && config.searches.length === 0 && !config.theme && config.maxPrice === undefined) {
     return 'Vpiši vsaj eno od: številka seta, ključne besede, tema ali najvišja cena — sicer bi iskanje zajelo vse oglase.';
   }
+  const queryCount = config.setNumbers.length + config.searches.length + (config.setNumber || config.keywords ? 1 : 0);
+  if (queryCount > MAX_QUERIES_PER_MARKETPLACE) return `Skupaj je največ ${MAX_QUERIES_PER_MARKETPLACE} kompletov in iskalnih nizov (zdaj ${queryCount}).`;
   if (config.minYear !== undefined && config.maxYear !== undefined && config.maxYear < config.minYear) return 'Najpoznejši letnik ne sme biti pred najzgodnejšim.';
   if (config.minPrice !== undefined && config.maxPrice !== undefined && config.maxPrice < config.minPrice) return 'Najvišja cena ne sme biti pod najnižjo.';
   const allowed = allowedMarketplaces(env);
@@ -105,6 +131,8 @@ export function describeLegoConfig(config: LegoConfig): string {
   const parts: string[] = [];
   if (config.setNumber) parts.push(`set ${config.setNumber}`);
   if (config.keywords) parts.push(`"${config.keywords}"`);
+  if (config.setNumbers.length > 0) parts.push(`kompleti ${config.setNumbers.join(', ')}`);
+  for (const s of config.searches) parts.push(`"${s}"`);
   if (config.theme) parts.push(config.subtheme ? `${config.theme} / ${config.subtheme}` : config.theme);
   if (config.maxPrice !== undefined) parts.push(`do ${config.maxPrice} ${config.currency}`);
   parts.push(config.marketplaces.join(', '));

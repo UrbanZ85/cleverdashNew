@@ -647,6 +647,7 @@ export function quickValidate(form: SearchForm): string | null {
   if (form.destinationMode === 'airports' && form.destinationAirports.length === 0) return 'Izberi vsaj eno ciljno letališče.';
   if (form.dateMode === 'fixed' && !form.departDate) return 'Vpiši datum odhoda.';
   if (form.dateMode === 'range' && (!form.from || !form.to)) return 'Vpiši začetek in konec obdobja.';
+  if (form.dateMode === 'range' && form.to < form.from) return 'Konec obdobja ne sme biti pred začetkom.';
   if (form.flexPreset === 'custom') {
     const flex = toOptionalInt(form.flexCustom);
     if (flex === null || Number.isNaN(flex) || flex < 0 || !Number.isInteger(flex)) return 'Fleksibilnost po meri mora biti nenegativno celo število dni.';

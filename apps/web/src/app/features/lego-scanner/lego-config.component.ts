@@ -1,7 +1,7 @@
 import { Component, OnInit, effect, inject, input, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
-import { IonCheckbox, IonInput, IonItem, IonLabel, IonNote, IonSelect, IonSelectOption, IonText, IonToggle } from '@ionic/angular/standalone';
+import { IonCheckbox, IonInput, IonItem, IonLabel, IonNote, IonSelect, IonSelectOption, IonText, IonTextarea, IonToggle } from '@ionic/angular/standalone';
 import { firstValueFrom } from 'rxjs';
 import { apiUrl } from '../../core/api/api-base.js';
 import type { ScannerConfigForm } from '../../core/scanners/scanner-config-form.js';
@@ -15,6 +15,13 @@ import { CONDITION_LABELS, MARKETPLACE_LABELS, type LegoCondition, type LegoMark
 // "Upokojen" namenoma ni med filtri: noben dovoljen vir tega ne pove zanesljivo.
 
 const CONDITIONS = Object.keys(CONDITION_LABELS) as LegoCondition[];
+const MAX_QUERIES = 30;
+const SET_NUMBER_PATTERN = /^(?:lego\s*)?\d{4,6}(?:-\d{1,2})?$/i;
+
+/** Seznam iz besedila: komplete ločijo vejice/presledki/podpičja, iskalne nize vejice in nove vrstice. */
+function splitList(text: string, separator: RegExp): string[] {
+  return [...new Set(text.split(separator).map((s) => s.trim()).filter((s) => s.length > 0))];
+}
 
 function toNumber(value: number | string | null | undefined): number | undefined {
   if (value === null || value === undefined || value === '') return undefined;
@@ -25,7 +32,7 @@ function toNumber(value: number | string | null | undefined): number | undefined
 @Component({
   selector: 'app-lego-config',
   standalone: true,
-  imports: [FormsModule, HelpButtonComponent, IonItem, IonInput, IonLabel, IonNote, IonSelect, IonSelectOption, IonToggle, IonCheckbox, IonText],
+  imports: [FormsModule, HelpButtonComponent, IonItem, IonInput, IonLabel, IonNote, IonSelect, IonSelectOption, IonToggle, IonCheckbox, IonText, IonTextarea],
   template: `
     @if (sources(); as s) {
       <div class="sources">
@@ -54,6 +61,13 @@ function toNumber(value: number | string | null | undefined): number | undefined
     <ion-item>
       <ion-input label="Ključne besede" labelPlacement="stacked" [(ngModel)]="keywords" name="keywords" maxlength="120" placeholder="npr. millennium falcon" (ionInput)="sync()"></ion-input>
     </ion-item>
+    <ion-item>
+      <ion-input label="Dodatni kompleti (številke, ločene z vejico)" labelPlacement="stacked" [(ngModel)]="setNumbersText" name="setNumbers" placeholder="npr. 75252, 75060, 10240" (ionInput)="sync()"></ion-input>
+    </ion-item>
+    <ion-item>
+      <ion-textarea label="Dodatna iskanja (vsako v svojo vrstico)" labelPlacement="stacked" [(ngModel)]="searchesText" name="searches" [autoGrow]="true" rows="2" placeholder="npr. UCS retired" (ionInput)="sync()"></ion-textarea>
+    </ion-item>
+    <ion-note class="hint">Vsak komplet in vsako dodatno iskanje je ločena poizvedba pri eBayu (skupaj največ {{ maxQueries }}); oglasi se združijo, filtri spodaj veljajo za vse.</ion-note>
     <div class="row">
       <ion-item><ion-input label="Tema" labelPlacement="stacked" [(ngModel)]="theme" name="theme" maxlength="60" placeholder="npr. Star Wars" (ionInput)="sync()"></ion-input></ion-item>
       <ion-item><ion-input label="Podtema" labelPlacement="stacked" [(ngModel)]="subtheme" name="subtheme" maxlength="60" (ionInput)="sync()"></ion-input></ion-item>
@@ -156,8 +170,11 @@ export class LegoConfigComponent implements ScannerConfigForm, OnInit {
   readonly conditionLabels = CONDITION_LABELS;
   readonly marketplaceLabel = (m: string) => MARKETPLACE_LABELS[m as LegoMarketplace] ?? m;
 
+  readonly maxQueries = MAX_QUERIES;
   setNumber = '';
   keywords = '';
+  setNumbersText = '';
+  searchesText = '';
   theme = '';
   subtheme = '';
   minYear: number | string = '';
@@ -183,6 +200,8 @@ export class LegoConfigComponent implements ScannerConfigForm, OnInit {
       const num = (v: unknown) => (typeof v === 'number' ? v : '');
       this.setNumber = text(c['setNumber']);
       this.keywords = text(c['keywords']);
+      this.setNumbersText = Array.isArray(c['setNumbers']) ? (c['setNumbers'] as string[]).join(', ') : '';
+      this.searchesText = Array.isArray(c['searches']) ? (c['searches'] as string[]).join('\n') : '';
       this.theme = text(c['theme']);
       this.subtheme = text(c['subtheme']);
       this.minYear = num(c['minYear']);
@@ -235,6 +254,8 @@ export class LegoConfigComponent implements ScannerConfigForm, OnInit {
     };
     text('setNumber', this.setNumber);
     text('keywords', this.keywords);
+    out['setNumbers'] = splitList(this.setNumbersText, /[,\s;]+/);
+    out['searches'] = splitList(this.searchesText, /[,\n;]+/);
     text('theme', this.theme);
     text('subtheme', this.subtheme);
     num('minYear', this.minYear);
@@ -263,10 +284,17 @@ export class LegoConfigComponent implements ScannerConfigForm, OnInit {
     const c = this.config();
     const nan = (key: string) => typeof c[key] === 'number' && Number.isNaN(c[key]);
     if (['minYear', 'maxYear', 'minPrice', 'maxPrice', 'minDiscountPct', 'minProfit', 'maxShipping', 'notifyMinProfit', 'auctionEndingHours'].some(nan)) return 'Številčna polja morajo vsebovati veljavno število.';
-    if (!c['setNumber'] && !c['keywords'] && !c['theme'] && c['maxPrice'] === undefined) {
+    const setNumbers = c['setNumbers'] as string[];
+    const searches = c['searches'] as string[];
+    if (!c['setNumber'] && !c['keywords'] && setNumbers.length === 0 && searches.length === 0 && !c['theme'] && c['maxPrice'] === undefined) {
       return 'Vpiši vsaj eno od: številka seta, ključne besede, tema ali najvišja cena — sicer bi iskanje zajelo vse oglase.';
     }
-    if (this.setNumber.trim() && !/^(?:lego\s*)?\d{4,6}(?:-\d{1,2})?$/i.test(this.setNumber.trim())) return 'Številka seta mora imeti 4 do 6 števk (npr. 75192 ali 75192-1).';
+    if (this.setNumber.trim() && !SET_NUMBER_PATTERN.test(this.setNumber.trim())) return 'Številka seta mora imeti 4 do 6 števk (npr. 75192 ali 75192-1).';
+    const badSet = setNumbers.find((n) => !SET_NUMBER_PATTERN.test(n));
+    if (badSet) return `Številka seta "${badSet}" ni veljavna: 4 do 6 števk (npr. 75192 ali 75192-1).`;
+    if (searches.some((s) => s.length > 120)) return 'Vsako dodatno iskanje ima največ 120 znakov.';
+    const queryCount = setNumbers.length + searches.length + (c['setNumber'] || c['keywords'] ? 1 : 0);
+    if (queryCount > MAX_QUERIES) return `Skupaj je največ ${MAX_QUERIES} kompletov in iskalnih nizov (zdaj ${queryCount}).`;
     if (typeof c['minPrice'] === 'number' && typeof c['maxPrice'] === 'number' && c['maxPrice'] < c['minPrice']) return 'Najvišja cena ne sme biti pod najnižjo.';
     if (typeof c['minYear'] === 'number' && typeof c['maxYear'] === 'number' && c['maxYear'] < c['minYear']) return 'Najpoznejši letnik ne sme biti pred najzgodnejšim.';
     if (this.subtheme.trim() && !this.theme.trim()) return 'Podtema zahteva temo.';

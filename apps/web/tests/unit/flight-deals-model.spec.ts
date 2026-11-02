@@ -134,6 +134,10 @@ describe('obrazec', () => {
     form.departureAirports = ['LJU'];
     form.from = '2026-10-22';
     form.to = '2026-11-01';
+    form.dateMode = 'range';
+    form.to = '2026-10-01';
+    expect(quickValidate(form)).toMatch(/Konec obdobja/);
+    form.to = '2026-11-01';
     form.minNights = 3;
     form.maxNights = 2;
     expect(quickValidate(form)).toMatch(/nočitev/);

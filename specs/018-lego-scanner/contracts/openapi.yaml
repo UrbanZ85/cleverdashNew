@@ -109,6 +109,16 @@ components:
       properties:
         setNumber: { type: string, description: "Normalizirano v NNNNN-V ob shranjevanju (npr. 75192-1)" }
         keywords: { type: string, maxLength: 120 }
+        setNumbers:
+          type: array
+          maxItems: 20
+          items: { type: string }
+          description: "Dodatni kompleti; vsak je svoja poizvedba pri viru oglasov (normalizirano v NNNNN-V). Skupaj s `searches` največ 30 poizvedb na tržnico."
+        searches:
+          type: array
+          maxItems: 20
+          items: { type: string, maxLength: 120 }
+          description: "Dodatni iskalni nizi; vsak je svoja poizvedba (pred njim se doda `LEGO`)."
         theme: { type: string, maxLength: 60 }
         subtheme: { type: string, maxLength: 60 }
         minYear: { type: integer, minimum: 1949, maximum: 2100 }

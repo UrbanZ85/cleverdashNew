@@ -55,6 +55,23 @@ export function searchText(config: LegoConfig): string {
   return parts.join(' ');
 }
 
+/**
+ * Vse poizvedbe zagona pri viru oglasov. Eno-vrednostni polji (`setNumber` + `keywords`) ostaneta ena
+ * združena poizvedba kot doslej; vsak dodatni komplet in vsak dodatni iskalni niz je svoja poizvedba.
+ * Brez dodatnih vrednosti je rezultat enak kot prej (tudi "samo tema" in "samo cena").
+ */
+export function searchQueries(config: LegoConfig): string[] {
+  const extras = [...config.setNumbers.map((n) => `LEGO ${n.replace(/-\d+$/, '')}`), ...config.searches.map((s) => `LEGO ${s}`)];
+  const combined = config.setNumber || config.keywords || extras.length === 0 ? [searchText(config)] : [];
+  const seen = new Set<string>();
+  return [...combined, ...extras].filter((q) => {
+    const key = q.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function sameText(a: string | null, b: string): boolean {
   return a !== null && normalizeName(a).includes(normalizeName(b));
 }
@@ -100,25 +117,28 @@ export async function executeLego(ctx: ExecutionContext<LegoConfig>): Promise<Ex
   const raw: RawListing[] = [];
   let sourceSucceeded = true;
   for (const marketplace of config.marketplaces) {
-    const out = await sources.listings.search(rt, {
-      marketplace,
-      q: searchText(config),
-      ...(config.minPrice !== undefined ? { minPrice: config.minPrice } : {}),
-      ...(config.maxPrice !== undefined ? { maxPrice: config.maxPrice } : {}),
-      currency: config.currency,
-      conditionIds: ebayConditionIds(config.conditions),
-      listingTypes: config.listingTypes,
-      sellerCountries: config.sellerCountries,
-      deliveryCountry: DELIVERY_COUNTRY,
-      maxPages: env.LEGO_EBAY_MAX_PAGES,
-    });
-    if (!out.ok) {
-      sourceSucceeded = false;
-      fail(sources.listings.id, out.code, out.message);
-      continue;
+    for (const q of searchQueries(config)) {
+      if (await ctx.shouldCancel()) break;
+      const out = await sources.listings.search(rt, {
+        marketplace,
+        q,
+        ...(config.minPrice !== undefined ? { minPrice: config.minPrice } : {}),
+        ...(config.maxPrice !== undefined ? { maxPrice: config.maxPrice } : {}),
+        currency: config.currency,
+        conditionIds: ebayConditionIds(config.conditions),
+        listingTypes: config.listingTypes,
+        sellerCountries: config.sellerCountries,
+        deliveryCountry: DELIVERY_COUNTRY,
+        maxPages: env.LEGO_EBAY_MAX_PAGES,
+      });
+      if (!out.ok) {
+        sourceSucceeded = false;
+        fail(sources.listings.id, out.code, out.message);
+        continue;
+      }
+      raw.push(...out.value);
+      await ctx.heartbeat();
     }
-    raw.push(...out.value);
-    await ctx.heartbeat();
   }
   if (await ctx.shouldCancel()) return { status: 'cancelled', counters, definitions: [], events: [], errors };
   if (!sourceSucceeded && raw.length === 0) {
